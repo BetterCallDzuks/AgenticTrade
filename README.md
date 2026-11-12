@@ -128,7 +128,9 @@ AgenticTrade/
 │   ├── shutdown.py       # SIGINT/SIGTERM controller (v11)
 │   ├── ohlcv.py          # candle backtester + strategies + CLI (v11)
 │   ├── validate.py       # environment validation rules (v11)
-│   └── doctor.py         # read-only pre-flight CLI (v11)
+│   ├── doctor.py         # read-only pre-flight CLI (v11)
+│   ├── timeutils.py      # UTC/local day helpers, extracted from the monolith (v11)
+│   └── fills.py          # paper fill model + exit metadata (v11)
 ├── .env                  # your local config and keys (never share it)
 ├── .env.example          # template with every setting
 ├── paper_portfolio.db    # SQLite paper book (created automatically)
@@ -294,6 +296,7 @@ These additions are intentionally non-breaking: v9 behavior remains the default.
 - **Config validation**: `agentictrade/validate.py` checks numeric ranges, live-trading guards, token strength, profiles and timezones; `python -m agentictrade.doctor` adds package, database-schema, audit-path and port checks and exits non-zero on any `FAIL`.
 - **Bind control**: `COMMAND_CENTER_HOST` (default `0.0.0.0`) and `COMMAND_CENTER_PORT` (default `8080`) let you keep the dashboard loopback-only. `PAPER_DB_PATH` selects the portfolio database.
 - **Supply chain**: Dependabot (pip + Actions), CodeQL (`security-and-quality`) and a `SECURITY.md` policy.
+- **Incremental extraction**: time helpers and the paper fill/exit model now live in `agentictrade/timeutils.py` and `agentictrade/fills.py`, re-exported by `research_bot.py` so existing imports keep working.
 
 ```powershell
 # scrape metrics locally

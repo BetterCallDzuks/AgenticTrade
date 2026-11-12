@@ -1020,6 +1020,45 @@ def test_v11_doctor():
     print("  v11 doctor: OK")
 
 
+def test_v11_extracted_helpers():
+    from datetime import datetime
+
+    from agentictrade import fills, timeutils
+
+    assert rb.paper_fill is fills.paper_fill
+    assert rb.exit_icon is fills.exit_icon
+    assert rb.utc_now is timeutils.utc_now
+    assert rb.fmt_utc is timeutils.fmt_utc
+    assert rb.LOSING_EXIT_REASONS == ("STOP_LOSS", "FAST_INVALIDATION", "FLOW_EXIT", "WHALE_EXIT", "TIME_STOP")
+
+    now = timeutils.utc_now()
+    assert now.tzinfo is None
+    assert timeutils.fmt_utc(datetime(2026, 1, 2, 3, 4, 5)) == "2026-01-02 03:04:05"
+
+    # Winter (CET) and summer (CEST) local days; both are deterministic whether
+    # zoneinfo data is present or the CET/CEST fallback is used.
+    day, start, end = timeutils.local_day_bounds(datetime(2026, 1, 15, 12, 0, 0))
+    assert day == "2026-01-15"
+    assert timeutils.fmt_utc(start) == "2026-01-14 23:00:00"
+    assert timeutils.fmt_utc(end) == "2026-01-15 23:00:00"
+
+    day, start, _ = timeutils.local_day_bounds(datetime(2026, 7, 1, 12, 0, 0))
+    assert day == "2026-07-01"
+    assert timeutils.fmt_utc(start) == "2026-06-30 22:00:00"
+
+    local = timeutils.fmt_local(datetime(2026, 1, 15, 12, 0, 0))
+    assert local and local.startswith("2026-01-15 13:00:00")
+    assert timeutils.fmt_local(None) is None
+
+    fill, slip = fills.paper_fill(1.0, "BUY", 0.5, 100_000.0, 50.0, 1.0, 185.0)
+    assert fill > 1.0 and slip > 0
+    try:
+        fills.paper_fill(1.0, "BUY", 1.0, None, 0.0, 0.0)
+    except Exception:
+        raise AssertionError("paper_fill should tolerate missing liquidity")
+    print("  v11 extracted helpers: OK")
+
+
 def main():
     print("Running AgenticTrade v11.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
@@ -1050,6 +1089,7 @@ def main():
         test_v11_ohlcv()
         test_v11_config_validation()
         test_v11_doctor()
+        test_v11_extracted_helpers()
     finally:
         rb.AUDIT_LOG_PATH = original_audit_path
         try:

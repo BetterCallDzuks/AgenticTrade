@@ -81,109 +81,24 @@ except ImportError:
 
 # env helpers are now provided by agentictrade.config
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+# Time helpers are now provided by agentictrade.timeutils.
+from agentictrade.timeutils import (  # noqa: E402
+    BOT_TIMEZONE_NAME,
+    fmt_local,
+    fmt_utc,
+    local_day_bounds,
+    to_local as to_local,
+    utc_now,
+)
 
-
-# HTTP retry helpers are now provided by agentictrade.http.
-
-def fmt_utc(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
-BOT_TIMEZONE_NAME = os.environ.get("BOT_TIMEZONE", "Europe/Zagreb")
-try:
-    from zoneinfo import ZoneInfo
-    _BOT_TZ = ZoneInfo(BOT_TIMEZONE_NAME)
-except Exception:
-    _BOT_TZ = None
-
-
-def _last_sunday_utc(year: int, month: int) -> datetime:
-    d = datetime(year, month + 1, 1) - timedelta(days=1) if month < 12 else datetime(year, 12, 31)
-    while d.weekday() != 6:
-        d -= timedelta(days=1)
-    return d.replace(hour=1, minute=0, second=0, microsecond=0)
-
-
-def _eu_cet_offset_hours(dt_utc: datetime) -> int:
-    start = _last_sunday_utc(dt_utc.year, 3)
-    end = _last_sunday_utc(dt_utc.year, 10)
-    return 2 if start <= dt_utc < end else 1
-
-
-def to_local(dt_utc: datetime) -> datetime:
-    aware = dt_utc.replace(tzinfo=timezone.utc)
-    if _BOT_TZ is not None:
-        return aware.astimezone(_BOT_TZ)
-    off = _eu_cet_offset_hours(dt_utc)
-    return aware.astimezone(timezone(timedelta(hours=off), "CEST" if off == 2 else "CET"))
-
-
-def _local_midnight_to_utc(local_date) -> datetime:
-    naive_midnight = datetime(local_date.year, local_date.month, local_date.day)
-    if _BOT_TZ is not None:
-        return naive_midnight.replace(tzinfo=_BOT_TZ).astimezone(timezone.utc).replace(tzinfo=None)
-    approx_utc = naive_midnight - timedelta(hours=1)
-    return naive_midnight - timedelta(hours=_eu_cet_offset_hours(approx_utc))
-
-
-def local_day_bounds(now_utc: datetime) -> tuple:
-    local_now = to_local(now_utc)
-    day = local_now.date()
-    start_utc = _local_midnight_to_utc(day)
-    next_utc = _local_midnight_to_utc(day + timedelta(days=1))
-    return day.isoformat(), start_utc, next_utc
-
-
-def fmt_local(dt_utc: Optional[datetime]) -> Optional[str]:
-    if not dt_utc:
-        return None
-    loc = to_local(dt_utc)
-    return loc.strftime("%Y-%m-%d %H:%M:%S ") + (loc.tzname() or "")
-
-
-def paper_fill(
-    mid_price: float,
-    side: str,
-    size_sol: float,
-    liquidity_usd: Optional[float],
-    base_bps: float,
-    impact_coeff: float,
-    sol_price_usd: float = 185.0,
-) -> tuple:
-    liq_usd = float(liquidity_usd or 0.0)
-    liquidity_sol = liq_usd / max(float(sol_price_usd or 185.0), 1e-9)
-    impact = (max(0.0, float(size_sol)) / max(liquidity_sol, 1.0)) * max(0.0, float(impact_coeff))
-    slip = max(0.0, float(base_bps)) / 10000.0 + impact
-    slip = min(0.5, max(0.0, slip))
-    if side.upper() == "BUY":
-        return mid_price * (1.0 + slip), slip
-    return mid_price * (1.0 - slip), slip
-
-
-EXIT_ICONS = {
-    "STOP_LOSS": "🛑",
-    "FAST_INVALIDATION": "⚡",
-    "TRAILING_STOP": "📉",
-    "BREAKEVEN_STOP": "🛡️",
-    "STEP_UP_STOP": "🪜",
-    "TIME_STOP": "⏱️",
-    "FLOW_EXIT": "💧",
-    "WHALE_EXIT": "🐳",
-    "TAKE_PROFIT_1": "🎯",
-    "MANUAL_WEB_EXIT": "✋",
-    "TELEGRAM_EXIT": "📱",
-    "REPLAY_END": "⏹️",
-}
-
-
-def exit_icon(reason: Optional[str]) -> str:
-    return EXIT_ICONS.get(str(reason or "").strip().upper(), "📤")
-
-
-LOSING_EXIT_REASONS = ("STOP_LOSS", "FAST_INVALIDATION", "FLOW_EXIT", "WHALE_EXIT", "TIME_STOP")
-FAST_EXIT_REASONS = ("STOP_LOSS", "FAST_INVALIDATION", "FLOW_EXIT", "WHALE_EXIT")
+# Fill model and exit metadata are now provided by agentictrade.fills.
+from agentictrade.fills import (  # noqa: E402
+    EXIT_ICONS as EXIT_ICONS,
+    FAST_EXIT_REASONS,
+    LOSING_EXIT_REASONS,
+    exit_icon,
+    paper_fill,
+)
 
 WHALE_SELL_EVENTS: dict = {}
 
