@@ -1,5 +1,10 @@
 # Solana Memecoin Multi-Agent Trading Bot: AgenticTrade v10.0
 
+[![CI](https://github.com/BetterCallDzuks/AgenticTrade/actions/workflows/tests.yml/badge.svg)](https://github.com/BetterCallDzuks/AgenticTrade/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Version](https://img.shields.io/badge/version-10.0.0-e3a452.svg)](https://github.com/BetterCallDzuks/AgenticTrade)
+
 A multi-agent system for discovering, checking and **paper-trading** Solana memecoins. It combines the Pump.fun WebSocket, the DexScreener API, RugCheck security checks, an optional Google Gemini analyst, a SQLite paper portfolio and a Jupiter/Jito dry-run executor, all behind a local web Command Center and an analytics dashboard.
 
 > **Paper trading only by default.** `LIVE_TRADING_ENABLED=false` stays off, and nothing in v10 turns it on (the dashboard cannot either). This software does not promise or predict profit. Memecoins are extremely risky. Replay and paper results are a way to test rules, not a forecast.
@@ -269,3 +274,11 @@ python -m agentictrade.ml status
 - The web API is intended for local use. If you must expose port 8080 on a LAN, set `DASHBOARD_TOKEN` and keep the rate limit enabled. Do not expose it to the internet.
 - The ML model and the backtest are advisory/reporting only: the backtest replays realized trades (no synthetic OHLCV), and the model never opens, blocks or resizes trades.
 - Strategy profiles only fill environment variables that are not set explicitly; change `.env` values to override them.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+## Disclaimer
+
+This project is for research and paper trading. It is not financial advice. Memecoin trading is extremely risky and most tokens lose value. Nothing here guarantees profit; use at your own risk.
