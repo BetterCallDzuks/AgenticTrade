@@ -1,0 +1,28 @@
+# Secrets and local config
+.env
+*.key
+*.pem
+
+# Paper trading database and logs
+paper_portfolio.db
+paper_portfolio.db-wal
+paper_portfolio.db-shm
+tmp*.db
+tmp*.db-wal
+tmp*.db-shm
+bot_history.log
+bot_history.jsonl
+bot_audit.jsonl
+ml_model.json
+replay_report.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+Thumbs.db
+.DS_Store

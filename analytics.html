@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AgenticTrade — Paper Ledger v10</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0a0a0b;
+    --ink-2: #101013;
+    --panel: #141416;
+    --panel-2: #19191c;
+    --line: rgba(227, 164, 82, 0.16);
+    --line-strong: rgba(227, 164, 82, 0.38);
+    --gold: #e3a452;
+    --gold-soft: #f0c78f;
+    --cream: #f1e9dc;
+    --muted: #8d877d;
+    --green: #7fd1a4;
+    --red: #e2725b;
+    --blue: #8aa9c9;
+    --radius: 2px;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+    --display: "Fraunces", Georgia, serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    min-height: 100vh;
+    color: var(--cream);
+    background:
+      radial-gradient(1200px 700px at 82% -12%, rgba(227, 164, 82, 0.13), transparent 60%),
+      radial-gradient(900px 600px at -10% 15%, rgba(138, 169, 201, 0.07), transparent 55%),
+      linear-gradient(180deg, #0b0b0d 0%, #0a0a0b 55%, #080809 100%);
+    font-family: var(--sans);
+    font-weight: 300;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: 0.01em;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px),
+      radial-gradient(circle at 20% 30%, rgba(255,255,255,0.02) 0, transparent 35%);
+    mix-blend-mode: screen;
+  }
+
+  a { color: inherit; }
+
+  .shell {
+    position: relative;
+    z-index: 1;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 26px 34px 72px;
+  }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brand { display: flex; align-items: center; gap: 14px; }
+
+  .monogram {
+    width: 44px; height: 44px;
+    display: grid; place-items: center;
+    border: 1px solid var(--line-strong);
+    background: linear-gradient(145deg, rgba(227,164,82,0.16), rgba(227,164,82,0.02));
+    font-family: var(--display);
+    font-size: 20px;
+    color: var(--gold-soft);
+    letter-spacing: -0.04em;
+  }
+
+  .brand-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--cream);
+  }
+
+  .brand-sub {
+    margin-top: 4px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+  .status {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 11px;
+    border: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted);
+    box-shadow: 0 0 0 0 rgba(127, 209, 164, 0.4);
+  }
+
+  .dot.live { background: var(--green); animation: pulse 2.4s infinite; }
+  .dot.offline { background: var(--red); }
+
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(127, 209, 164, 0.35); }
+    70% { box-shadow: 0 0 0 8px rgba(127, 209, 164, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(127, 209, 164, 0); }
+  }
+
+  .btn {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--cream);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  }
+
+  .btn:hover { border-color: var(--line-strong); color: var(--gold-soft); background: rgba(227,164,82,0.05); }
+  .btn:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
+  .btn.gold { border-color: var(--line-strong); color: var(--gold-soft); }
+
+  /* ---------- hero ---------- */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+    gap: 28px;
+    padding: 46px 0 38px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--gold);
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .eyebrow::after {
+    content: "";
+    height: 1px; width: 54px;
+    background: linear-gradient(90deg, var(--line-strong), transparent);
+  }
+
+  .equity {
+    margin: 12px 0 6px;
+    font-family: var(--display);
+    font-weight: 300;
+    font-size: clamp(58px, 8.4vw, 118px);
+    line-height: 0.92;
+    letter-spacing: -0.045em;
+    color: var(--cream);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .equity .unit {
+    font-family: var(--mono);
+    font-size: 0.18em;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    margin-left: 0.5em;
+    vertical-align: 0.9em;
+  }
+
+  .hero-meta {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    font-size: 10px; letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .chip.pos { color: var(--green); border-color: rgba(127,209,164,0.28); }
+  .chip.neg { color: var(--red); border-color: rgba(226,114,91,0.28); }
+
+  .hero-right {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    align-self: end;
+  }
+
+  .stat {
+    background: var(--ink-2);
+    padding: 18px 18px 16px;
+    min-height: 98px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+
+  .stat .k {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--muted);
+  }
+
+  .stat .v {
+    font-family: var(--mono); font-size: 21px; color: var(--cream);
+    letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+  }
+
+  .stat .v small { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; }
+
+  /* ---------- layout ---------- */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 26px;
+  }
+
+  .panel {
+    position: relative;
+    background: linear-gradient(180deg, rgba(20,20,22,0.88), rgba(15,15,17,0.94));
+    border: 1px solid var(--line);
+    padding: 20px 20px 18px;
+    min-width: 0;
+  }
+
+  .panel::before, .panel::after {
+    content: "";
+    position: absolute;
+    width: 7px; height: 7px;
+    border-color: var(--line-strong);
+    border-style: solid;
+    pointer-events: none;
+  }
+  .panel::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+  .panel::after { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+
+  .span-4 { grid-column: span 4; }
+  .span-5 { grid-column: span 5; }
+  .span-6 { grid-column: span 6; }
+  .span-7 { grid-column: span 7; }
+  .span-8 { grid-column: span 8; }
+  .span-12 { grid-column: span 12; }
+
+  .panel-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .panel-title {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--cream);
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .panel-title .num { color: var(--gold); font-size: 9px; letter-spacing: 0.1em; }
+  .panel-note { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* ---------- metric grid ---------- */
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); }
+  .metric { background: var(--ink-2); padding: 14px 14px 12px; }
+  .metric .k { font-family: var(--mono); font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+  .metric .v { margin-top: 6px; font-family: var(--mono); font-size: 18px; color: var(--cream); font-variant-numeric: tabular-nums; }
+  .metric .v.pos { color: var(--green); }
+  .metric .v.neg { color: var(--red); }
+
+  /* ---------- chart ---------- */
+  .chart-wrap { position: relative; height: 300px; }
+  .chart-wrap canvas { width: 100%; height: 100%; display: block; }
+
+  .chart-empty {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); text-align: center; padding: 20px;
+  }
+
+  /* ---------- ledger rows ---------- */
+  .rows { display: flex; flex-direction: column; }
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 0;
+    border-bottom: 1px dashed rgba(227,164,82,0.10);
+    font-family: var(--mono); font-size: 11px;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .label { color: var(--cream); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .label small { color: var(--muted); font-size: 9px; letter-spacing: 0.08em; margin-left: 8px; text-transform: uppercase; }
+  .row .val { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .row .val.pos { color: var(--green); }
+  .row .val.neg { color: var(--red); }
+
+  /* concentration bars */
+  .bar-row { padding: 9px 0; border-bottom: 1px dashed rgba(227,164,82,0.10); }
+  .bar-top { display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .bar-top .sym { color: var(--cream); letter-spacing: 0.06em; }
+  .bar-track { position: relative; height: 3px; margin-top: 7px; background: rgba(255,255,255,0.06); overflow: hidden; }
+  .bar-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--gold), var(--gold-soft)); }
+
+  /* ---------- audit ---------- */
+  .audit { display: flex; flex-direction: column; gap: 0; }
+  .audit-item {
+    display: grid; grid-template-columns: 74px 1fr; gap: 12px;
+    padding: 9px 0; border-bottom: 1px dashed rgba(227,164,82,0.10);
+    font-family: var(--mono); font-size: 10px;
+  }
+  .audit-item:last-child { border-bottom: 0; }
+  .audit-time { color: var(--gold); }
+  .audit-body { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .audit-body b { color: var(--cream); font-weight: 500; }
+
+  /* ---------- tables ---------- */
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
+  th {
+    text-align: left; font-weight: 500; color: var(--muted);
+    letter-spacing: 0.14em; text-transform: uppercase; font-size: 8px;
+    padding: 0 8px 8px 0; border-bottom: 1px solid var(--line);
+  }
+  th:last-child, td:last-child { text-align: right; padding-right: 0; }
+  td { padding: 9px 8px 9px 0; border-bottom: 1px dashed rgba(227,164,82,0.10); color: var(--cream); }
+  td.muted { color: var(--muted); }
+  td.pos { color: var(--green); }
+  td.neg { color: var(--red); }
+
+  /* ---------- ML ---------- */
+  .ml-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .ml-state { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .weights { display: flex; flex-direction: column; gap: 7px; }
+  .weight { display: grid; grid-template-columns: 130px 1fr 52px; align-items: center; gap: 10px; font-family: var(--mono); font-size: 9px; color: var(--muted); }
+  .weight-bar { height: 2px; background: rgba(255,255,255,0.06); position: relative; }
+  .weight-bar i { position: absolute; inset: 0 auto 0 0; background: var(--blue); }
+  .weight .val { text-align: right; color: var(--cream); }
+
+  /* ---------- misc ---------- */
+  .mini { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+  .empty { padding: 26px 0; text-align: center; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+  .footer {
+    margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  }
+
+  .toast {
+    position: fixed; right: 22px; bottom: 22px; z-index: 10;
+    padding: 12px 14px; border: 1px solid var(--line-strong);
+    background: rgba(16,16,19,0.96); color: var(--cream);
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    opacity: 0; transform: translateY(8px); pointer-events: none;
+    transition: opacity 180ms ease, transform 180ms ease;
+    max-width: 420px;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  .reveal { opacity: 0; transform: translateY(10px); animation: rise 620ms cubic-bezier(.2,.7,.2,1) forwards; }
+  @keyframes rise { to { opacity: 1; transform: translateY(0); } }
+
+  @media (max-width: 1080px) {
+    .hero { grid-template-columns: 1fr; }
+    .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
+    .hero-right { max-width: 560px; }
+  }
+
+  @media (max-width: 720px) {
+    .shell { padding: 18px 16px 54px; }
+    .topbar { align-items: flex-start; flex-direction: column; }
+    .top-actions { justify-content: flex-start; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .hero-right { grid-template-columns: 1fr 1fr; }
+    .chart-wrap { height: 240px; }
+    .weight { grid-template-columns: 96px 1fr 44px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+    .reveal { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <div class="monogram">AT</div>
+      <div>
+        <div class="brand-name">AgenticTrade</div>
+        <div class="brand-sub">Paper ledger · v10.0 · Solana</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span class="status"><i id="liveDot" class="dot"></i><span id="liveText">Connecting</span></span>
+      <button class="btn" id="tokenBtn" title="Set dashboard token">Token</button>
+      <button class="btn" id="refreshBtn">Refresh</button>
+      <a class="btn gold" href="/">Command Center</a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <div class="eyebrow">Total equity / SOL</div>
+      <div class="equity" id="equityValue">0.0000<span class="unit">SOL</span></div>
+      <div class="hero-meta">
+        <span class="chip" id="equityDelta">+0.0000 realized</span>
+        <span class="mini" id="strategyLabel">profile —</span>
+        <span class="mini" id="cacheLabel">cache —</span>
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="stat"><span class="k">Realized PnL</span><span class="v" id="realizedPnl">+0.0000 <small>SOL</small></span></div>
+      <div class="stat"><span class="k">Open positions</span><span class="v" id="openPositions">0</span></div>
+      <div class="stat"><span class="k">Open exposure</span><span class="v" id="exposurePct">0.0<small>%</small></span></div>
+      <div class="stat"><span class="k">Circuit breaker</span><span class="v" id="breakerState">—</span></div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <article class="panel span-8 reveal" style="animation-delay: 40ms">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">01</span> Equity curve</div>
+        <div class="panel-note" id="equityNote">realized closes</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="equityChart"></canvas>
+        <div class="chart-empty" id="equityEmpty">No closed trades yet — the line appears after the first exit.</div>
+      </div>
+    </article>
+
+    <article class="panel span-4 reveal" style="animation-delay: 90ms">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">02</span> Risk ledger</div>
+        <div class="panel-note">portfolio</div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="k">Win rate</div><div class="v" id="mWinRate">0.0%</div></div>
+        <div class="metric"><div class="k">Profit factor</div><div class="v" id="mProfitFactor">—</div></div>
+        <div class="metric"><div class="k">Expectancy</div><div class="v" id="mExpectancy">0.0000</div></div>
+        <div class="metric"><div class="k">Max drawdown</div><div class="v" id="mMaxDD">0.00%</div></div>
+        <div class="metric"><div class="k">VaR 95</div><div class="v" id="mVar">0.0000</div></div>
+        <div class="metric"><div class="k">Shortfall 95</div><div class="v" id="mES">0.0000</div></div>
+      </div>
+      <div class="rows" style="margin-top: 14px">
+        <div class="row"><span class="label">HHI concentration</span><span class="val" id="mHhi">0.00</span></div>
+        <div class="row"><span class="label">Top position</span><span class="val" id="mTop">—</span></div>
+        <div class="row"><span class="label">Realized trades</span><span class="val" id="mTrades">0</span></div>
+      </div>
+    </article>
+
+    <article class="panel span-4 reveal" style="animation-delay: 130ms">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">03</span> Concentration</div>
+        <div class="panel-note">open book</div>
+      </div>
+      <div id="concentration"><div class="empty">No open positions</div></div>
+    </article>
+
+    <article class="panel span-4 reveal" style="animation-delay: 170ms">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">04</span> Exit anatomy</div>
+        <div class="panel-note">realized replay</div>
+      </div>
+      <div id="exitTable"><div class="empty">No exits recorded</div></div>
+    </article>
+
+    <article class="panel span-4 reveal" style="animation-delay: 210ms">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">05</span> Daily PnL</div>
+        <div class="panel-note">last 30 days</div>
+      </div>
+      <div class="chart-wrap" style="height: 190px">
+        <canvas id="dailyChart"></canvas>
+        <div class="chart-empty" id="dailyEmpty">Waiting for closed trades</div>
+      </div>
+    </article>
+
+    <article class="panel span-6 reveal" style="animation-delay: 250ms">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">06</span> ML advisory</div>
+        <div class="panel-note">never auto-trades</div>
+      </div>
+      <div class="ml-head">
+        <span class="ml-state" id="mlState">not trained</span>
+        <button class="btn" id="trainBtn">Train model</button>
+      </div>
+      <div class="rows">
+        <div class="row"><span class="label">Training samples</span><span class="val" id="mlSamples">0</span></div>
+        <div class="row"><span class="label">Accuracy</span><span class="val" id="mlAccuracy">—</span></div>
+        <div class="row"><span class="label">Log loss</span><span class="val" id="mlLogLoss">—</span></div>
+      </div>
+      <div class="weights" id="mlWeights" style="margin-top: 14px"></div>
+    </article>
+
+    <article class="panel span-6 reveal" style="animation-delay: 290ms">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">07</span> Execution audit</div>
+        <div class="panel-note">last 8 events</div>
+      </div>
+      <div class="audit" id="auditList"><div class="empty">No audit events</div></div>
+    </article>
+
+    <article class="panel span-12 reveal" style="animation-delay: 330ms">
+      <div class="panel-head">
+        <div class="panel-title"><span class="num">08</span> Recent trades</div>
+        <div class="panel-note">latest 100</div>
+      </div>
+      <div id="tradeTable"><div class="empty">No trades yet</div></div>
+    </article>
+  </div>
+
+  <div class="footer">
+    <span>Paper mode · live trading requires explicit env confirmation</span>
+    <span>sync <span id="lastSync">—</span> · <span id="authLabel">auth off</span></span>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const TOKEN = (() => {
+    try {
+      const params = new URL(window.location.href).searchParams;
+      const fromUrl = params.get("token");
+      if (fromUrl) {
+        localStorage.setItem("agentictrade_token", fromUrl);
+        return fromUrl;
+      }
+      return localStorage.getItem("agentictrade_token") || "";
+    } catch (err) {
+      return "";
+    }
+  })();
+
+  const AUTH = TOKEN ? { "X-Auth-Token": TOKEN } : {};
+  const state = { auto: true, busy: false, timer: null, data: {} };
+
+  const $ = (id) => document.getElementById(id);
+
+  function toast(message) {
+    const node = $("toast");
+    node.textContent = message;
+    node.classList.add("show");
+    clearTimeout(node._t);
+    node._t = setTimeout(() => node.classList.remove("show"), 3200);
+  }
+
+  function fmtSol(value, digits = 4, signed = false) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "—";
+    const text = n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    return signed && n > 0 ? `+${text}` : text;
+  }
+
+  function fmtPct(value, digits = 1) {
+    const n = Number(value);
+    return Number.isFinite(n) ? `${n.toFixed(digits)}%` : "—";
+  }
+
+  function signedClass(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n === 0) return "";
+    return n > 0 ? "pos" : "neg";
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  async function api(path, options = {}) {
+    const response = await fetch(path, {
+      ...options,
+      cache: "no-store",
+      headers: { ...(options.headers || {}), ...AUTH }
+    });
+    if (response.status === 401) throw new Error("Unauthorized: set the dashboard token");
+    if (!response.ok) throw new Error(`${path} → HTTP ${response.status}`);
+    return response.json();
+  }
+
+  function setConnection(ok) {
+    $("liveDot").className = `dot ${ok ? "live" : "offline"}`;
+    $("liveText").textContent = ok ? "Live sync" : "Offline";
+  }
+
+  function setText(id, value, className) {
+    const node = $(id);
+    if (!node) return;
+    node.textContent = value;
+    if (className !== undefined) node.className = className;
+  }
+
+  async function loadAll() {
+    if (state.busy) return;
+    state.busy = true;
+    $("refreshBtn").disabled = true;
+    try {
+      const [stateRes, metricsRes, riskRes, equityRes, backtestRes, mlRes, auditRes] = await Promise.allSettled([
+        api("/api/state"), api("/api/metrics"), api("/api/portfolio_risk"), api("/api/equity"),
+        api("/api/backtest"), api("/api/ml/status"), api("/api/audit?limit=8")
+      ]);
+      const value = (result) => result.status === "fulfilled" ? result.value : null;
+      state.data = {
+        app: value(stateRes), metrics: value(metricsRes), risk: value(riskRes),
+        equity: value(equityRes), backtest: value(backtestRes), ml: value(mlRes), audit: value(auditRes)
+      };
+      render(state.data);
+      setConnection(Boolean(state.data.app));
+      $("lastSync").textContent = new Date().toLocaleTimeString();
+      $("authLabel").textContent = TOKEN ? "token set" : "auth off";
+    } catch (err) {
+      setConnection(false);
+      toast(err.message || "Sync failed");
+    } finally {
+      state.busy = false;
+      $("refreshBtn").disabled = false;
+    }
+  }
+
+  function render(data) {
+    const app = data.app || {};
+    const wallet = app.wallet || {};
+    const metrics = (data.metrics || {}).metrics || {};
+    const risk = (data.risk || {}).portfolioRisk || {};
+    const backtest = (data.backtest || {}).report || null;
+    const summary = backtest ? backtest.summary : null;
+    const ml = (data.ml || {}).model || { trained: false };
+
+    const equity = wallet.equity_sol ?? wallet.equitySol ?? (risk.equityNowSol ?? 0);
+    $("equityValue").innerHTML = `${fmtSol(equity, 4)}<span class="unit">SOL</span>`;
+
+    const realized = wallet.realized_pnl_sol ?? wallet.realizedPnlSol ?? risk.netRealizedPnlSol ?? 0;
+    setText("realizedPnl", `${fmtSol(realized, 4, true)} SOL`, `v ${signedClass(realized)}`);
+    $("realizedPnl").innerHTML = `${fmtSol(realized, 4, true)} <small>SOL</small>`;
+
+    setText("openPositions", String(wallet.open_positions ?? wallet.openPositions ?? risk.openPositions ?? 0));
+    $("exposurePct").innerHTML = `${Number(risk.openExposurePct ?? 0).toFixed(1)}<small>%</small>`;
+
+    const breaker = app.circuitBreaker || {};
+    const tripped = Boolean(breaker.tripped);
+    setText("breakerState", tripped ? "TRIPPED" : breaker.day ? "OK" : "—", `v ${tripped ? "neg" : "pos"}`);
+    setText("equityDelta", `${fmtSol(realized, 4, true)} realized`, `chip ${signedClass(realized)}`);
+    setText("strategyLabel", `profile ${(app.strategyProfile || {}).name || "balanced"}`);
+
+    const cache = app.priceCache || {};
+    setText("cacheLabel", `cache ${(Number(cache.hitRate || 0) * 100).toFixed(0)}% · ${cache.entries || 0} keys`);
+
+    const merged = summary || {
+      trades: metrics.totalTrades || 0,
+      winRate: risk.winRate ?? metrics.winRate ?? 0,
+      profitFactor: risk.profitFactor ?? null,
+      expectancySol: risk.expectancySol ?? 0,
+      maxDrawdownPct: risk.maxHistoricalDrawdownPct ?? 0,
+      var95Sol: risk.var95Sol ?? 0,
+      expectedShortfall95Sol: risk.expectedShortfall95Sol ?? 0
+    };
+
+    setText("mWinRate", fmtPct((merged.winRate || 0) * 100));
+    setText("mProfitFactor", merged.profitFactor == null ? "—" : Number(merged.profitFactor).toFixed(2));
+    setText("mExpectancy", fmtSol(merged.expectancySol, 4, true), `v ${signedClass(merged.expectancySol)}`);
+    setText("mMaxDD", fmtPct(merged.maxDrawdownPct || 0, 2));
+    setText("mVar", fmtSol(merged.var95Sol, 4));
+    setText("mES", fmtSol(merged.expectedShortfall95Sol, 4));
+    setText("mHhi", Number(risk.concentrationHhi || 0).toFixed(2));
+    setText("mTrades", String(merged.trades || 0));
+
+    const top = risk.topPosition;
+    setText("mTop", top ? `${top.symbol} · ${fmtPct((top.weight || 0) * 100)}` : "—");
+
+    renderConcentration(risk.concentrationBySymbol || {});
+    renderExits(backtest);
+    renderEquity(data.equity || {});
+    renderDaily(backtest);
+    renderMl(ml);
+    renderAudit(data.audit || {});
+    renderTrades(backtest);
+  }
+
+  function renderConcentration(map) {
+    const entries = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    const host = $("concentration");
+    if (!entries.length) {
+      host.innerHTML = '<div class="empty">No open positions</div>';
+      return;
+    }
+    const max = Math.max(...entries.map(([, value]) => value), 0.0001);
+    host.innerHTML = entries.map(([symbol, value]) => {
+      const width = Math.max(2, (value / max) * 100);
+      return `<div class="bar-row">
+        <div class="bar-top"><span class="sym">${escapeHtml(symbol)}</span><span>${fmtPct(value * 100)}</span></div>
+        <div class="bar-track"><i class="bar-fill" style="width:${width}%"></i></div>
+      </div>`;
+    }).join("");
+  }
+
+  function renderExits(report) {
+    const host = $("exitTable");
+    const groups = report ? report.byExitReason : null;
+    const entries = groups ? Object.entries(groups) : [];
+    if (!entries.length) {
+      host.innerHTML = '<div class="empty">No exits recorded</div>';
+      return;
+    }
+    host.innerHTML = `<table><thead><tr><th>Reason</th><th>Trades</th><th>Win</th><th>Net SOL</th></tr></thead><tbody>
+      ${entries.map(([reason, stats]) => `<tr>
+        <td>${escapeHtml(reason)}</td>
+        <td class="muted">${stats.trades}</td>
+        <td class="muted">${fmtPct((stats.winRate || 0) * 100)}</td>
+        <td class="${signedClass(stats.netPnlSol)}">${fmtSol(stats.netPnlSol, 4, true)}</td>
+      </tr>`).join("")}
+    </tbody></table>`;
+  }
+
+  function renderTrades(report) {
+    const host = $("tradeTable");
+    const trades = report && report.trades ? [...report.trades].reverse().slice(0, 25) : [];
+    if (!trades.length) {
+      host.innerHTML = '<div class="empty">No trades yet</div>';
+      return;
+    }
+    host.innerHTML = `<table><thead><tr><th>Symbol</th><th>Closed</th><th>Source</th><th>Exit</th><th>PnL SOL</th><th>Equity</th></tr></thead><tbody>
+      ${trades.map((t) => `<tr>
+        <td>${escapeHtml(t.symbol || "?")}</td>
+        <td class="muted">${escapeHtml((t.closedAt || "").replace("T", " ").slice(0, 16))}</td>
+        <td class="muted">${escapeHtml(t.source || "—")}</td>
+        <td class="muted">${escapeHtml(t.exitReason || "—")}</td>
+        <td class="${signedClass(t.pnlSol)}">${fmtSol(t.pnlSol, 4, true)}</td>
+        <td class="muted">${fmtSol(t.equitySol, 4)}</td>
+      </tr>`).join("")}
+    </tbody></table>`;
+  }
+
+  function renderMl(model) {
+    const trained = Boolean(model && model.trained);
+    setText("mlState", trained ? `trained ${model.trainedAt ? new Date(model.trainedAt).toLocaleDateString() : ""}` : (model.reason || "not trained"));
+    setText("mlSamples", String(model.samples || 0));
+    setText("mlAccuracy", trained ? fmtPct((model.accuracy || 0) * 100) : "—");
+    setText("mlLogLoss", trained ? Number(model.logLoss || 0).toFixed(3) : "—");
+
+    const weights = trained && model.topWeights ? model.topWeights : [];
+    const host = $("mlWeights");
+    if (!weights.length) {
+      host.innerHTML = '<div class="mini">Train after ~12 labelled trades.</div>';
+      return;
+    }
+    const max = Math.max(...weights.map((w) => Math.abs(w.weight)), 0.0001);
+    host.innerHTML = weights.map((w) => {
+      const width = Math.max(2, (Math.abs(w.weight) / max) * 100);
+      return `<div class="weight">
+        <span>${escapeHtml(w.feature)}</span>
+        <span class="weight-bar"><i style="width:${width}%;${w.weight < 0 ? "background:var(--red)" : ""}"></i></span>
+        <span class="val">${Number(w.weight).toFixed(3)}</span>
+      </div>`;
+    }).join("");
+  }
+
+  function renderAudit(audit) {
+    const events = audit.events || [];
+    const host = $("auditList");
+    if (!events.length) {
+      host.innerHTML = '<div class="empty">No audit events</div>';
+      return;
+    }
+    host.innerHTML = events.map((event) => {
+      const time = String(event.ts || "").slice(11, 19);
+      const details = Object.entries(event)
+        .filter(([key]) => !["ts", "event"].includes(key))
+        .map(([key, value]) => `${key}=${typeof value === "object" ? JSON.stringify(value) : value}`)
+        .join(" ");
+      return `<div class="audit-item">
+        <span class="audit-time">${escapeHtml(time)}</span>
+        <span class="audit-body"><b>${escapeHtml(event.event)}</b> ${escapeHtml(details)}</span>
+      </div>`;
+    }).join("");
+  }
+
+  function setupCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, width: rect.width, height: rect.height };
+  }
+
+  function renderEquity(equity) {
+    const points = equity.points || [];
+    $("equityEmpty").style.display = points.length > 1 ? "none" : "grid";
+    $("equityNote").textContent = points.length ? `${points.length} points · ${fmtSol(points[points.length - 1].equity, 4)} SOL` : "realized closes";
+    drawEquity(points);
+  }
+
+  function drawEquity(points) {
+    const canvas = $("equityChart");
+    if (!canvas) return;
+    const { ctx, width, height } = setupCanvas(canvas);
+    ctx.clearRect(0, 0, width, height);
+    if (points.length < 2) return;
+
+    const values = points.map((p) => Number(p.equity));
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+    const pad = Math.max((max - min) * 0.12, 0.05);
+    min -= pad; max += pad;
+    const left = 46, right = 12, top = 12, bottom = 24;
+    const plotW = width - left - right;
+    const plotH = height - top - bottom;
+
+    ctx.font = "9px 'IBM Plex Mono', monospace";
+    ctx.fillStyle = "rgba(141,135,125,0.85)";
+    ctx.strokeStyle = "rgba(227,164,82,0.10)";
+    ctx.lineWidth = 1;
+
+    for (let i = 0; i <= 3; i += 1) {
+      const y = top + (plotH / 3) * i;
+      ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotW, y); ctx.stroke();
+      const value = max - ((max - min) / 3) * i;
+      ctx.fillText(value.toFixed(2), 4, y + 3);
+    }
+
+    const xFor = (index) => left + (plotW * index) / (points.length - 1);
+    const yFor = (value) => top + plotH - ((value - min) / (max - min)) * plotH;
+
+    const gradient = ctx.createLinearGradient(0, top, 0, top + plotH);
+    gradient.addColorStop(0, "rgba(227,164,82,0.24)");
+    gradient.addColorStop(1, "rgba(227,164,82,0)");
+
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      const x = xFor(index), y = yFor(Number(point.equity));
+      if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.lineTo(left + plotW, top + plotH);
+    ctx.lineTo(left, top + plotH);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      const x = xFor(index), y = yFor(Number(point.equity));
+      if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = "#e3a452";
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    const last = points[points.length - 1];
+    const lx = xFor(points.length - 1), ly = yFor(Number(last.equity));
+    ctx.beginPath(); ctx.arc(lx, ly, 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = "#f0c78f"; ctx.fill();
+
+    ctx.fillStyle = "rgba(141,135,125,0.9)";
+    const startLabel = String(points[0].t || "").slice(0, 10);
+    const endLabel = String(last.t || "").slice(0, 10);
+    ctx.fillText(startLabel, left, height - 6);
+    const endWidth = ctx.measureText(endLabel).width;
+    ctx.fillText(endLabel, left + plotW - endWidth, height - 6);
+  }
+
+  function renderDaily(report) {
+    const daily = report && report.dailyPnl ? Object.entries(report.dailyPnl).slice(-30) : [];
+    $("dailyEmpty").style.display = daily.length ? "none" : "grid";
+    drawDaily(daily);
+  }
+
+  function drawDaily(daily) {
+    const canvas = $("dailyChart");
+    if (!canvas) return;
+    const { ctx, width, height } = setupCanvas(canvas);
+    ctx.clearRect(0, 0, width, height);
+    if (!daily.length) return;
+
+    const values = daily.map(([, value]) => Number(value));
+    const maxAbs = Math.max(...values.map(Math.abs), 0.01);
+    const left = 4, right = 4, top = 8, bottom = 18;
+    const plotW = width - left - right;
+    const plotH = height - top - bottom;
+    const mid = top + plotH / 2;
+    const barW = Math.max(2, plotW / daily.length - 3);
+
+    ctx.strokeStyle = "rgba(227,164,82,0.16)";
+    ctx.beginPath(); ctx.moveTo(left, mid); ctx.lineTo(left + plotW, mid); ctx.stroke();
+
+    daily.forEach(([, value], index) => {
+      const n = Number(value);
+      const h = Math.max(1, (Math.abs(n) / maxAbs) * (plotH / 2));
+      const x = left + index * (plotW / daily.length) + 1;
+      ctx.fillStyle = n >= 0 ? "rgba(127,209,164,0.85)" : "rgba(226,114,91,0.85)";
+      ctx.fillRect(x, n >= 0 ? mid - h : mid, barW, h);
+    });
+  }
+
+  function schedule() {
+    clearInterval(state.timer);
+    if (state.auto) state.timer = setInterval(() => {
+      if (!document.hidden) loadAll();
+    }, 5000);
+  }
+
+  $("refreshBtn").addEventListener("click", () => loadAll());
+
+  $("tokenBtn").addEventListener("click", () => {
+    const current = localStorage.getItem("agentictrade_token") || "";
+    const next = prompt("Dashboard token (leave empty to clear):", current);
+    if (next === null) return;
+    if (next.trim()) localStorage.setItem("agentictrade_token", next.trim());
+    else localStorage.removeItem("agentictrade_token");
+    toast("Token saved. Reloading…");
+    setTimeout(() => window.location.reload(), 400);
+  });
+
+  $("trainBtn").addEventListener("click", async () => {
+    $("trainBtn").disabled = true;
+    try {
+      const result = await api("/api/ml/train", { method: "POST" });
+      toast(`Model trained · ${result.model.samples} samples · ${fmtPct(result.model.accuracy * 100)} accuracy`);
+      await loadAll();
+    } catch (err) {
+      toast(err.message || "Training failed");
+    } finally {
+      $("trainBtn").disabled = false;
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    if (state.data.equity) renderEquity(state.data.equity);
+    if (state.data.backtest) renderDaily(state.data.backtest.report);
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) loadAll();
+  });
+
+  loadAll();
+  schedule();
+</script>
+</body>
+</html>

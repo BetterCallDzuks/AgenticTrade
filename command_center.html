@@ -1,0 +1,1852 @@
+<!DOCTYPE html>
+<html lang="hr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solana Memecoin Agentic Command Center v10.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        sol: {
+                            purple: '#9945FF',
+                            green: '#14F195',
+                            dark: '#0B0E14',
+                            card: '#131822',
+                            border: '#1E2638'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0B0E14;
+            color: #E2E8F0;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(153, 69, 255, 0.08) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(20, 241, 149, 0.06) 0px, transparent 50%);
+        }
+        .glass-panel {
+            background: rgba(19, 24, 34, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(30, 38, 56, 0.9);
+        }
+        .sol-gradient-text {
+            background: linear-gradient(90deg, #9945FF 0%, #14F195 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .sol-gradient-border {
+            position: relative;
+        }
+        .sol-gradient-border::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #9945FF, #14F195);
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0B0E14; }
+        ::-webkit-scrollbar-thumb { background: #1E2638; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #9945FF; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-sol-purple selection:text-white">
+
+    <!-- TOP NAVIGATION BAR -->
+    <header class="glass-panel sticky top-0 z-40 sol-gradient-border px-4 lg:px-6 py-3">
+        <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sol-purple to-sol-green p-[1px] flex items-center justify-center shadow-lg">
+                    <div class="w-full h-full bg-sol-dark rounded-[11px] flex items-center justify-center">
+                        <i class="fa-solid fa-robot text-lg sol-gradient-text"></i>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">SOLANA AGENTIC BOT</h1>
+                        <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-sol-purple/20 text-sol-purple border border-sol-purple/40 font-semibold">v10.0</span>
+                        <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">🐋 WHALE + BUNDLE GUARD</span>
+                        <span id="telegramBadge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">📱 TG: OFF</span>
+                        <span id="pythonBridgeBadge" class="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
+                            <span id="pythonBridgeDot" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                            <span id="pythonBridgeText">SPAJAM NA PYTHON BOT (127.0.0.1:8080)...</span>
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                        <span id="liveIndicator" class="w-2 h-2 rounded-full bg-sol-green animate-ping"></span>
+                        <span id="systemStatusText">v10.0 (paper): mint/freeze fix · time-stop · step-up trailing · telegram · flow &amp; whale exits · circuit breaker</span>
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                <div class="relative flex items-center">
+                    <input id="manualMintInput" type="text" placeholder="Unesi Solana Mint adresu za forenziku..." 
+                        class="w-48 sm:w-64 bg-sol-dark/90 border border-sol-border rounded-lg pl-3 pr-20 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-sol-purple transition">
+                    <button onclick="inspectManualMint()" class="absolute right-1 px-2.5 py-1 rounded-md bg-sol-purple/20 hover:bg-sol-purple/40 text-sol-purple text-xs font-medium transition">
+                        <i class="fa-solid fa-magnifying-glass mr-1"></i>Analiziraj
+                    </button>
+                </div>
+
+                <button id="simWhaleBtn" onclick="triggerSimulatedWhaleSignal()" 
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/25 transition">
+                    <i class="fa-solid fa-water"></i>
+                    <span>Testiraj 🐋 Whale Signal</span>
+                </button>
+
+                <button id="scanNowBtn" onclick="runDiscoveryCycle(true)" 
+                    class="flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium text-xs bg-gradient-to-r from-sol-purple to-indigo-600 text-white hover:opacity-95 transition shadow-md">
+                    <i class="fa-solid fa-radar"></i>
+                    <span>Skeniraj Odmah</span>
+                </button>
+
+                <a href="/analytics" target="_blank" rel="noopener"
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium text-xs bg-sol-dark border border-sol-border hover:border-sol-purple text-slate-200 transition">
+                    <i class="fa-solid fa-chart-line text-sol-purple"></i>
+                    <span>Analytics</span>
+                </a>
+
+                <button id="autoScanBtn" onclick="toggleAutoPilot()" 
+                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium text-xs bg-sol-green/15 text-sol-green border border-sol-green/40 hover:bg-sol-green/25 transition">
+                    <i id="autoScanIcon" class="fa-solid fa-play"></i>
+                    <span id="autoScanLabel">Sync: ON</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT GRID -->
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 space-y-5">
+
+        <!-- ROW 1: PORTFOLIO KPI CARDS & 4 AGENT STATUS PIPELINE -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div class="lg:col-span-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-xs text-slate-400">
+                        <span>Slobodni Balans</span>
+                        <i class="fa-solid fa-wallet text-sol-purple"></i>
+                    </div>
+                    <div class="mt-2">
+                        <div class="text-lg sm:text-xl font-bold font-mono text-white" id="kpiBalanceSol">10.000 SOL</div>
+                        <div class="text-[11px] text-slate-400 font-mono" id="kpiBalanceUsd">~$1,850.00</div>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-xs text-slate-400">
+                        <span>U Pozicijama</span>
+                        <i class="fa-solid fa-layer-group text-cyan-400"></i>
+                    </div>
+                    <div class="mt-2">
+                        <div class="text-lg sm:text-xl font-bold font-mono text-cyan-300" id="kpiLockedSol">0.000 SOL</div>
+                        <div class="text-[11px] text-slate-400 font-mono"><span id="kpiOpenCount">0</span> aktivnih</div>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-xs text-slate-400">
+                        <span>Ukupni PnL</span>
+                        <i class="fa-solid fa-chart-line text-sol-green"></i>
+                    </div>
+                    <div class="mt-2">
+                        <div class="text-lg sm:text-xl font-bold font-mono text-sol-green" id="kpiTotalPnl">+0.000 SOL</div>
+                        <div class="text-[11px] text-slate-400 font-mono" id="kpiTotalPnlPct">+0.00% ROI</div>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-xs text-slate-400">
+                        <span>Win Rate</span>
+                        <i class="fa-solid fa-trophy text-amber-400"></i>
+                    </div>
+                    <div class="mt-2">
+                        <div class="text-lg sm:text-xl font-bold font-mono text-white" id="kpiWinRate">0%</div>
+                        <div class="text-[11px] text-slate-400 font-mono"><span id="kpiTradesCount">0</span> trejdova</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-7 glass-panel rounded-xl p-3.5">
+                <div class="flex items-center justify-between mb-2.5">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-network-wired text-sol-purple"></i> Multi-Agent Pipeline (v10.0: Risk Engine + Step-Up + Time-Stop)
+                    </span>
+                    <span id="lastScanTime" class="text-[11px] font-mono text-sol-green">Inicijalizacija...</span>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div id="agentCard1" class="rounded-lg bg-sol-dark/80 border border-sol-border p-2.5 transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-eye text-cyan-400"></i> 1. Whale & Scan
+                            </span>
+                            <span id="agent1Badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">3 WHALES</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent1Task">Pump.fun + Copy-Tracker</p>
+                    </div>
+
+                    <div id="agentCard2" class="rounded-lg bg-sol-dark/80 border border-sol-border p-2.5 transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-brain text-sol-purple"></i> 2. Forenzika AI
+                            </span>
+                            <span id="agent2Badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sol-purple/20 text-sol-purple">GEMINI 3.8</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent2Task">Top 10 Holdera & Bundle</p>
+                    </div>
+
+                    <div id="agentCard3" class="rounded-lg bg-sol-dark/80 border border-sol-border p-2.5 transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-scale-balanced text-amber-400"></i> 3. Risk Agent
+                            </span>
+                            <span id="agent3Badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">SQLITE DB</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent3Task">Max 2 poz. | TP1: +80% | Time-Stop 15m</p>
+                    </div>
+
+                    <div id="agentCard4" class="rounded-lg bg-sol-dark/80 border border-sol-border p-2.5 transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-bolt text-sol-green"></i> 4. Execution
+                            </span>
+                            <span id="agent4Badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sol-green/20 text-sol-green">JITO MEV</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent4Task">Jupiter v6 + PumpPortal</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CIRCUIT BREAKER BANNER -->
+        <div id="breakerBanner" class="hidden rounded-xl border border-rose-500/50 bg-rose-500/10 p-3.5 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-start gap-3">
+                <i class="fa-solid fa-hand text-rose-400 text-xl mt-0.5"></i>
+                <div>
+                    <div class="text-sm font-bold text-rose-300">Circuit breaker TRIPPED: no new entries until local midnight</div>
+                    <div id="breakerBannerReasons" class="text-xs text-rose-200/90 font-mono mt-0.5"></div>
+                    <div id="breakerBannerMeta" class="text-[11px] text-slate-400 font-mono mt-0.5"></div>
+                </div>
+            </div>
+            <button onclick="resetCircuitBreaker()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500/20 border border-rose-500/40 hover:bg-rose-500/30 text-rose-200 transition">
+                <i class="fa-solid fa-rotate-left mr-1"></i>Reset breaker (manual)
+            </button>
+        </div>
+
+        <!-- RISK ENGINE ROW: EQUITY CURVE + BREAKER / CONFIRMATIONS / SIZING / SOURCE ANALYTICS -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div class="lg:col-span-7 glass-panel rounded-xl p-4 flex flex-col justify-between">
+                <div>
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-chart-line text-sol-green"></i> Equity Curve (realized, per closed trade + mark-to-market now)
+                        </h2>
+                        <div id="equityStats" class="text-[11px] font-mono text-slate-400"></div>
+                    </div>
+                    <div id="equityChart" class="w-full h-[210px] rounded-lg bg-sol-dark/70 border border-sol-border flex items-center justify-center text-xs text-slate-500">
+                        Waiting for the Python bot (/api/equity)...
+                    </div>
+                </div>
+                <div class="mt-3 pt-2.5 border-t border-sol-border">
+                    <div class="text-xs font-bold text-white flex items-center gap-1.5 mb-1.5">
+                        <i class="fa-solid fa-chart-pie text-sol-green"></i> Win-Rate &amp; PnL po Izvoru Signala
+                    </div>
+                    <div id="sourceAnalyticsContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] font-mono text-slate-400">
+                        Čekam podatke o trejdovima...
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-5 grid grid-cols-1 gap-3">
+                <div class="glass-panel rounded-xl p-3.5">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fa-solid fa-plug-circle-xmark text-amber-300"></i> Session Circuit Breaker</span>
+                        <span id="breakerStatusBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">N/A</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-[11px] font-mono">
+                        <div class="px-2 py-1.5 rounded-lg bg-sol-dark border border-sol-border"><div class="text-slate-500">Losing stops</div><div id="breakerStops" class="text-white font-bold">-</div></div>
+                        <div class="px-2 py-1.5 rounded-lg bg-sol-dark border border-sol-border"><div class="text-slate-500">Day P&amp;L</div><div id="breakerDd" class="text-white font-bold">-</div></div>
+                        <div class="px-2 py-1.5 rounded-lg bg-sol-dark border border-sol-border"><div class="text-slate-500">Trades today</div><div id="breakerTrades" class="text-white font-bold">-</div></div>
+                    </div>
+                    <div id="breakerResets" class="text-[10px] text-slate-500 font-mono mt-1.5"></div>
+                </div>
+
+                <div class="glass-panel rounded-xl p-3.5">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fa-solid fa-hourglass-half text-cyan-300"></i> Pending Entry Confirmations</span>
+                        <span id="pendingCountBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">0</span>
+                    </div>
+                    <div id="pendingContainer" class="space-y-1.5 text-[11px] font-mono text-slate-400">No pending entries.</div>
+                </div>
+
+                <div class="glass-panel rounded-xl p-3.5">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fa-solid fa-scale-balanced text-sol-purple"></i> Position Sizing &amp; Entry Gate</span>
+                        <span id="entryGateBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">N/A</span>
+                    </div>
+                    <div class="text-[11px] font-mono space-y-1">
+                        <div><span class="text-slate-500">Next size (high conviction):</span> <strong id="sizingNext" class="text-white">-</strong></div>
+                        <div id="sizingNextReasons" class="text-slate-400"></div>
+                        <div id="sizingByConv" class="text-slate-500"></div>
+                        <div><span class="text-slate-500">Last entry:</span> <span id="sizingLast" class="text-slate-300">-</span></div>
+                        <div><span class="text-slate-500">Why blocked:</span> <span id="entryGateReason" class="text-amber-300">-</span></div>
+                        <div><span class="text-slate-500">Last block:</span> <span id="lastEntryBlock" class="text-slate-400">-</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ROW 2: THREE-COLUMN COMMAND WORKSPACE -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+            <div class="lg:col-span-4 glass-panel rounded-xl flex flex-col h-[720px]">
+                <div class="p-4 border-b border-sol-border flex items-center justify-between">
+                    <div>
+                        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-satellite-dish text-cyan-400"></i>
+                            Live Token & Whale Skener
+                        </h2>
+                        <p class="text-[11px] text-slate-400">Uključuje Top 10 Holder % i 🐋 Smart Money oznake</p>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="filterFeed('ALL')" id="filterAllBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-purple text-white">SVI</button>
+                        <button onclick="filterFeed('BUY')" id="filterBuyBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-dark text-slate-400 hover:text-white">🟢 BUY</button>
+                        <button onclick="filterFeed('WHALE')" id="filterWhaleBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-dark text-slate-400 hover:text-white">🐋 WHALE</button>
+                        <button onclick="filterFeed('PUMP')" id="filterPumpBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-dark text-slate-400 hover:text-white">⚡ PUMP</button>
+                    </div>
+                </div>
+
+                <div id="tokenFeedContainer" class="flex-1 overflow-y-auto p-3 space-y-2.5"></div>
+
+                <div class="p-3 border-t border-sol-border bg-sol-dark/60 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                    <span>Skenirano: <strong id="totalScannedCounter" class="text-white">0</strong></span>
+                    <span>Odbijeno (Hard/Bundle): <strong id="totalRejectedCounter" class="text-rose-400">0</strong></span>
+                </div>
+            </div>
+
+            <div class="lg:col-span-5 glass-panel rounded-xl flex flex-col h-[720px]">
+                <div class="p-4 border-b border-sol-border flex items-center justify-between">
+                    <div>
+                        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-microscope text-sol-purple"></i>
+                            On-Chain Forenzika (Top 10 Holdera, Bundle & Gemini AI)
+                        </h2>
+                        <p class="text-[11px] text-slate-400">Solana RPC Holder Koncentracija + RugCheck + Gemini 3.8</p>
+                    </div>
+                    <button id="forceAiBtn" onclick="runGeminiDeepAnalysisOnSelected()" 
+                        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-sol-purple/20 hover:bg-sol-purple/40 text-sol-purple border border-sol-purple/40 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>Gemini AI Analiza</span>
+                    </button>
+                </div>
+
+                <div id="researchInspectorContainer" class="flex-1 overflow-y-auto p-4 space-y-3.5"></div>
+            </div>
+
+            <div class="lg:col-span-3 flex flex-col gap-4 h-[720px]">
+                <div class="glass-panel rounded-xl p-3.5 space-y-2.5">
+                    <div class="flex items-center justify-between border-b border-sol-border pb-2">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-water"></i> Smart Money / Whale Tracker
+                        </h3>
+                        <span id="whaleCountBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">3 aktivna</span>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <div class="flex gap-1.5">
+                            <input id="newWhaleAddr" type="text" placeholder="Solana adresa kita..." 
+                                class="flex-1 bg-sol-dark border border-sol-border rounded-lg px-2 py-1 text-[11px] font-mono text-white focus:border-cyan-400 focus:outline-none">
+                            <input id="newWhaleLabel" type="text" placeholder="Naziv" 
+                                class="w-24 bg-sol-dark border border-sol-border rounded-lg px-2 py-1 text-[11px] text-white focus:border-cyan-400 focus:outline-none">
+                            <button onclick="addSmartMoneyWallet()" class="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition">+</button>
+                        </div>
+                    </div>
+
+                    <div id="trackedWalletsContainer" class="max-h-28 overflow-y-auto space-y-1.5 pr-1"></div>
+                </div>
+
+                <div class="glass-panel rounded-xl p-3.5 space-y-2.5">
+                    <div class="flex items-center justify-between border-b border-sol-border pb-1.5">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-sol-green"></i> Postavke Rizika & Forenzike
+                        </h3>
+                        <span class="text-[10px] font-mono text-sol-green">v10.0</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-0.5">Ulog po trejdu (SOL)</label>
+                            <input id="cfgTradeSize" type="number" step="0.1" value="0.5" onchange="updateRiskConfig()"
+                                class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1 font-mono text-white focus:border-sol-purple focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-cyan-300 block mb-0.5 font-semibold">Max Top 10 Holdera (%)</label>
+                            <input id="cfgMaxTop10" type="number" step="1" value="35" onchange="updateRiskConfig()"
+                                class="w-full bg-sol-dark border border-cyan-500/40 rounded-lg px-2 py-1 font-mono text-cyan-300 focus:border-sol-purple focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-0.5">Min. Likvidnost ($)</label>
+                            <input id="cfgMinLiq" type="number" step="1000" value="5000" onchange="updateRiskConfig()"
+                                class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1 font-mono text-white focus:border-sol-purple focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-0.5">Take-Profit 1 (50%)</label>
+                            <input id="cfgTp1" type="number" step="10" value="80" onchange="updateRiskConfig()"
+                                class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1 font-mono text-sol-green focus:border-sol-purple focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-0.5">Stop-Loss (%)</label>
+                            <input id="cfgStopLoss" type="number" step="5" value="-25" onchange="updateRiskConfig()"
+                                class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1 font-mono text-rose-400 focus:border-sol-purple focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400 block mb-0.5">Jito MEV Tip (SOL)</label>
+                            <input id="cfgJitoTip" type="number" step="0.0005" value="0.0015" onchange="updateRiskConfig()"
+                                class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1 font-mono text-amber-300 focus:border-sol-purple focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-cyan-300 block mb-0.5 font-semibold">Max otvorenih pozicija</label>
+                            <input id="cfgMaxOpen" type="number" step="1" value="2" onchange="updateRiskConfig()"
+                                class="w-full bg-sol-dark border border-cyan-500/40 rounded-lg px-2 py-1 font-mono text-cyan-300 focus:border-sol-purple focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-amber-300 block mb-0.5 font-semibold">Brza invalidacija (%)</label>
+                            <input id="cfgFastInv" type="number" step="1" value="-12" onchange="updateRiskConfig()"
+                                class="w-full bg-sol-dark border border-amber-500/40 rounded-lg px-2 py-1 font-mono text-amber-300 focus:border-sol-purple focus:outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden min-h-[180px]">
+                    <div class="px-3.5 py-2 border-b border-sol-border flex items-center justify-between bg-sol-dark/60">
+                        <span class="text-xs font-bold font-mono text-slate-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-terminal text-sol-green"></i> AGENT_STREAM.LOG
+                        </span>
+                        <button onclick="clearTerminalLogs()" class="text-[10px] font-mono text-slate-400 hover:text-white">Očisti</button>
+                    </div>
+                    <div id="terminalLogContainer" class="flex-1 overflow-y-auto p-3 font-mono text-[11px] space-y-1.5 bg-[#080B10]"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ROW 3: PAPER TRADING POSITIONS & JUPITER/JITO EXECUTION MONITOR -->
+        <div class="glass-panel rounded-xl p-4 lg:p-5">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-briefcase text-sol-green"></i>
+                        Aktivne Pozicije & Povijest Trejdova (`paper_portfolio.db` + Jupiter v6 Dry-Run)
+                    </h2>
+                    <p class="text-xs text-slate-400">Sinkronizirano s lokalnom SQLite bazom. Uključuje Time-Stop i Step-Up Trailing zaštitu.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="refreshOpenPositionsPrices()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-sol-dark border border-sol-border hover:border-sol-green text-slate-200 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-rotate text-sol-green"></i> Osvježi Cijene
+                    </button>
+                    <button onclick="simulatePumpOnOpenPositions()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-sol-purple/20 border border-sol-purple/40 hover:bg-sol-purple/30 text-sol-purple transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-rocket"></i> Simuliraj +115% Pump (Test TP1)
+                    </button>
+                    <button onclick="resetPortfolio()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 text-rose-300 transition">
+                        Resetiraj (10 SOL)
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-sol-border text-[11px] font-mono uppercase text-slate-400">
+                            <th class="py-2.5 px-3">Token / Izvor</th>
+                            <th class="py-2.5 px-3">Status</th>
+                            <th class="py-2.5 px-3">Uloženo / Preostalo</th>
+                            <th class="py-2.5 px-3">Signal → Fill (slippage)</th>
+                            <th class="py-2.5 px-3">Trenutna / ATH</th>
+                            <th class="py-2.5 px-3">PnL (%) / SOL</th>
+                            <th class="py-2.5 px-3">Size reason / Stop</th>
+                            <th class="py-2.5 px-3 text-right">Akcija</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positionsTableBody" class="divide-y divide-sol-border/60 text-xs font-mono"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- DECISION JOURNAL -->
+        <div class="glass-panel rounded-xl p-4 lg:p-5">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div>
+                    <h2 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-book-open text-cyan-300"></i> Decision Journal (every SKIP / WATCH / BUY / BLOCK / CONFIRM / OPEN / EXIT)
+                    </h2>
+                    <p class="text-xs text-slate-400">Every decision with the rule that fired, suggested vs actual size, signal vs fill price.</p>
+                </div>
+                <div class="flex items-center gap-1.5 text-[11px] font-mono">
+                    <button onclick="setJournalFilter('ALL')" data-jf="ALL" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-purple bg-sol-purple/20 text-white">All</button>
+                    <button onclick="setJournalFilter('TRADES')" data-jf="TRADES" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-border text-slate-300">Trades</button>
+                    <button onclick="setJournalFilter('BLOCKS')" data-jf="BLOCKS" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-border text-slate-300">Blocks</button>
+                    <button onclick="setJournalFilter('SCANS')" data-jf="SCANS" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-border text-slate-300">Scans</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="sticky top-0 bg-sol-card">
+                        <tr class="border-b border-sol-border text-[11px] font-mono uppercase text-slate-400">
+                            <th class="py-2 px-2">Time (local)</th>
+                            <th class="py-2 px-2">Token</th>
+                            <th class="py-2 px-2">Action</th>
+                            <th class="py-2 px-2">Rule</th>
+                            <th class="py-2 px-2">Size (sugg. / actual)</th>
+                            <th class="py-2 px-2">Signal → Fill</th>
+                            <th class="py-2 px-2">Reasons</th>
+                        </tr>
+                    </thead>
+                    <tbody id="journalTableBody" class="divide-y divide-sol-border/60 text-[11px] font-mono">
+                        <tr><td colspan="7" class="py-6 text-center text-slate-500">Waiting for the Python bot (/api/journal)...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- RISK ENGINE SETTINGS -->
+        <details class="glass-panel rounded-xl p-4 lg:p-5" id="v8SettingsPanel">
+            <summary class="cursor-pointer text-sm font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-sliders text-sol-purple"></i> v10.0 Risk Engine Settings (time-stop, step-up trailing, flow exits, breaker, confirmation, sizing)
+            </summary>
+            <p class="text-[11px] text-slate-400 mt-2">Changes apply to the running bot immediately and last until restart. Put permanent values in <code>.env</code>.</p>
+            <div id="v8SettingsGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mt-3 text-[11px]"></div>
+        </details>
+
+    </main>
+
+    <!-- APPLICATION LOGIC -->
+    <script>
+        const SOL_PRICE_USD = 185.0;
+        const CANDIDATE_BRIDGE_URLS = [
+            window.location.origin.startsWith("http") ? window.location.origin : null,
+            "http://127.0.0.1:8080",
+            "http://localhost:8080"
+        ].filter(Boolean);
+
+        let ACTIVE_BRIDGE_URL = CANDIDATE_BRIDGE_URLS[0] || "http://127.0.0.1:8080";
+
+        // Optional dashboard token. Open /?token=... once and it is remembered.
+        const DASHBOARD_TOKEN = (() => {
+            try {
+                const params = new URL(window.location.href).searchParams;
+                const fromUrl = params.get("token");
+                if (fromUrl) {
+                    localStorage.setItem("agentictrade_token", fromUrl);
+                    return fromUrl;
+                }
+                return localStorage.getItem("agentictrade_token") || "";
+            } catch (err) {
+                return "";
+            }
+        })();
+        const AUTH_HEADERS = DASHBOARD_TOKEN ? { "X-Auth-Token": DASHBOARD_TOKEN } : {};
+
+        let appState = {
+            pythonConnected: false,
+            autoPilot: true,
+            activeFilter: 'ALL',
+            selectedMint: null,
+            totalScanned: 0,
+            totalRejected: 0,
+            tokensMap: {},
+            tokenOrder: [],
+            trackedWallets: [
+                { address: "suqh5sHtr8HyJ7q8scBimULPkPpA557prMG47xCHQfK", label: "Cupsey (High-Freq Alpha)", signalsCount: 0 },
+                { address: "DNfuF1L62WWyW3pNakVkyGGFzVVhj4Yr52jSmdTyeBHm", label: "Gake (Smart Money Sniper)", signalsCount: 0 },
+                { address: "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1", label: "Raydium Whale Watcher", signalsCount: 0 }
+            ],
+            wallet: {
+                balanceSol: 10.0,
+                lockedSol: 0.0,
+                realizedPnlSol: 0.0,
+                totalTrades: 0,
+                winningTrades: 0
+            },
+            positions: [],
+            config: {
+                tradeSizeSol: 0.5,
+                minLiquidityUsd: 5000,
+                maxTop10Pct: 35,
+                tp1Pct: 80,
+                stopLossPct: -25,
+                trailingStopPct: 20,
+                trailingStopPctAfterTp1: 15,
+                slippagePct: 5,
+                jitoTipSol: 0.0015,
+                maxOpenPositions: 2,
+                fastInvalidationPct: -12
+            },
+            lastRenderedLogSignature: "",
+            serverOffsetMs: 0,
+            circuitBreaker: null,
+            entryGate: null,
+            pendingConfirmations: [],
+            sizing: null,
+            lastEntryBlock: null,
+            walletQuality: [],
+            sourceAnalytics: [],
+            journal: [],
+            journalFilter: "ALL"
+        };
+
+        const FALLBACK_SOLANA_MINTS = [
+            "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+            "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+            "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+            "MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5"
+        ];
+
+        function numOrNull(v) {
+            if (v === undefined || v === null || v === "") return null;
+            const n = parseFloat(v);
+            return Number.isFinite(n) ? n : null;
+        }
+        function triState(v, okText, badText) {
+            if (v === true) return { text: okText, cls: "text-sol-green" };
+            if (v === false) return { text: badText, cls: "text-rose-400" };
+            return { text: "N/A", cls: "text-amber-300" };
+        }
+
+        function normalizePythonScanItem(item) {
+            const m = item.market || {};
+            const v = item.verdict || {};
+            const s = item.security || {};
+            const fdvUsd = parseFloat(m.fdv_usd ?? m.fdvUsd ?? 0);
+            const liqUsd = parseFloat(m.liquidity_usd ?? m.liquidityUsd ?? 0);
+            const rawSource = item.source || m.source || "DEXSCREENER";
+            const isPump = rawSource.includes("PUMP") || (m.dex_id || "").toLowerCase().includes("pump");
+            const isWhale = rawSource.includes("WHALE") || Boolean(m.whale_signal || m.whaleSignal);
+
+            return {
+                mint: item.mint,
+                scannedAt: item.scannedAt || new Date().toLocaleTimeString("hr-HR", { hour12: false }),
+                market: {
+                    mint: item.mint,
+                    name: m.name || "Unknown",
+                    symbol: m.symbol || "TOKEN",
+                    dexId: m.dex_id || m.dexId || "raydium",
+                    source: isWhale ? "WHALE_COPY_SIGNAL" : (isPump ? "PUMPFUN_STREAM" : "DEXSCREENER"),
+                    whaleSignal: m.whale_signal || m.whaleSignal || null,
+                    priceUsd: parseFloat(m.price_usd ?? m.priceUsd ?? 0.00001),
+                    fdvUsd: fdvUsd,
+                    liquidityUsd: liqUsd,
+                    volume5m: parseFloat(m.volume_m5 ?? m.volume5m ?? 0),
+                    volume1h: parseFloat(m.volume_h1 ?? m.volume1h ?? 0),
+                    buys5m: parseInt(m.buys_m5 ?? m.buys5m ?? 0),
+                    sells5m: parseInt(m.sells_m5 ?? m.sells5m ?? 0),
+                    priceChange5m: parseFloat(m.price_change_m5 ?? m.priceChange5m ?? 0),
+                    priceChange1h: parseFloat(m.price_change_h1 ?? m.priceChange1h ?? 0),
+                    bondingCurvePct: parseFloat(m.bonding_curve_pct ?? m.bondingCurvePct ?? (isPump ? Math.min(100, Math.round((fdvUsd / 69000) * 100)) : 100)),
+                    socials: m.socials || [],
+                    websites: m.websites || [],
+                    pairUrl: `https://dexscreener.com/solana/${item.mint}`
+                },
+                security: {
+                    top10HolderPct: numOrNull(s.top10_holder_pct ?? s.top10HolderPct),
+                    maxSingleHolderPct: numOrNull(s.max_single_holder_pct ?? s.maxSingleHolderPct),
+                    top5BreakdownPct: s.top5_breakdown_pct || s.top5BreakdownPct || [],
+                    isBundled: Boolean(s.is_bundled ?? s.isBundled ?? false),
+                    bundleWarning: s.bundle_warning || s.bundleWarning || null,
+                    mintAuthorityRevoked: s.mint_authority_revoked ?? s.mintAuthorityRevoked ?? null,
+                    freezeAuthorityRevoked: s.freeze_authority_revoked ?? s.freezeAuthorityRevoked ?? null,
+                    devSold: Boolean(s.dev_sold ?? false),
+                    risks: s.risks || []
+                },
+                verdict: {
+                    passedHardFilter: (v.decision || "SKIP") !== "SKIP" || !(v.summary_hr || "").includes("Hard Filter"),
+                    decision: v.decision || "SKIP",
+                    riskScore: v.risk_score ?? v.riskScore ?? 50,
+                    hypeScore: v.hype_score ?? v.hypeScore ?? 50,
+                    summaryHr: v.summary_hr ?? v.summaryHr ?? "",
+                    redFlags: v.red_flags ?? v.redFlags ?? [],
+                    greenFlags: v.green_flags ?? v.greenFlags ?? [],
+                    evaluatedBy: "PYTHON_GEMINI_AI"
+                }
+            };
+        }
+
+        async function fetchFromPythonBridge(endpoint, options = {}) {
+            for (const baseUrl of [ACTIVE_BRIDGE_URL, ...CANDIDATE_BRIDGE_URLS]) {
+                try {
+                    const resp = await fetch(`${baseUrl}${endpoint}`, {
+                        ...options,
+                        cache: "no-store",
+                        headers: {
+                            ...((options && options.headers) || {}),
+                            ...AUTH_HEADERS
+                        }
+                    });
+                    if (resp.status === 401) {
+                        throw new Error("Unauthorized: open the dashboard with ?token=YOUR_DASHBOARD_TOKEN");
+                    }
+                    if (resp.ok) {
+                        ACTIVE_BRIDGE_URL = baseUrl;
+                        return await resp.json();
+                    }
+                } catch (err) {}
+            }
+            throw new Error("Python bridge nije dostupan");
+        }
+
+        async function syncWithPythonBackend() {
+            try {
+                const data = await fetchFromPythonBridge("/api/state");
+
+                if (!appState.pythonConnected) {
+                    appState.pythonConnected = true;
+                    updatePythonBridgeBadge(true, data.ai_active, data.ai_model, data.telegram_active);
+                    logAgent("DISCOVERY", "🐍 Connected to the local Python v10.0 bot (paper mode, risk engine active).", "success");
+                } else {
+                    updatePythonBridgeBadge(true, data.ai_active, data.ai_model, data.telegram_active);
+                }
+
+                if (data.runtime) {
+                    const phaseMap = {
+                        "DEXSCREENER_SCAN": "🔍 Python skenira DexScreener...",
+                        "PUMPFUN_WS_LISTEN": "⚡ Slušam Pump.fun + Smart Money Whales...",
+                        "EVALUATING_TOKEN": `🧠 Forenzika & Gemini za ${data.runtime.active_token ? data.runtime.active_token.slice(0, 6) + '...' : 'token'}`,
+                        "IDLE_WAITING": `✅ Ciklus #${data.runtime.cycle} završen`
+                    };
+                    const phaseLabel = phaseMap[data.runtime.current_phase] || "Python aktivan";
+                    document.getElementById("lastScanTime").innerText = `${phaseLabel} (${data.runtime.last_update || 'sad'})`;
+                }
+
+                if (data.config) {
+                    appState.config = { ...appState.config, ...data.config };
+                    const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined && val !== null) el.value = val; };
+                    setVal("cfgTradeSize", data.config.tradeSizeSol);
+                    setVal("cfgMaxTop10", data.config.maxTop10Pct);
+                    setVal("cfgMinLiq", data.config.minLiquidityUsd);
+                    setVal("cfgTp1", data.config.tp1Pct);
+                    setVal("cfgStopLoss", data.config.stopLossPct);
+                    setVal("cfgJitoTip", data.config.jitoTipSol);
+                    setVal("cfgMaxOpen", data.config.maxOpenPositions);
+                    setVal("cfgFastInv", data.config.fastInvalidationPct);
+                    const a3 = document.getElementById("agent3Task");
+                    if (a3) a3.innerText = `Max ${appState.config.maxOpenPositions || 2} poz. | TP1: +${appState.config.tp1Pct}% | Time-Stop ${Math.round((appState.config.maxHoldNoPumpSec || 900)/60)}m`;
+                    syncV8SettingsInputs(data.config);
+                }
+
+                applyV8State(data);
+
+                if (data.wallet) {
+                    appState.wallet.balanceSol = data.wallet.balance_sol;
+                    appState.wallet.lockedSol = data.wallet.locked_sol;
+                    appState.wallet.realizedPnlSol = data.wallet.realized_pnl_sol;
+                    appState.wallet.totalTrades = data.wallet.total_trades;
+                    appState.wallet.winningTrades = data.wallet.winning_trades;
+                }
+
+                if (Array.isArray(data.tracked_wallets)) {
+                    appState.trackedWallets = data.tracked_wallets;
+                    renderTrackedWallets();
+                }
+
+                if (Array.isArray(data.positions)) {
+                    appState.positions = data.positions.map(p => ({
+                        ...p,
+                        router: p.mint.endsWith("pump") ? "PumpPortal Local Curve" : "Jupiter v6 + Jito Bundle",
+                        priceImpactPct: (Number(p.entrySlippageBps || 0) / 100).toFixed(2),
+                        jitoTipSol: appState.config.jitoTipSol
+                    }));
+                }
+
+                if (Array.isArray(data.recent_scans) && data.recent_scans.length > 0) {
+                    let rejectedCount = 0;
+                    const newOrder = [];
+                    for (const rawItem of data.recent_scans) {
+                        const norm = normalizePythonScanItem(rawItem);
+                        appState.tokensMap[norm.mint] = norm;
+                        newOrder.push(norm.mint);
+                        if (norm.verdict.decision === "SKIP") rejectedCount++;
+                    }
+                    appState.tokenOrder = newOrder;
+                    appState.totalScanned = newOrder.length;
+                    appState.totalRejected = rejectedCount;
+
+                    if (!appState.selectedMint || !appState.tokensMap[appState.selectedMint]) {
+                        appState.selectedMint = newOrder[0];
+                    }
+                }
+
+                if (Array.isArray(data.logs) && data.logs.length > 0) {
+                    const topSig = `${data.logs[0].time}_${data.logs[0].message}_${data.logs.length}`;
+                    if (topSig !== appState.lastRenderedLogSignature) {
+                        appState.lastRenderedLogSignature = topSig;
+                        renderPythonLogs(data.logs);
+                    }
+                }
+
+                document.getElementById("totalScannedCounter").innerText = appState.totalScanned;
+                document.getElementById("totalRejectedCounter").innerText = appState.totalRejected;
+
+                renderPortfolioKPIs();
+                renderPositionsTable();
+                renderTokenFeed();
+                renderResearchInspector();
+                return true;
+            } catch (e) {
+                appState.pythonConnected = false;
+                updatePythonBridgeBadge(false, false, "gemini-3.8-flash", false);
+                renderTrackedWallets();
+                return false;
+            }
+        }
+
+        function updatePythonBridgeBadge(connected, aiActive, aiModel = "gemini-3.8-flash", tgActive = false) {
+            const badge = document.getElementById("pythonBridgeBadge");
+            const dot = document.getElementById("pythonBridgeDot");
+            const text = document.getElementById("pythonBridgeText");
+            const tgBadge = document.getElementById("telegramBadge");
+
+            if (tgBadge) {
+                tgBadge.className = tgActive
+                    ? "text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40"
+                    : "text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700";
+                tgBadge.innerText = tgActive ? "📱 TG: ON" : "📱 TG: OFF";
+            }
+
+            if (connected) {
+                badge.className = "text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-sol-green/15 text-sol-green border border-sol-green/40 flex items-center gap-1.5";
+                dot.className = "w-1.5 h-1.5 rounded-full bg-sol-green animate-ping";
+                text.innerText = aiActive ? `🐍 PYTHON + ${aiModel.toUpperCase()}: SPOJENO` : "🐍 PYTHON SQLITE: SPOJENO";
+                document.getElementById("agent2Badge").innerText = (aiModel || "GEMINI").replace("gemini-", "").toUpperCase();
+            } else {
+                badge.className = "text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/40 flex items-center gap-1.5";
+                dot.className = "w-1.5 h-1.5 rounded-full bg-amber-400";
+                text.innerText = "STANDALONE MOD (Pokreni python research_bot.py)";
+            }
+        }
+
+        const EXIT_ICONS = {
+            STOP_LOSS: "🛑", FAST_INVALIDATION: "⚡", TRAILING_STOP: "📉", BREAKEVEN_STOP: "🛡️",
+            STEP_UP_STOP: "🪜", TIME_STOP: "⏱️", TELEGRAM_EXIT: "📱",
+            FLOW_EXIT: "💧", WHALE_EXIT: "🐳", TAKE_PROFIT_1: "🎯", MANUAL_WEB_EXIT: "✋", REPLAY_END: "⏹️"
+        };
+        function exitIcon(reason) { return reason ? (EXIT_ICONS[reason] || "📤") : ""; }
+
+        function escHtml(v) {
+            return String(v ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+        }
+
+        const V8_SETTINGS = [
+            ["timeStopEnabled", "Time-Stop on", null, "bool"],
+            ["maxHoldNoPumpSec", "Time-Stop: max hold (s)", 60, "int"],
+            ["timeStopMinProfitPct", "Time-Stop: min peak %", 5, "float"],
+            ["step1TriggerPct", "Step-Up 1: trigger %", 5, "float"],
+            ["step1FloorPct", "Step-Up 1: floor %", 1, "float"],
+            ["step2TriggerPct", "Step-Up 2: trigger %", 5, "float"],
+            ["step2FloorPct", "Step-Up 2: floor %", 2, "float"],
+            ["flowExitEnabled", "Flow exit on", null, "bool"],
+            ["flowExitMinSells", "Flow: min sells 5m", 1, "int"],
+            ["flowExitSellRatio", "Flow: sells/buys ratio", 0.1, "float"],
+            ["whaleExitEnabled", "Whale exit on", null, "bool"],
+            ["maxDailyStopLosses", "Breaker: max losing stops/day", 1, "int"],
+            ["maxDailyDrawdownPct", "Breaker: max day DD %", 0.5, "float"],
+            ["maxDailyTrades", "Breaker: max trades/day", 1, "int"],
+            ["entryConfirmSec", "Confirm wait (s)", 5, "float"],
+            ["entryConfirmMaxDropPct", "Confirm: max drop %", 0.5, "float"],
+            ["paperSlippageBps", "Paper entry slip (bps)", 10, "float"],
+            ["paperExitSlippageBps", "Paper exit slip (bps)", 10, "float"],
+            ["paperImpactCoeff", "Paper impact coeff", 0.1, "float"],
+            ["sizeAfterLossMult", "Size × after loss", 0.05, "float"],
+            ["sizeAiOnlyMult", "Size × AI only", 0.05, "float"],
+            ["sizeHeuristicMult", "Size × heuristic", 0.05, "float"],
+            ["sizeDrawdownMult", "Size × day in DD", 0.05, "float"],
+            ["sizeDrawdownTriggerPct", "DD size trigger %", 0.5, "float"],
+            ["minPositionSol", "Min position SOL", 0.05, "float"],
+            ["maxPositionSol", "Max position SOL", 0.05, "float"],
+            ["clusterCooldownSec", "Cluster: loss cooldown s", 30, "int"],
+            ["clusterOpenDdPct", "Cluster: open DD %", 1, "float"],
+            ["clusterUnprovenSec", "Cluster: unproven s", 15, "int"],
+            ["walletQualityWindow", "Wallet Q: window", 1, "int"],
+            ["walletQualityMinSamples", "Wallet Q: min samples", 1, "int"],
+            ["walletQualityMinWinRate", "Wallet Q: min win rate (0-1)", 0.05, "float"],
+            ["stalePriceSec", "Stale price after s", 1, "float"],
+            ["moveStopToBreakevenAfterTp1", "Breakeven after TP1", null, "bool"],
+            ["breakevenBufferPct", "Breakeven buffer %", 0.5, "float"],
+            ["trailingStopPct", "Trail % (pre-TP1)", 1, "float"],
+            ["trailingStopPctAfterTp1", "Trail % (after TP1)", 1, "float"],
+            ["minSecondsBetweenEntries", "Entry spacing s", 5, "int"],
+            ["stopLossCooldownSec", "SL cooldown s", 10, "int"],
+            ["fastInvalidationWindowSec", "Fast-inv window s", 5, "int"]
+        ];
+
+        function buildV8SettingsGrid() {
+            const grid = document.getElementById("v8SettingsGrid");
+            if (!grid || grid.dataset.built) return;
+            grid.dataset.built = "1";
+            grid.innerHTML = V8_SETTINGS.map(([key, label, step, type]) => type === "bool" ? `
+                <label class="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-sol-dark border border-sol-border text-slate-300">
+                    <span>${label}</span>
+                    <input id="v8cfg_${key}" type="checkbox" onchange="updateRiskConfig()" class="accent-[#14F195]">
+                </label>` : `
+                <label class="flex flex-col gap-1 text-slate-400">
+                    <span>${label}</span>
+                    <input id="v8cfg_${key}" type="number" step="${step}" onchange="updateRiskConfig()"
+                        class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1.5 font-mono text-white focus:outline-none focus:border-sol-purple">
+                </label>`).join("");
+        }
+
+        function syncV8SettingsInputs(cfg) {
+            buildV8SettingsGrid();
+            for (const [key, , , type] of V8_SETTINGS) {
+                const el = document.getElementById(`v8cfg_${key}`);
+                if (!el || cfg[key] === undefined || cfg[key] === null || document.activeElement === el) continue;
+                if (type === "bool") el.checked = Boolean(cfg[key]);
+                else el.value = cfg[key];
+            }
+        }
+
+        function readV8SettingsInputs() {
+            const out = {};
+            for (const [key, , , type] of V8_SETTINGS) {
+                const el = document.getElementById(`v8cfg_${key}`);
+                if (!el) continue;
+                if (type === "bool") { out[key] = el.checked; continue; }
+                if (el.value === "") continue;
+                const n = type === "int" ? parseInt(el.value, 10) : parseFloat(el.value);
+                if (!Number.isNaN(n)) out[key] = n;
+            }
+            return out;
+        }
+
+        function applyV8State(data) {
+            if (typeof data.serverTimeMs === "number") appState.serverOffsetMs = data.serverTimeMs - Date.now();
+            appState.circuitBreaker = data.circuitBreaker || null;
+            appState.entryGate = data.entryGate || null;
+            appState.pendingConfirmations = Array.isArray(data.pendingConfirmations) ? data.pendingConfirmations : [];
+            appState.sizing = data.sizing || null;
+            appState.lastEntryBlock = data.lastEntryBlock || null;
+            appState.walletQuality = Array.isArray(data.walletQuality) ? data.walletQuality : [];
+            appState.sourceAnalytics = Array.isArray(data.sourceAnalytics) ? data.sourceAnalytics : [];
+            renderBreaker();
+            renderPendingConfirmations();
+            renderSizingAndGate();
+            renderSourceAnalytics();
+        }
+
+        function renderSourceAnalytics() {
+            const saBox = document.getElementById("sourceAnalyticsContainer");
+            if (!saBox) return;
+            const list = appState.sourceAnalytics || [];
+            if (!list.length) {
+                saBox.innerHTML = `<span>Nema završenih trejdova po izvorima.</span>`;
+                return;
+            }
+            saBox.innerHTML = list.map(s => `
+                <div class="flex items-center justify-between px-2.5 py-1 rounded bg-sol-dark border border-sol-border">
+                    <span class="text-slate-300 font-semibold">${escHtml(s.source)} (${s.trades})</span>
+                    <span class="${s.netPnlSol >= 0 ? 'text-sol-green' : 'text-rose-400'}">
+                        WR ${s.winRatePct}% | ${s.netPnlSol >= 0 ? '+' : ''}${Number(s.netPnlSol).toFixed(3)} SOL
+                    </span>
+                </div>
+            `).join("");
+        }
+
+        function renderBreaker() {
+            const cb = appState.circuitBreaker;
+            const badge = document.getElementById("breakerStatusBadge");
+            const banner = document.getElementById("breakerBanner");
+            if (!badge) return;
+            if (!cb) {
+                badge.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
+                badge.innerText = "N/A";
+                banner.classList.add("hidden");
+                return;
+            }
+            badge.className = cb.tripped
+                ? "text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold"
+                : "text-[10px] font-mono px-2 py-0.5 rounded bg-sol-green/15 text-sol-green border border-sol-green/30";
+            badge.innerText = cb.tripped ? "TRIPPED" : "ARMED · OK";
+            const pct = Number(cb.dailyPnlPct || 0);
+            document.getElementById("breakerStops").innerText = `${cb.losingStopsToday}/${cb.maxDailyStopLosses}`;
+            const dd = document.getElementById("breakerDd");
+            dd.innerText = `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}% / -${cb.maxDailyDrawdownPct}%`;
+            dd.className = `font-bold ${pct >= 0 ? "text-sol-green" : "text-rose-400"}`;
+            document.getElementById("breakerTrades").innerText = `${cb.tradesToday}/${cb.maxDailyTrades}`;
+            document.getElementById("breakerResets").innerText = `Day ${cb.day} (${cb.timezone}) · resets ${cb.resetsAt}${cb.manualResetAt ? ` · manual reset at ${cb.manualResetAt} UTC` : ""}`;
+            if (cb.tripped) {
+                banner.classList.remove("hidden");
+                document.getElementById("breakerBannerReasons").innerText = (cb.reasons || []).join(" · ");
+                document.getElementById("breakerBannerMeta").innerText =
+                    `Losing stops ${cb.losingStopsToday}/${cb.maxDailyStopLosses} · day P&L ${cb.dailyPnlSol >= 0 ? "+" : ""}${Number(cb.dailyPnlSol || 0).toFixed(3)} SOL (${pct.toFixed(2)}%) · trades ${cb.tradesToday}/${cb.maxDailyTrades} · auto-reset ${cb.resetsAt}`;
+            } else {
+                banner.classList.add("hidden");
+            }
+        }
+
+        function renderPendingConfirmations() {
+            const box = document.getElementById("pendingContainer");
+            const badge = document.getElementById("pendingCountBadge");
+            if (!box) return;
+            const list = appState.pendingConfirmations || [];
+            badge.innerText = String(list.length);
+            badge.className = list.length
+                ? "text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                : "text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
+            if (!list.length) { box.innerHTML = `<div class="text-slate-500">No pending entries. Signals wait ${appState.config.entryConfirmSec ?? 20}s and must hold within -${appState.config.entryConfirmMaxDropPct ?? 4}% before opening.</div>`; return; }
+            const nowMs = Date.now() + (appState.serverOffsetMs || 0);
+            box.innerHTML = list.map(p => {
+                const left = Math.max(0, Math.ceil((p.dueAtMs - nowMs) / 1000));
+                return `<div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-sol-dark border border-cyan-500/30">
+                    <span class="text-white font-bold">$${escHtml(p.symbol)}</span>
+                    <span>signal $${formatPrice(p.signalPriceUsd)}</span>
+                    <span>${p.sizePreviewSol != null ? Number(p.sizePreviewSol).toFixed(3) + " SOL" : ""} ${escHtml(p.conviction || "")}</span>
+                    <span class="text-cyan-300 font-bold">${left}s</span>
+                    <button onclick="cancelPendingEntry('${escHtml(p.mint)}')" class="text-rose-300 hover:underline">cancel</button>
+                </div>`;
+            }).join("");
+        }
+
+        function renderSizingAndGate() {
+            const s = appState.sizing;
+            const g = appState.entryGate;
+            if (!document.getElementById("sizingNext")) return;
+            if (s) {
+                document.getElementById("sizingNext").innerText = `${Number(s.nextSizeSol).toFixed(3)} SOL`;
+                document.getElementById("sizingNextReasons").innerText = (s.nextSizeReasons || []).join(" · ");
+                const bc = s.byConviction || {};
+                document.getElementById("sizingByConv").innerText = ["ai", "heuristic", "manual"]
+                    .filter(k => bc[k]).map(k => `${k}: ${Number(bc[k].sizeSol).toFixed(3)}`).join(" | ");
+                const last = s.lastSize;
+                document.getElementById("sizingLast").innerText = last
+                    ? `$${last.symbol} ${Number(last.sizeSol).toFixed(3)} SOL (${(last.reasons || []).join(" · ")}) @ ${last.at} UTC`
+                    : "none since start";
+            }
+            const gb = document.getElementById("entryGateBadge");
+            if (g) {
+                gb.className = g.ok
+                    ? "text-[10px] font-mono px-2 py-0.5 rounded bg-sol-green/15 text-sol-green border border-sol-green/30"
+                    : "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold";
+                gb.innerText = g.ok ? "ENTRIES OPEN" : g.rule;
+                document.getElementById("entryGateReason").innerText = g.ok ? "nothing; entries allowed" : g.reason;
+            }
+            const lb = appState.lastEntryBlock;
+            document.getElementById("lastEntryBlock").innerText = lb ? `$${lb.symbol || "?"} [${lb.rule}] ${lb.reason} @ ${lb.at} UTC` : "none since start";
+        }
+
+        async function resetCircuitBreaker() {
+            if (!appState.pythonConnected) return;
+            if (!confirm("Reset the circuit breaker manually?")) return;
+            try {
+                await fetchFromPythonBridge("/api/breaker/reset", { method: "POST" });
+                logAgent("RISK MGR", "Circuit breaker reset manually from the dashboard.", "warn");
+            } catch (e) {}
+            await syncWithPythonBackend();
+        }
+
+        async function cancelPendingEntry(mint) {
+            if (!appState.pythonConnected) return;
+            try {
+                await fetchFromPythonBridge("/api/confirmations/cancel", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ mint })
+                });
+            } catch (e) {}
+            await syncWithPythonBackend();
+        }
+
+        async function refreshEquityCurve() {
+            if (!appState.pythonConnected) return;
+            try {
+                const data = await fetchFromPythonBridge("/api/equity");
+                renderEquityCurve(data);
+            } catch (e) {}
+        }
+
+        function renderEquityCurve(data) {
+            const box = document.getElementById("equityChart");
+            const stats = document.getElementById("equityStats");
+            const pts = (data && data.points) || [];
+            if (pts.length < 2) { box.innerHTML = `<span class="text-slate-500">Not enough closed trades yet.</span>`; return; }
+            const W = 700, H = 210, P = 28;
+            const ys = pts.map(p => p.equity);
+            const base = data.initialSol || ys[0];
+            let lo = Math.min(...ys, base), hi = Math.max(...ys, base);
+            if (hi - lo < 1e-9) { hi += 0.1; lo -= 0.1; }
+            const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+            const x = i => P + (i * (W - 2 * P)) / (pts.length - 1);
+            const y = v => H - P + 4 - ((v - lo) * (H - 2 * P)) / (hi - lo);
+            const path = pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.equity).toFixed(1)}`).join(" ");
+            const area = `${path} L${x(pts.length - 1).toFixed(1)},${(H - P + 4).toFixed(1)} L${x(0).toFixed(1)},${(H - P + 4).toFixed(1)} Z`;
+            const last = pts[pts.length - 1].equity;
+            const color = last >= base ? "#14F195" : "#fb7185";
+            let peak = -Infinity, maxDd = 0;
+            for (const v of ys) { peak = Math.max(peak, v); maxDd = Math.max(maxDd, peak > 0 ? (peak - v) / peak : 0); }
+            const dots = pts.map((p, i) => {
+                const c = p.kind === "close" ? ((p.pnl || 0) >= 0 ? "#14F195" : "#fb7185") : (p.kind === "now" ? "#22d3ee" : "#94a3b8");
+                const title = `${p.tLocal} · ${p.label}${p.pnl != null ? ` · ${p.pnl >= 0 ? "+" : ""}${Number(p.pnl).toFixed(4)} SOL` : ""} · equity ${Number(p.equity).toFixed(4)} SOL`;
+                return `<g><circle cx="${x(i).toFixed(1)}" cy="${y(p.equity).toFixed(1)}" r="4" fill="${c}" stroke="#0B0E14" stroke-width="1.5"><title>${escHtml(title)}</title></circle>${p.icon ? `<text x="${x(i).toFixed(1)}" y="${(y(p.equity) - 9).toFixed(1)}" font-size="11" text-anchor="middle">${p.icon}</text>` : ""}</g>`;
+            }).join("");
+            box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="w-full h-full">
+                <defs><linearGradient id="eqFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.25"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+                <line x1="${P}" x2="${W - P}" y1="${y(base).toFixed(1)}" y2="${y(base).toFixed(1)}" stroke="#475569" stroke-dasharray="4 4" stroke-width="1"/>
+                <text x="${W - P}" y="${(y(base) - 4).toFixed(1)}" fill="#64748b" font-size="10" text-anchor="end" font-family="JetBrains Mono">start ${Number(base).toFixed(2)}</text>
+                <text x="${P}" y="14" fill="#64748b" font-size="10" font-family="JetBrains Mono">${hi.toFixed(3)}</text>
+                <text x="${P}" y="${H - 6}" fill="#64748b" font-size="10" font-family="JetBrains Mono">${lo.toFixed(3)}</text>
+                <path d="${area}" fill="url(#eqFill)"/>
+                <path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>
+                ${dots}
+            </svg>`;
+            const net = last - base;
+            stats.innerHTML = `now <strong class="${net >= 0 ? "text-sol-green" : "text-rose-400"}">${Number(last).toFixed(4)} SOL (${net >= 0 ? "+" : ""}${net.toFixed(4)})</strong> · max DD ${(maxDd * 100).toFixed(2)}% · ${pts.filter(p => p.kind === "close").length} closed`;
+        }
+
+        const JOURNAL_RULE_STYLES = {
+            OK: "bg-sol-green/15 text-sol-green border-sol-green/30",
+            ENTRY_FILLED: "bg-sol-green/15 text-sol-green border-sol-green/30",
+            ENTRY_CONFIRMED: "bg-sol-green/15 text-sol-green border-sol-green/30",
+            ENTRY_CONFIRM_PENDING: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+            HARD_FILTER: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+            WALLET_UNTRUSTED: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+            CIRCUIT_BREAKER: "bg-rose-500/20 text-rose-300 border-rose-500/40",
+            CONFIRM_DROP: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+            STALE_PRICE: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+            CLUSTER_LOSS_COOLDOWN: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30",
+            CLUSTER_OPEN_DD: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30",
+            CLUSTER_UNPROVEN: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30",
+            MAX_OPEN: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+            ENTRY_SPACING: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+            SL_COOLDOWN: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
+        };
+        const JOURNAL_ACTION_STYLES = {
+            BUY: "text-sol-green", OPEN: "text-sol-green font-bold", CONFIRM: "text-cyan-300",
+            WATCH: "text-amber-300", SKIP: "text-slate-500", BLOCK: "text-amber-300 font-bold",
+            CONFIRM_CANCEL: "text-rose-300", EXIT: "text-white font-bold"
+        };
+
+        function setJournalFilter(f) {
+            appState.journalFilter = f;
+            document.querySelectorAll(".jf-btn").forEach(b => {
+                b.className = `jf-btn px-2.5 py-1 rounded-lg border ${b.dataset.jf === f ? "border-sol-purple bg-sol-purple/20 text-white" : "border-sol-border text-slate-300"}`;
+            });
+            renderJournal();
+        }
+
+        async function refreshJournal() {
+            if (!appState.pythonConnected) return;
+            try {
+                const data = await fetchFromPythonBridge("/api/journal?limit=150");
+                appState.journal = data.journal || [];
+                renderJournal();
+            } catch (e) {}
+        }
+
+        function renderJournal() {
+            const tbody = document.getElementById("journalTableBody");
+            if (!tbody) return;
+            const f = appState.journalFilter || "ALL";
+            const groups = {
+                TRADES: ["OPEN", "EXIT"],
+                BLOCKS: ["BLOCK", "CONFIRM", "CONFIRM_CANCEL"],
+                SCANS: ["SKIP", "WATCH", "BUY"]
+            };
+            const rows = (appState.journal || []).filter(j => f === "ALL" || (groups[f] || []).includes(j.action));
+            if (!rows.length) { tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-500">No journal entries for this filter yet.</td></tr>`; return; }
+            tbody.innerHTML = rows.map(j => {
+                const ruleCls = JOURNAL_RULE_STYLES[j.rule] || (EXIT_ICONS[j.rule] ? "bg-slate-800 text-slate-200 border-slate-600" : "bg-slate-800/60 text-slate-400 border-slate-700");
+                const icon = j.action === "EXIT" ? exitIcon(j.rule) + " " : "";
+                const sz = (j.suggestedSizeSol != null || j.actualSizeSol != null)
+                    ? `${j.suggestedSizeSol != null ? Number(j.suggestedSizeSol).toFixed(3) : "-"} / ${j.actualSizeSol != null ? Number(j.actualSizeSol).toFixed(3) : "-"}` : "";
+                const px = (j.signalPriceUsd != null || j.fillPriceUsd != null)
+                    ? `${j.signalPriceUsd != null ? "$" + formatPrice(j.signalPriceUsd) : "-"} → ${j.fillPriceUsd != null ? "$" + formatPrice(j.fillPriceUsd) : "-"}` : "";
+                return `<tr class="hover:bg-sol-dark/50">
+                    <td class="py-1.5 px-2 text-slate-400 whitespace-nowrap">${escHtml(j.tsLocal)}</td>
+                    <td class="py-1.5 px-2 text-white">${j.symbol ? "$" + escHtml(j.symbol) : "-"}</td>
+                    <td class="py-1.5 px-2 ${JOURNAL_ACTION_STYLES[j.action] || "text-slate-300"}">${escHtml(j.action)}</td>
+                    <td class="py-1.5 px-2"><span class="px-1.5 py-0.5 rounded border text-[10px] ${ruleCls}">${icon}${escHtml(j.rule || "-")}</span></td>
+                    <td class="py-1.5 px-2 text-slate-300 whitespace-nowrap">${sz}</td>
+                    <td class="py-1.5 px-2 text-slate-300 whitespace-nowrap">${px}</td>
+                    <td class="py-1.5 px-2 text-slate-400 max-w-[520px] truncate" title="${escHtml(j.reasons)}">${escHtml(j.reasons)}</td>
+                </tr>`;
+            }).join("");
+        }
+
+        function walletQualityFor(address) {
+            return (appState.walletQuality || []).find(q => q.address === address) || null;
+        }
+
+        function walletQualityBadge(address) {
+            const q = walletQualityFor(address);
+            if (!q) return `<span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 border border-slate-700">quality N/A</span>`;
+            const wr = q.recentWinRate == null ? "n/a" : `${Math.round(q.recentWinRate * 100)}%`;
+            const cls = q.trusted ? "bg-sol-green/15 text-sol-green border-sol-green/30" : "bg-amber-500/15 text-amber-300 border-amber-500/30";
+            return `<span title="${escHtml(q.reason)}" class="text-[9px] font-mono px-1.5 py-0.5 rounded border ${cls}">${q.trusted ? "trusted" : "down-weighted"} · ${q.samples} tr · WR ${wr} · ${q.netPnlSol >= 0 ? "+" : ""}${Number(q.netPnlSol).toFixed(3)}</span>`;
+        }
+
+        function renderTrackedWallets() {
+            const container = document.getElementById("trackedWalletsContainer");
+            const count = appState.trackedWallets.length;
+            document.getElementById("whaleCountBadge").innerText = `${count} aktivna`;
+            document.getElementById("agent1Badge").innerText = `${count} WHALES`;
+
+            if (count === 0) {
+                container.innerHTML = `<div class="text-[11px] text-slate-500 py-2 text-center">Nema praćenih novčanika. Dodaj adresu iznad.</div>`;
+                return;
+            }
+
+            container.innerHTML = appState.trackedWallets.map(w => `
+                <div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-sol-dark/80 border border-sol-border text-[11px]">
+                    <div class="min-w-0">
+                        <div class="font-semibold text-white truncate flex items-center gap-1.5">
+                            <span class="text-cyan-400">🐋</span>
+                            <span>${w.label}</span>
+                            ${w.signalsCount > 0 ? `<span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sol-green/20 text-sol-green">${w.signalsCount} hit</span>` : ''}
+                        </div>
+                        <div class="text-[10px] font-mono text-slate-400">${w.address.slice(0, 8)}...${w.address.slice(-6)}</div>
+                        <div class="mt-0.5">${walletQualityBadge(w.address)}</div>
+                    </div>
+                    <button onclick="removeSmartMoneyWallet('${w.address}')" class="text-slate-500 hover:text-rose-400 px-1.5 transition" title="Ukloni novčanik">
+                        <i class="fa-solid fa-trash-can text-[10px]"></i>
+                    </button>
+                </div>
+            `).join("");
+        }
+
+        async function addSmartMoneyWallet() {
+            const addrInput = document.getElementById("newWhaleAddr");
+            const labelInput = document.getElementById("newWhaleLabel");
+            const address = addrInput.value.trim();
+            const label = labelInput.value.trim() || `Whale ${address.slice(0, 5)}`;
+
+            if (address.length < 32) {
+                logAgent("WHALE TRACKER", "Unesi ispravnu Solana adresu novčanika (32-44 znaka).", "warn");
+                return;
+            }
+
+            if (appState.pythonConnected) {
+                await fetchFromPythonBridge("/api/wallets/add", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ address, label })
+                });
+                await syncWithPythonBackend();
+            } else {
+                appState.trackedWallets.unshift({ address, label, signalsCount: 0 });
+                renderTrackedWallets();
+            }
+
+            addrInput.value = "";
+            labelInput.value = "";
+        }
+
+        async function removeSmartMoneyWallet(address) {
+            if (appState.pythonConnected) {
+                await fetchFromPythonBridge("/api/wallets/remove", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ address })
+                });
+                await syncWithPythonBackend();
+            } else {
+                appState.trackedWallets = appState.trackedWallets.filter(w => w.address !== address);
+                renderTrackedWallets();
+            }
+        }
+
+        async function triggerSimulatedWhaleSignal() {
+            const btn = document.getElementById("simWhaleBtn");
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>Whale kupuje...</span>`;
+            try {
+                if (appState.pythonConnected) {
+                    const res = await fetchFromPythonBridge("/api/simulate_whale_buy", { method: "POST" });
+                    await syncWithPythonBackend();
+                    if (res && res.mint) {
+                        selectTokenForInspection(res.mint);
+                    }
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-water"></i> <span>Testiraj 🐋 Whale Signal</span>`;
+            }
+        }
+
+        function renderPythonLogs(logsArray) {
+            const container = document.getElementById("terminalLogContainer");
+            const colorMap = { info: "text-slate-300", success: "text-sol-green", warn: "text-amber-300", danger: "text-rose-400", ai: "text-sol-purple" };
+            const badgeMap = {
+                "DISCOVERY": "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
+                "WHALE TRACKER": "bg-cyan-500/30 text-cyan-200 border-cyan-400/50",
+                "PUMP.FUN WS": "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30",
+                "RESEARCH AI": "bg-sol-purple/20 text-sol-purple border-sol-purple/30",
+                "RISK MGR": "bg-amber-500/20 text-amber-300 border-amber-500/30",
+                "EXECUTION": "bg-sol-green/20 text-sol-green border-sol-green/30"
+            };
+
+            container.innerHTML = logsArray.map(item => {
+                const badgeStyle = badgeMap[item.agent] || "bg-slate-700 text-slate-200";
+                const textStyle = colorMap[item.level] || "text-slate-300";
+                return `
+                    <div class="leading-relaxed border-b border-slate-800/50 pb-1">
+                        <span class="text-slate-500">[${item.time}]</span>
+                        <span class="px-1.5 py-0.2 rounded text-[10px] border ${badgeStyle} font-semibold mx-1">${item.agent}</span>
+                        <span class="${textStyle}">${item.message}</span>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function logAgent(agentName, message, type = "info") {
+            const container = document.getElementById("terminalLogContainer");
+            const time = new Date().toLocaleTimeString("hr-HR", { hour12: false });
+            const colorMap = { info: "text-slate-300", success: "text-sol-green", warn: "text-amber-300", danger: "text-rose-400", ai: "text-sol-purple" };
+            const badgeMap = {
+                "DISCOVERY": "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
+                "WHALE TRACKER": "bg-cyan-500/30 text-cyan-200 border-cyan-400/50",
+                "PUMP.FUN WS": "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30",
+                "RESEARCH AI": "bg-sol-purple/20 text-sol-purple border-sol-purple/30",
+                "RISK MGR": "bg-amber-500/20 text-amber-300 border-amber-500/30",
+                "EXECUTION": "bg-sol-green/20 text-sol-green border-sol-green/30"
+            };
+            const entry = document.createElement("div");
+            entry.className = "leading-relaxed border-b border-slate-800/50 pb-1";
+            entry.innerHTML = `
+                <span class="text-slate-500">[${time}]</span>
+                <span class="px-1.5 py-0.2 rounded text-[10px] border ${badgeMap[agentName] || 'bg-slate-700 text-slate-200'} font-semibold mx-1">${agentName}</span>
+                <span class="${colorMap[type] || 'text-slate-300'}">${message}</span>
+            `;
+            container.prepend(entry);
+        }
+
+        function clearTerminalLogs() {
+            document.getElementById("terminalLogContainer").innerHTML = "";
+            logAgent("DISCOVERY", "Terminal očišćen. Sustav aktivan.", "info");
+        }
+
+        async function executePaperOrDryRunBuy(tokenObj) {
+            const { market } = tokenObj;
+            if (appState.pythonConnected) {
+                try {
+                    const res = await fetchFromPythonBridge("/api/buy", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            mint: market.mint,
+                            market: { mint: market.mint, symbol: market.symbol, name: market.name, price_usd: String(market.priceUsd), dex_id: market.dexId }
+                        })
+                    });
+                    if (!res.ok) {
+                        const r = res.result || {};
+                        logAgent("RISK MGR", `Manual buy of $${market.symbol} not opened [${r.rule || "ERROR"}]: ${r.reason || res.error || "unknown"}`, "warn");
+                    }
+                    await syncWithPythonBackend();
+                } catch (e) {
+                    logAgent("RISK MGR", `Manual buy of $${market.symbol} refused by the Python bot.`, "warn");
+                }
+            }
+        }
+
+        async function manualSellPosition(mint) {
+            if (appState.pythonConnected) {
+                await fetchFromPythonBridge("/api/sell", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ mint })
+                });
+                await syncWithPythonBackend();
+            }
+        }
+
+        async function simulatePumpOnOpenPositions() {
+            if (appState.pythonConnected) {
+                await fetchFromPythonBridge("/api/simulate_pump", { method: "POST" });
+                await syncWithPythonBackend();
+            }
+        }
+
+        async function resetPortfolio() {
+            if (!confirm("Reset the PAPER portfolio to 10 SOL? This clears paper positions, trade history and equity snapshots.")) return;
+            if (!confirm("Are you sure?")) return;
+            if (appState.pythonConnected) {
+                await fetchFromPythonBridge("/api/reset", { method: "POST" });
+                await syncWithPythonBackend();
+            }
+        }
+
+        async function processCandidateMint(mint) {
+            if (appState.pythonConnected) {
+                try {
+                    await fetchFromPythonBridge("/api/analyze", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ mint })
+                    });
+                    await syncWithPythonBackend();
+                    return appState.tokensMap[mint];
+                } catch (err) {}
+            }
+            return null;
+        }
+
+        async function runDiscoveryCycle(manualTrigger = false) {
+            const btn = document.getElementById("scanNowBtn");
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>Skeniram...</span>`;
+            try {
+                const synced = await syncWithPythonBackend();
+                if (synced && manualTrigger) {
+                    await fetchFromPythonBridge("/api/scan_now", { method: "POST" });
+                    await syncWithPythonBackend();
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-radar"></i> <span>Skeniraj Odmah</span>`;
+            }
+        }
+
+        async function inspectManualMint() {
+            const input = document.getElementById("manualMintInput");
+            const mint = input.value.trim();
+            if (!mint || mint.length < 30) {
+                logAgent("DISCOVERY", "Unesi ispravnu Solana Mint adresu (32-44 znaka).", "warn");
+                return;
+            }
+            const res = await processCandidateMint(mint);
+            if (res) {
+                selectTokenForInspection(mint);
+                input.value = "";
+            }
+        }
+
+        async function runGeminiDeepAnalysisOnSelected() {
+            const mint = appState.selectedMint;
+            if (!mint) return;
+            const btn = document.getElementById("forceAiBtn");
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>Gemini analizira...</span>`;
+            try {
+                if (appState.pythonConnected) {
+                    await fetchFromPythonBridge("/api/analyze", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ mint })
+                    });
+                    await syncWithPythonBackend();
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> <span>Gemini AI Analiza</span>`;
+            }
+        }
+
+        async function refreshOpenPositionsPrices() {
+            if (appState.pythonConnected) await syncWithPythonBackend();
+        }
+
+        function formatPrice(p) {
+            const num = parseFloat(p || 0);
+            if (num >= 1) return num.toFixed(3);
+            if (num >= 0.001) return num.toFixed(6);
+            return num.toFixed(9);
+        }
+
+        function selectTokenForInspection(mint) {
+            appState.selectedMint = mint;
+            renderTokenFeed();
+            renderResearchInspector();
+        }
+
+        function filterFeed(filterType) {
+            appState.activeFilter = filterType;
+            ["ALL", "BUY", "WHALE", "PUMP"].forEach(t => {
+                const btn = document.getElementById(`filter${t.charAt(0) + t.slice(1).toLowerCase()}Btn`);
+                if (btn) {
+                    btn.className = (t === filterType)
+                        ? "px-2 py-1 rounded text-[10px] font-mono bg-sol-purple text-white"
+                        : "px-2 py-1 rounded text-[10px] font-mono bg-sol-dark text-slate-400 hover:text-white";
+                }
+            });
+            renderTokenFeed();
+        }
+
+        function renderTokenFeed() {
+            const container = document.getElementById("tokenFeedContainer");
+            const filteredMints = appState.tokenOrder.filter(mint => {
+                const item = appState.tokensMap[mint];
+                if (!item) return false;
+                if (appState.activeFilter === "BUY") return item.verdict.decision === "BUY";
+                if (appState.activeFilter === "WHALE") return item.market.source === "WHALE_COPY_SIGNAL" || Boolean(item.market.whaleSignal);
+                if (appState.activeFilter === "PUMP") return item.market.source === "PUMPFUN_STREAM";
+                return true;
+            });
+
+            if (filteredMints.length === 0) {
+                container.innerHTML = `<div class="text-center py-12 text-slate-400 text-xs">Nema tokena u ovom filteru.</div>`;
+                return;
+            }
+
+            container.innerHTML = filteredMints.map(mint => {
+                const { market, security, verdict, scannedAt } = appState.tokensMap[mint];
+                const isSelected = appState.selectedMint === mint;
+                const top10Pct = security?.top10HolderPct ?? null;
+
+                const badgeStyles = {
+                    BUY: "bg-sol-green/20 text-sol-green border-sol-green/40",
+                    WATCH: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+                    SKIP: "bg-rose-500/20 text-rose-400 border-rose-500/40"
+                }[verdict.decision] || "bg-slate-700 text-slate-300";
+
+                let sourceBadge = `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">DEX: ${(market.dexId || 'SOL').toUpperCase()}</span>`;
+                if (market.whaleSignal || market.source === "WHALE_COPY_SIGNAL") {
+                    sourceBadge = `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sol-green/20 text-sol-green border border-sol-green/40 font-bold">🐋 ${market.whaleSignal || 'WHALE BUY'}</span>`;
+                } else if (market.source === "PUMPFUN_STREAM") {
+                    sourceBadge = `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30">⚡ PUMP ${market.bondingCurvePct}%</span>`;
+                }
+
+                return `
+                    <div onclick="selectTokenForInspection('${mint}')" 
+                        class="p-3 rounded-xl border transition cursor-pointer ${isSelected ? 'bg-sol-purple/15 border-sol-purple shadow-lg' : 'bg-sol-dark/70 border-sol-border hover:border-slate-600'}">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <span class="font-bold text-sm text-white truncate">$${market.symbol}</span>
+                                <span class="text-xs text-slate-400 truncate">${market.name}</span>
+                            </div>
+                            <span class="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${badgeStyles}">${verdict.decision}</span>
+                        </div>
+                        <div class="mt-2 flex items-center justify-between text-[11px] font-mono text-slate-300">
+                            <span>Liq: <strong class="text-white">$${Math.round(market.liquidityUsd).toLocaleString()}</strong></span>
+                            <span>Top10: <strong class="${top10Pct === null ? 'text-amber-300' : (top10Pct > 30 ? 'text-rose-400' : 'text-sol-green')}">${top10Pct === null ? 'N/A' : top10Pct + '%'}</strong></span>
+                            <span class="${market.priceChange5m >= 0 ? 'text-sol-green' : 'text-rose-400'}">${market.priceChange5m >= 0 ? '+' : ''}${market.priceChange5m}%</span>
+                        </div>
+                        <div class="mt-2 pt-2 border-t border-sol-border/60 flex items-center justify-between">
+                            ${sourceBadge}
+                            <div class="flex items-center gap-2.5 text-[10px] font-mono text-slate-400">
+                                <span>🛡️ ${verdict.riskScore}</span>
+                                <span>🚀 ${verdict.hypeScore}</span>
+                                <span>${scannedAt}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function renderResearchInspector() {
+            const container = document.getElementById("researchInspectorContainer");
+            const mint = appState.selectedMint;
+            if (!mint || !appState.tokensMap[mint]) {
+                container.innerHTML = `<div class="text-center py-16 text-slate-500 text-xs">Čekam prvi skenirani token ili klikni "Skeniraj Odmah"...</div>`;
+                return;
+            }
+
+            const { market, security, verdict } = appState.tokensMap[mint];
+            const totalTx5m = market.buys5m + market.sells5m;
+            const buyRatioPct = totalTx5m > 0 ? Math.round((market.buys5m / totalTx5m) * 100) : 50;
+
+            const top10Known = security?.top10HolderPct !== null && security?.top10HolderPct !== undefined;
+            const top10Pct = top10Known ? security.top10HolderPct : 0;
+            const top10Label = top10Known ? `${top10Pct}%` : "N/A";
+            const maxSinglePct = (security?.maxSingleHolderPct ?? null) === null ? "N/A" : `${security.maxSingleHolderPct}`;
+            const isBundled = security?.isBundled ?? false;
+            const mintState = triState(security?.mintAuthorityRevoked ?? null, "UGAŠEN", "AKTIVAN!");
+            const freezeState = triState(security?.freezeAuthorityRevoked ?? null, "UGAŠEN", "AKTIVAN!");
+
+            const decisionColor = verdict.decision === "BUY" ? "text-sol-green border-sol-green/40 bg-sol-green/10"
+                : (verdict.decision === "WATCH" ? "text-amber-300 border-amber-500/40 bg-amber-500/10" : "text-rose-400 border-rose-500/40 bg-rose-500/10");
+
+            container.innerHTML = `
+                <div class="p-3.5 rounded-xl bg-sol-dark/90 border border-sol-border flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h3 class="text-base font-bold text-white">$${market.symbol}</h3>
+                            <span class="text-xs text-slate-400">${market.name}</span>
+                            ${market.whaleSignal ? `<span class="text-[10px] font-mono px-2 py-0.5 rounded bg-sol-green/20 text-sol-green border border-sol-green/40 font-bold">🐋 ${market.whaleSignal}</span>` : ''}
+                        </div>
+                        <div class="flex items-center gap-2 mt-1">
+                            <span class="text-[11px] font-mono text-slate-400">${market.mint.slice(0, 14)}...${market.mint.slice(-6)}</span>
+                            <button onclick="copyMintAddress('${market.mint}')" class="text-[11px] text-cyan-400 hover:underline font-mono"><i class="fa-regular fa-copy"></i> Kopiraj</button>
+                            <a href="${market.pairUrl}" target="_blank" class="text-[11px] text-sol-purple hover:underline font-mono ml-1">DexScreener <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i></a>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <div class="px-3 py-1.5 rounded-xl border font-mono font-bold text-sm ${decisionColor}">${verdict.decision}</div>
+                        <button onclick="manualBuySelected('${market.mint}')" class="px-3 py-1.5 rounded-xl bg-sol-green text-sol-dark font-bold text-xs hover:opacity-90 transition shadow">
+                            <i class="fa-solid fa-bolt mr-1"></i>Kupi (${appState.config.tradeSizeSol} SOL)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="p-3.5 rounded-xl bg-sol-dark/80 border border-cyan-500/30 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-shield-cat"></i> On-Chain Top 10 Holder & Jito Bundle Forenzika
+                        </span>
+                        <span class="text-[10px] font-mono px-2 py-0.5 rounded ${isBundled ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' : 'bg-sol-green/15 text-sol-green border border-sol-green/30'}">
+                            ${isBundled ? '⚠️ SUMNJA NA DEV BUNDLE' : '✅ ČISTA DISTRIBUCIJA'}
+                        </span>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-[11px] font-mono mb-1">
+                            <span class="text-slate-300">Top 10 Holdera (izvan LP-a): <strong class="${!top10Known ? 'text-amber-300' : (top10Pct > appState.config.maxTop10Pct ? 'text-rose-400' : 'text-sol-green')}">${top10Label}</strong> (Max prag: ${appState.config.maxTop10Pct}%)</span>
+                            <span class="text-slate-400">Najveći: <strong class="text-white">${maxSinglePct}${maxSinglePct === "N/A" ? "" : "%"}</strong></span>
+                        </div>
+                        <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full ${top10Pct > appState.config.maxTop10Pct ? 'bg-rose-500' : (top10Pct > 25 ? 'bg-amber-400' : 'bg-sol-green')} rounded-full" style="width: ${Math.min(100, top10Pct)}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 pt-1 text-[11px] font-mono">
+                        <div class="px-2.5 py-1.5 rounded-lg bg-sol-dark border border-sol-border flex items-center justify-between">
+                            <span class="text-slate-400">Mint Auth:</span>
+                            <span class="${mintState.cls} font-bold">${mintState.text}</span>
+                        </div>
+                        <div class="px-2.5 py-1.5 rounded-lg bg-sol-dark border border-sol-border flex items-center justify-between">
+                            <span class="text-slate-400">Freeze Auth:</span>
+                            <span class="${freezeState.cls} font-bold">${freezeState.text}</span>
+                        </div>
+                        <div class="px-2.5 py-1.5 rounded-lg bg-sol-dark border border-sol-border flex items-center justify-between">
+                            <span class="text-slate-400">Krivulja/LP:</span>
+                            <span class="text-cyan-300 font-bold">${market.bondingCurvePct}%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="p-3 rounded-xl bg-sol-dark/70 border border-sol-border">
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-400">🛡️ Sigurnost (Risk Score)</span>
+                            <span class="font-mono font-bold text-white">${verdict.riskScore}/100</span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full bg-sol-green rounded-full" style="width: ${verdict.riskScore}%"></div>
+                        </div>
+                    </div>
+                    <div class="p-3 rounded-xl bg-sol-dark/70 border border-sol-border">
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-slate-400">🚀 Hype & Whale Score</span>
+                            <span class="font-mono font-bold text-white">${verdict.hypeScore}/100</span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full bg-sol-purple rounded-full" style="width: ${verdict.hypeScore}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-3.5 rounded-xl bg-sol-purple/10 border border-sol-purple/30">
+                    <div class="text-xs font-bold text-sol-purple mb-1 flex items-center gap-1.5"><i class="fa-solid fa-robot"></i> Obrazloženje Research Agenta:</div>
+                    <p class="text-xs text-slate-200 leading-relaxed">${verdict.summaryHr}</p>
+                </div>
+
+                <div class="p-3.5 rounded-xl bg-sol-dark/70 border border-sol-border space-y-2.5">
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+                        <div><span class="text-slate-400 block text-[10px]">CIJENA (USD)</span><span class="text-white font-bold">$${formatPrice(market.priceUsd)}</span></div>
+                        <div><span class="text-slate-400 block text-[10px]">LIKVIDNOST</span><span class="text-white font-bold">$${Math.round(market.liquidityUsd).toLocaleString()}</span></div>
+                        <div><span class="text-slate-400 block text-[10px]">FDV / MCAP</span><span class="text-white font-bold">$${Math.round(market.fdvUsd).toLocaleString()}</span></div>
+                        <div><span class="text-slate-400 block text-[10px]">VOLUMEN (5m)</span><span class="text-white font-bold">$${Math.round(market.volume5m).toLocaleString()}</span></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[11px] font-mono mb-1">
+                            <span class="text-sol-green">Kupnje (5m): ${market.buys5m} (${buyRatioPct}%)</span>
+                            <span class="text-rose-400">Prodaje (5m): ${market.sells5m} (${100 - buyRatioPct}%)</span>
+                        </div>
+                        <div class="w-full h-2 bg-rose-500/40 rounded-full overflow-hidden flex">
+                            <div class="h-full bg-sol-green" style="width: ${buyRatioPct}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30">
+                        <h4 class="text-xs font-bold text-sol-green mb-1.5 flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> Green Flags</h4>
+                        <ul class="space-y-1 text-[11px] text-slate-300">
+                            ${(verdict.greenFlags.length ? verdict.greenFlags : ["Nema istaknutih pozitivnih signala"]).map(g => `<li class="flex items-start gap-1.5"><span class="text-sol-green">+</span> <span>${g}</span></li>`).join("")}
+                        </ul>
+                    </div>
+                    <div class="p-3 rounded-xl bg-rose-950/20 border border-rose-500/30">
+                        <h4 class="text-xs font-bold text-rose-400 mb-1.5 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation"></i> Red Flags & RugCheck</h4>
+                        <ul class="space-y-1 text-[11px] text-slate-300">
+                            ${(verdict.redFlags.length ? verdict.redFlags : ["Nema kritičnih on-chain upozorenja"]).map(r => `<li class="flex items-start gap-1.5"><span class="text-rose-400">-</span> <span>${r}</span></li>`).join("")}
+                        </ul>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderPortfolioKPIs() {
+            const openPositions = appState.positions.filter(p => p.status === "OPEN");
+            let lockedSol = 0;
+            let unrealizedPnlSol = 0;
+
+            for (const pos of openPositions) {
+                const activeInvested = pos.investedSol * pos.remainingRatio;
+                const currentVal = activeInvested * (pos.currentPriceUsd / pos.entryPriceUsd);
+                lockedSol += currentVal;
+                unrealizedPnlSol += (currentVal - activeInvested);
+            }
+
+            const totalPnlSol = appState.wallet.realizedPnlSol + unrealizedPnlSol;
+            const totalPnlPct = (totalPnlSol / 10.0) * 100;
+            const winRate = appState.wallet.totalTrades > 0
+                ? Math.round((appState.wallet.winningTrades / appState.wallet.totalTrades) * 100)
+                : 0;
+
+            document.getElementById("kpiBalanceSol").innerText = `${appState.wallet.balanceSol.toFixed(3)} SOL`;
+            document.getElementById("kpiBalanceUsd").innerText = `~$${(appState.wallet.balanceSol * SOL_PRICE_USD).toFixed(2)}`;
+            document.getElementById("kpiLockedSol").innerText = `${lockedSol.toFixed(3)} SOL`;
+            document.getElementById("kpiOpenCount").innerText = openPositions.length;
+
+            const pnlEl = document.getElementById("kpiTotalPnl");
+            pnlEl.innerText = `${totalPnlSol >= 0 ? '+' : ''}${totalPnlSol.toFixed(3)} SOL`;
+            pnlEl.className = `text-lg sm:text-xl font-bold font-mono ${totalPnlSol >= 0 ? 'text-sol-green' : 'text-rose-400'}`;
+
+            document.getElementById("kpiTotalPnlPct").innerText = `${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(2)}% ROI`;
+            document.getElementById("kpiWinRate").innerText = `${winRate}%`;
+            document.getElementById("kpiTradesCount").innerText = appState.wallet.totalTrades;
+        }
+
+        function renderPositionsTable() {
+            const tbody = document.getElementById("positionsTableBody");
+            if (appState.positions.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-slate-500 text-xs">Još nema otvorenih pozicija u <code>paper_portfolio.db</code>.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = appState.positions.map(pos => {
+                const pnlPct = ((pos.currentPriceUsd - pos.entryPriceUsd) / pos.entryPriceUsd) * 100;
+                const activeInvested = pos.investedSol * pos.remainingRatio;
+                const currentValSol = pos.status === "OPEN" ? activeInvested * (pos.currentPriceUsd / pos.entryPriceUsd) : pos.realizedSol;
+                const netSolDiff = pos.status === "OPEN" ? (pos.realizedSol + currentValSol) - pos.investedSol : pos.realizedSol - pos.investedSol;
+
+                const icon = pos.exitIcon || exitIcon(pos.exitReason);
+                const staleBadge = pos.status === "OPEN" && pos.priceStale ? ` <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px]">STALE</span>` : "";
+                const beBadge = pos.status === "OPEN" && pos.breakevenArmed ? ` <span class="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px]">🛡️ FLOOR</span>` : "";
+                const statusBadge = pos.status === "OPEN"
+                    ? `<span class="px-2 py-0.5 rounded bg-sol-green/20 text-sol-green border border-sol-green/30 text-[10px]">OPEN ${pos.tp1Hit ? '🌙 MOONBAG' : ''}</span>${staleBadge}${beBadge}`
+                    : `<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[10px]">${icon} CLOSED (${escHtml(pos.exitReason)})</span>`;
+                const sig = pos.signalPriceUsd ?? pos.entryPriceUsd;
+                const slipBps = Number(pos.entrySlippageBps || 0);
+
+                return `
+                    <tr class="hover:bg-sol-dark/50 transition">
+                        <td class="py-3 px-3">
+                            <div class="font-bold text-white">$${pos.symbol}</div>
+                            <div class="text-[10px] text-slate-400">${pos.mint.slice(0, 10)}...</div>
+                        </td>
+                        <td class="py-3 px-3">${statusBadge}</td>
+                        <td class="py-3 px-3">
+                            <div class="text-white">${pos.investedSol.toFixed(2)} SOL</div>
+                            <div class="text-[10px] text-slate-400">Aktivno: ${Math.round(pos.remainingRatio * 100)}%</div>
+                        </td>
+                        <td class="py-3 px-3 text-slate-300">
+                            <div>$${formatPrice(sig)} → <span class="text-white">$${formatPrice(pos.entryPriceUsd)}</span></div>
+                            <div class="text-[10px] text-slate-500">${slipBps > 0 ? `entry ${slipBps.toFixed(0)} bps` : 'legacy'}</div>
+                        </td>
+                        <td class="py-3 px-3">
+                            <div class="text-white">$${formatPrice(pos.currentPriceUsd)}</div>
+                            <div class="text-[10px] text-slate-500">ATH: $${formatPrice(pos.highestPriceUsd)}</div>
+                        </td>
+                        <td class="py-3 px-3">
+                            <div class="font-bold ${pnlPct >= 0 ? 'text-sol-green' : 'text-rose-400'}">${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%</div>
+                            <div class="text-[10px] ${netSolDiff >= 0 ? 'text-sol-green' : 'text-rose-400'}">${netSolDiff >= 0 ? '+' : ''}${netSolDiff.toFixed(3)} SOL</div>
+                        </td>
+                        <td class="py-3 px-3">
+                            <div class="text-cyan-300 text-[11px] max-w-[260px] truncate">${escHtml(pos.sizeReason || '-')}</div>
+                            <div class="text-[10px] text-slate-400">${pos.status === "OPEN" && pos.stopPriceUsd ? `Stop $${formatPrice(pos.stopPriceUsd)} · ` : ''}${escHtml(pos.source || pos.router)}</div>
+                        </td>
+                        <td class="py-3 px-3 text-right">
+                            ${pos.status === "OPEN" ? `<button onclick="manualSellPosition('${pos.mint}')" class="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 border border-rose-500/30 text-[11px] transition">Prodaj 100%</button>` : `<span class="text-[11px] text-slate-500">Završeno</span>`}
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+        function manualBuySelected(mint) {
+            const tokenObj = appState.tokensMap[mint];
+            if (tokenObj) executePaperOrDryRunBuy(tokenObj);
+        }
+
+        async function updateRiskConfig() {
+            appState.config.tradeSizeSol = parseFloat(document.getElementById("cfgTradeSize").value) || 0.5;
+            appState.config.maxTop10Pct = parseFloat(document.getElementById("cfgMaxTop10").value) || 35;
+            appState.config.minLiquidityUsd = parseFloat(document.getElementById("cfgMinLiq").value) || 5000;
+            appState.config.tp1Pct = parseFloat(document.getElementById("cfgTp1").value) || 80;
+            appState.config.stopLossPct = parseFloat(document.getElementById("cfgStopLoss").value) || -25;
+            appState.config.jitoTipSol = parseFloat(document.getElementById("cfgJitoTip").value) || 0.0015;
+            appState.config.maxOpenPositions = parseInt(document.getElementById("cfgMaxOpen").value, 10) || 2;
+            appState.config.fastInvalidationPct = parseFloat(document.getElementById("cfgFastInv").value) || -12;
+
+            Object.assign(appState.config, readV8SettingsInputs());
+
+            if (appState.pythonConnected) {
+                const payload = { ...appState.config };
+                delete payload.liveTradingEnabled;
+                await fetchFromPythonBridge("/api/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                await syncWithPythonBackend();
+            }
+            renderResearchInspector();
+        }
+
+        function toggleAutoPilot() {
+            appState.autoPilot = !appState.autoPilot;
+            const btn = document.getElementById("autoScanBtn");
+            const icon = document.getElementById("autoScanIcon");
+            const label = document.getElementById("autoScanLabel");
+
+            if (appState.autoPilot) {
+                btn.className = "flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium text-xs bg-sol-green/15 text-sol-green border border-sol-green/40 hover:bg-sol-green/25 transition";
+                icon.className = "fa-solid fa-play";
+                label.innerText = "Sync: ON";
+            } else {
+                btn.className = "flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium text-xs bg-slate-800 text-slate-400 border border-slate-700 hover:text-white transition";
+                icon.className = "fa-solid fa-pause";
+                label.innerText = "Sync: PAUSED";
+            }
+        }
+
+        function copyMintAddress(mint) {
+            navigator.clipboard.writeText(mint);
+            logAgent("DISCOVERY", `Mint adresa ${mint.slice(0, 10)}... kopirana u međuspremnik.`, "info");
+        }
+
+        window.onload = async function () {
+            renderPortfolioKPIs();
+            renderPositionsTable();
+            renderTrackedWallets();
+            buildV8SettingsGrid();
+
+            const connected = await syncWithPythonBackend();
+            if (connected) { refreshJournal(); refreshEquityCurve(); }
+
+            setInterval(async () => {
+                if (appState.autoPilot) await syncWithPythonBackend();
+            }, 2000);
+
+            setInterval(async () => {
+                if (appState.autoPilot && appState.pythonConnected) {
+                    await refreshJournal();
+                    await refreshEquityCurve();
+                }
+            }, 5000);
+            setInterval(renderPendingConfirmations, 1000);
+        };
+    </script>
+</body>
+</html>

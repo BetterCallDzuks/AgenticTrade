@@ -1,0 +1,271 @@
+# Solana Memecoin Multi-Agent Trading Bot: AgenticTrade v10.0
+
+A multi-agent system for discovering, checking and **paper-trading** Solana memecoins. It combines the Pump.fun WebSocket, the DexScreener API, RugCheck security checks, an optional Google Gemini analyst, a SQLite paper portfolio and a Jupiter/Jito dry-run executor, all behind a local web Command Center and an analytics dashboard.
+
+> **Paper trading only by default.** `LIVE_TRADING_ENABLED=false` stays off, and nothing in v10 turns it on (the dashboard cannot either). This software does not promise or predict profit. Memecoins are extremely risky. Replay and paper results are a way to test rules, not a forecast.
+
+---
+
+## What's in v9.0 (still active)
+
+v9.0 keeps the v8 risk engine and adds time-based and step-up protection plus Telegram control:
+
+- **Time-Stop**: closes a position if it has not reached the configured minimum profit after the configured hold time.
+- **Step-Up Trailing**: raises the stop floor at configured profit milestones before TP1.
+- **Telegram notifications and commands**: `/status`, `/sell_all`, `/reset_breaker`, `/help`.
+- **Mint/freeze authority fix**: RugCheck `mintAuthority: null` is correctly treated as revoked.
+- **v8 risk engine retained**: flow exits, whale exits, circuit breaker, confirmation before entry, realistic paper fills, dynamic sizing, cluster guard, wallet quality, decision journal, equity curve, stale-price protection, breakeven after TP1.
+
+### Exit order (checked every monitor tick, 4s)
+
+1. **WHALE_EXIT** 🐳: the entry whale sold this token.
+2. **TAKE_PROFIT_1** 🎯: +80% from the entry fill sells 50%.
+3. **FAST_INVALIDATION** ⚡: -12% within the first 90s.
+4. **STOP_LOSS** 🛑: -25%.
+5. **TIME_STOP** ⏱️: no configured pump after the configured hold time.
+6. **FLOW_EXIT** 💧: fresh flow, sells >= 3, sells > buys, and sells >= buys x 1.3.
+7. **TRAILING_STOP** 📉 / **BREAKEVEN_STOP** 🛡️ / **STEP_UP_STOP** 🪜: stop = max(trailing stop, breakeven floor, step-up floors).
+
+---
+
+## Install / run (Windows PowerShell)
+
+1. Back up `paper_portfolio.db` and `.env` if you already have them.
+2. Install or update packages:
+
+```powershell
+cd C:\Users\LiveTony\Documents\AgenticTrade
+pip install aiohttp pydantic python-dotenv tzdata google-genai
+```
+
+3. Create or update `.env` from `.env.example`. Keep `LIVE_TRADING_ENABLED=false`.
+4. Run the bot and open the dashboard:
+
+```powershell
+python research_bot.py
+```
+
+Open **http://localhost:8080**. The header shows **v9.0**.
+
+5. Optional checks:
+
+```powershell
+python test_v9.py
+```
+
+This runs local self-tests and prints `ALL TESTS PASSED`.
+
+6. Optional backup:
+
+```powershell
+.\backup.ps1
+```
+
+7. Optional restore from the latest backup:
+
+```powershell
+.\restore.ps1
+```
+
+---
+
+## Project layout
+
+```
+AgenticTrade/
+├── research_bot.py       # Python multi-agent bot + local web/API server (http://localhost:8080)
+├── command_center.html   # Web Command Center, live-synced with the bot
+├── analytics.html        # v10 analytics dashboard (/analytics)
+├── test_v9.py            # local self-tests (v9 + v10)
+├── smoke_v10.py          # end-to-end API smoke test
+├── requirements.txt      # Python dependencies
+├── backup.ps1            # backup helper for DB, .env and log
+├── restore.ps1           # restore helper from a backup folder
+├── Dockerfile            # optional container image
+├── docker-compose.yml    # optional container orchestration
+├── replay_v10.py         # v10 realized-trade replay report
+├── RELEASE_CHECKLIST.md  # pre-release/live-trading checklist
+├── .github/workflows/tests.yml
+├── agentictrade/         # incremental modular package
+│   ├── config.py         # env helpers
+│   ├── http.py           # retry/backoff helpers
+│   ├── models.py         # Pydantic models
+│   ├── telegram.py       # Telegram notifier + inline buttons
+│   ├── migrations.py     # schema_version / migrations (v10)
+│   ├── metrics.py        # metrics collection (v10)
+│   ├── observability.py  # JSON/audit logging + alert throttle (v10)
+│   ├── risk_analytics.py # VaR, drawdown, profit factor, HHI (v10)
+│   ├── backtest.py       # realized replay report (v10)
+│   ├── security.py       # optional token auth + rate limit (v10)
+│   ├── strategies.py     # risk profiles (v10)
+│   ├── ml.py             # advisory logistic model (v10)
+│   └── price_feed.py     # TTL price cache (v10)
+├── .env                  # your local config and keys (never share it)
+├── .env.example          # template with every setting
+├── paper_portfolio.db    # SQLite paper book (created automatically)
+├── bot_history.log       # persistent file log
+├── README.md
+└── .gitignore
+```
+
+## Agents
+
+1. **Discovery** (`DiscoveryAgent`, `PumpFunStreamAgent`): Pump.fun WebSocket (new tokens, migrations, tracked-whale trades) and DexScreener scans. Also records whale sells, which feed `WHALE_EXIT`.
+2. **Research** (`ResearchAgent`): free hard filters, then Gemini (or a strict heuristic without a key) returns BUY / WATCH / SKIP with risk and hype scores.
+3. **Risk & Portfolio** (`PaperTradingManager`): SQLite paper book plus the v9 risk engine.
+4. **Execution** (`SolanaExecutionAgent`): Jupiter v6 / PumpPortal routing with a Jito tip. **Dry-run only** while `LIVE_TRADING_ENABLED=false`.
+
+## API (camelCase)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/state` | wallet, positions, scans, logs, risk snapshot, config |
+| `GET /api/journal?limit=N` | decision journal |
+| `GET /api/equity` | equity curve points |
+| `GET /api/wallet_quality` | whale wallet scores |
+| `GET /api/circuit_breaker` | breaker state |
+| `GET /api/health` | lightweight health check |
+| `GET /api/metrics` | v10 aggregate metrics (trades, win rate, net PnL, open positions) |
+| `GET /api/portfolio_risk` | v10 portfolio risk: HHI, top position, open exposure, max drawdown, VaR95, expected shortfall, profit factor, expectancy, avg win/loss |
+| `GET /api/backtest` | realized replay: equity curve, daily PnL, exit/source/conviction breakdowns |
+| `GET /api/audit?limit=N` | JSONL audit trail (live attempts, dry-runs, blocked calls, WS failures) |
+| `GET /api/ml/status` | ML advisory model summary (accuracy, top weights) |
+| `GET /api/ml/predict?mint=...` | advisory buy/skip probability for a scored mint |
+| `POST /api/ml/train` | retrain the advisory model from closed paper trades |
+| `GET /analytics` | dedicated analytics dashboard page |
+| `POST /api/breaker/reset` | manual breaker reset |
+| `POST /api/confirmations/cancel` | cancel a pending entry `{mint}` |
+| `POST /api/config` | change runtime settings (never changes live trading) |
+| `POST /api/buy` / `POST /api/sell` | manual paper buy / manual close |
+
+## Modular package (`agentictrade/`)
+
+The project is being migrated incrementally from the original monolith into a small package:
+
+- `agentictrade/config.py` — environment variable helpers
+- `agentictrade/http.py` — retry/backoff helpers for HTTP calls
+- `agentictrade/models.py` — Pydantic models such as `TokenAnalysisDecision`
+- `agentictrade/telegram.py` — Telegram notifier and inline buttons
+- `agentictrade/migrations.py` — schema version and migrations (v10)
+- `agentictrade/metrics.py` — aggregate metrics (v10)
+- `agentictrade/observability.py` — file/JSON logger, JSONL audit trail, alert throttle (v10)
+- `agentictrade/risk_analytics.py` — drawdown, VaR, expected shortfall, profit factor, HHI (v10)
+- `agentictrade/backtest.py` — realized-trade replay report (v10)
+- `agentictrade/security.py` — optional dashboard token and rate limiter (v10)
+- `agentictrade/strategies.py` — conservative/balanced/aggressive risk profiles (v10)
+- `agentictrade/ml.py` — dependency-free logistic advisory model (v10)
+- `agentictrade/price_feed.py` — TTL price cache shared by the scan and monitor loops (v10)
+
+`research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
+
+## Continuous integration
+
+GitHub Actions workflow is located at:
+
+```text
+.github/workflows/tests.yml
+```
+
+It runs on push and pull request, installs dependencies from `requirements.txt`, and executes:
+
+```powershell
+python test_v9.py
+```
+
+The workflow currently runs on Windows to match the primary development environment.
+
+## Docker (optional)
+
+Build and run locally:
+
+```powershell
+docker compose up --build
+```
+
+The container exposes port `8080`. Mount or provide:
+
+- `.env`
+- `paper_portfolio.db`
+- `bot_history.log`
+
+Live trading remains disabled unless explicitly configured in `.env`.
+
+## Backup and restore
+
+Create a timestamped backup:
+
+```powershell
+.\backup.ps1
+```
+
+Restore from the latest backup:
+
+```powershell
+.\restore.ps1
+```
+
+Or restore from a specific folder:
+
+```powershell
+.\restore.ps1 -BackupPath "C:\Users\LiveTony\Desktop\AgenticTradeBackup\20260101_120000"
+```
+
+The restore script asks for confirmation before overwriting local files.
+
+## Telegram bot (buttons)
+
+The Telegram integration now uses inline buttons instead of slash commands:
+
+- Status, positions, journal, sell all, reset breaker, help
+- Analyze mint / buy mint prompt buttons, followed by sending the mint address
+- Button callbacks are handled through Telegram `callback_query` updates
+
+Slash commands are still supported for compatibility.
+
+## v10.0 progress
+
+The repository now includes the full v10 layer:
+
+**Data & risk**
+- `schema_version` table and migration helper (`agentictrade/migrations.py`), current schema `10.0.0`
+- aggregate metrics (`agentictrade/metrics.py`) and a shared risk-analytics library
+- portfolio risk now reports HHI concentration, top position weight, open exposure %, max drawdown, VaR95, expected shortfall, profit factor, expectancy and average win/loss
+- realized-trade backtest report (`agentictrade/backtest.py`, `replay_v10.py`, `GET /api/backtest`)
+
+**Execution safety**
+- `LIVE_TRADING_CONFIRMED` and `MAX_LIVE_TRADE_SOL` guards in `SolanaExecutionAgent.execute_buy`
+- JSONL audit trail for dry-runs, blocked live calls, sent transactions and RPC errors
+- deduplicated Telegram alerts for circuit breaker and stream failures
+
+**Operations**
+- optional `DASHBOARD_TOKEN` (sent as `X-Auth-Token` or `?token=`) and per-IP rate limiting
+- structured JSON logging option and `/api/audit`
+- strategy profiles: `STRATEGY_PROFILE=conservative|balanced|aggressive`; env values always win
+- TTL price cache to cut duplicate DexScreener calls (`PRICE_CACHE_ENABLED`, `PRICE_CACHE_TTL_SEC`)
+
+**Analytics**
+- dependency-free logistic advisory model (`agentictrade/ml.py`); it never changes sizing or trade decisions
+- dedicated analytics dashboard at `/analytics` (equity curve, risk ledger, concentration, exit anatomy, daily PnL, ML weights, audit feed, recent trades)
+
+These additions are intentionally non-breaking: v9 behavior remains the default. All new security features are opt-in.
+
+### Verifying v10
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+python test_v9.py      # unit + integration self-tests
+python smoke_v10.py    # starts the real API on port 18080 and checks every endpoint
+python replay_v10.py   # realized-trade replay report
+python -m agentictrade.ml status
+```
+
+## Known limitations
+
+- Without a Gemini key, the strict heuristic tops out below the auto-BUY threshold, so heuristic mode effectively never auto-buys. This is by design: fail-closed.
+- Pending confirmations live in memory. Restarting the bot drops them.
+- Tokens that exist only on the Pump.fun curve (no DexScreener quote yet) cannot pass confirmation or a manual buy, because no fresh price is available.
+- Wallet quality starts neutral and only becomes meaningful after a few closed trades per wallet.
+- Some older log and hard-filter messages are still in Croatian. The newer risk-engine messages are in English.
+- The web API is intended for local use. If you must expose port 8080 on a LAN, set `DASHBOARD_TOKEN` and keep the rate limit enabled. Do not expose it to the internet.
+- The ML model and the backtest are advisory/reporting only: the backtest replays realized trades (no synthetic OHLCV), and the model never opens, blocks or resizes trades.
+- Strategy profiles only fill environment variables that are not set explicitly; change `.env` values to override them.

@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  agentictrade:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./paper_portfolio.db:/app/paper_portfolio.db
+      - ./bot_history.log:/app/bot_history.log
+    restart: unless-stopped
