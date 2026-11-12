@@ -19,6 +19,7 @@ Use this checklist before any change that could enable real on-chain trading.
 - [ ] ML model treated as advisory only (`python -m agentictrade.ml status`)
 
 ## v11 specifics
+- [ ] `python -m agentictrade.doctor` prints `Result: OK` (or every warning is understood)
 - [ ] `GET /ready` returns `200` with `"database": true`
 - [ ] `GET /metrics` returns Prometheus text (`agentictrade_info`, HTTP counters)
 - [ ] CORS allowlist reviewed (`ALLOWED_ORIGINS`); `CORS_ALLOW_ALL` stays `false` when exposed

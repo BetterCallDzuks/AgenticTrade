@@ -920,6 +920,106 @@ def test_v11_ohlcv():
     print("  v11 OHLCV backtest: OK")
 
 
+def test_v11_config_validation():
+    from agentictrade.validate import summarize, validate_env
+
+    safe = {
+        "LIVE_TRADING_ENABLED": "false",
+        "INITIAL_PAPER_SOL": "10",
+        "TRADE_SIZE_SOL": "0.5",
+        "STOP_LOSS_PCT": "-25",
+        "TP1_PCT": "80",
+        "MAX_OPEN_POSITIONS": "2",
+        "MAX_DAILY_DRAWDOWN_PCT": "10",
+        "STRATEGY_PROFILE": "balanced",
+        "DASHBOARD_TOKEN": "unit-test-token-123",
+    }
+    fails, warns, _ = summarize(validate_env(safe))
+    assert fails == 0, validate_env(safe)
+    assert warns == 0, validate_env(safe)
+
+    live_unconfirmed = dict(safe, LIVE_TRADING_ENABLED="true")
+    fails, _, _ = summarize(validate_env(live_unconfirmed))
+    assert fails >= 2  # not confirmed + missing private key
+
+    live_ok = dict(
+        live_unconfirmed,
+        LIVE_TRADING_CONFIRMED="true",
+        SOLANA_PRIVATE_KEY="fake-test-key",
+        MAX_LIVE_TRADE_SOL="0.05",
+    )
+    fails, warns, _ = summarize(validate_env(live_ok))
+    assert fails == 0
+    assert any("live trading is ON" in issue.message for issue in validate_env(live_ok))
+
+    bad_numbers = dict(
+        safe,
+        STOP_LOSS_PCT="5",
+        TRADE_SIZE_SOL="50",
+        MAX_OPEN_POSITIONS="0",
+        API_RATE_LIMIT_PER_MIN="nope",
+    )
+    fails, _, _ = summarize(validate_env(bad_numbers))
+    assert fails >= 4
+
+    optional_warnings = dict(safe, DASHBOARD_TOKEN="", CORS_ALLOW_ALL="true", STRATEGY_PROFILE="yolo")
+    fails, warns, _ = summarize(validate_env(optional_warnings))
+    assert fails == 0 and warns >= 3
+
+    unknown_flag = dict(safe, LIVE_TRADING_ENABLED="maybe")
+    fails, _, _ = summarize(validate_env(unknown_flag))
+    assert fails == 1
+    print("  v11 config validation: OK")
+
+
+def test_v11_doctor():
+    import tempfile
+    from pathlib import Path
+    from agentictrade.doctor import load_env_file, run_checks
+
+    env = {
+        "LIVE_TRADING_ENABLED": "false",
+        "INITIAL_PAPER_SOL": "10",
+        "TRADE_SIZE_SOL": "0.5",
+        "STOP_LOSS_PCT": "-25",
+        "DASHBOARD_TOKEN": "smoke-token-1234",
+        "COMMAND_CENTER_HOST": "127.0.0.1",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        checks = run_checks(
+            env,
+            db_path=tmp_path / "doctor.db",
+            audit_path=tmp_path / "doctor_audit.jsonl",
+            check_socket=False,
+        )
+        names = {check.name: check for check in checks}
+        assert names["python"].status == "ok"
+        assert names["database"].status == "ok"
+        assert names["audit_log"].status == "ok"
+        assert names["config"].status == "ok"
+        assert names["dashboard_auth"].status == "ok"
+        assert not any(check.status == "fail" for check in checks), checks
+
+        assignments = tmp_path / ".env"
+        assignments.write_text(
+            "# comment\nDASHBOARD_TOKEN=abc123\nEMPTY=\nQUOTED='x y'\n", encoding="utf-8"
+        )
+        loaded = load_env_file(assignments)
+        assert loaded["DASHBOARD_TOKEN"] == "abc123"
+        assert loaded.get("QUOTED") == "x y"
+
+        missing = run_checks(
+            {},
+            env_file=tmp_path / "missing.env",
+            db_path=tmp_path / "other.db",
+            audit_path=tmp_path / "audit2.jsonl",
+            check_socket=False,
+        )
+        assert any(check.name == "env_file" and check.status == "warn" for check in missing)
+    print("  v11 doctor: OK")
+
+
 def main():
     print("Running AgenticTrade v11.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
@@ -948,6 +1048,8 @@ def main():
         test_v11_origin_policy()
         test_v11_shutdown_controller()
         test_v11_ohlcv()
+        test_v11_config_validation()
+        test_v11_doctor()
     finally:
         rb.AUDIT_LOG_PATH = original_audit_path
         try:

@@ -36,37 +36,49 @@ v9.0 keeps the v8 risk engine and adds time-based and step-up protection plus Te
 ## Install / run (Windows PowerShell)
 
 1. Back up `paper_portfolio.db` and `.env` if you already have them.
-2. Install or update packages:
+2. Install the pinned packages:
 
 ```powershell
 cd C:\Users\LiveTony\Documents\AgenticTrade
-pip install aiohttp pydantic python-dotenv tzdata google-genai
+pip install -r requirements.txt
 ```
 
 3. Create or update `.env` from `.env.example`. Keep `LIVE_TRADING_ENABLED=false`.
-4. Run the bot and open the dashboard:
+4. Run the pre-flight checks and fix every `FAIL` line before starting:
+
+```powershell
+python -m agentictrade.doctor
+```
+
+The doctor validates numbers, live-trading guards, the dashboard token, the
+database schema, the audit log path, the timezone and (optionally) whether the
+port is free. It is read-only and never sends an order.
+
+5. Run the bot and open the dashboard:
 
 ```powershell
 python research_bot.py
 ```
 
-Open **http://localhost:8080**. The header shows **v9.0**.
+Open **http://localhost:8080**. The header shows **v11.0**.
 
-5. Optional checks:
+6. Optional checks:
 
 ```powershell
 python test_v9.py
+python smoke_v10.py
 ```
 
-This runs local self-tests and prints `ALL TESTS PASSED`.
+The first runs local self-tests and prints `ALL TESTS PASSED`; the second starts
+the real API on an ephemeral port and prints `SMOKE OK`.
 
-6. Optional backup:
+7. Optional backup:
 
 ```powershell
 .\backup.ps1
 ```
 
-7. Optional restore from the latest backup:
+8. Optional restore from the latest backup:
 
 ```powershell
 .\restore.ps1
@@ -81,16 +93,23 @@ AgenticTrade/
 ├── research_bot.py       # Python multi-agent bot + local web/API server (http://localhost:8080)
 ├── command_center.html   # Web Command Center, live-synced with the bot
 ├── analytics.html        # v10 analytics dashboard (/analytics)
-├── test_v9.py            # local self-tests (v9 + v10)
+├── test_v9.py            # local self-tests (v9 + v10 + v11)
 ├── smoke_v10.py          # end-to-end API smoke test
-├── requirements.txt      # Python dependencies
+├── requirements.txt      # pinned runtime dependencies
+├── requirements-dev.txt  # Ruff, mypy, pip-audit
+├── pyproject.toml        # Ruff/mypy/pytest configuration
+├── CHANGELOG.md          # version history
+├── SECURITY.md           # vulnerability reporting and safety posture
 ├── backup.ps1            # backup helper for DB, .env and log
 ├── restore.ps1           # restore helper from a backup folder
 ├── Dockerfile            # optional container image
 ├── docker-compose.yml    # optional container orchestration
 ├── replay_v10.py         # v10 realized-trade replay report
 ├── RELEASE_CHECKLIST.md  # pre-release/live-trading checklist
+├── examples/             # sample candle data for the OHLCV backtester
 ├── .github/workflows/tests.yml
+├── .github/workflows/codeql.yml
+├── .github/dependabot.yml
 ├── agentictrade/         # incremental modular package
 │   ├── config.py         # env helpers
 │   ├── http.py           # retry/backoff helpers
@@ -101,10 +120,15 @@ AgenticTrade/
 │   ├── observability.py  # JSON/audit logging + alert throttle (v10)
 │   ├── risk_analytics.py # VaR, drawdown, profit factor, HHI (v10)
 │   ├── backtest.py       # realized replay report (v10)
-│   ├── security.py       # optional token auth + rate limit (v10)
+│   ├── security.py       # optional token auth + rate limit + origin policy (v10/v11)
 │   ├── strategies.py     # risk profiles (v10)
 │   ├── ml.py             # advisory logistic model (v10)
-│   └── price_feed.py     # TTL price cache (v10)
+│   ├── price_feed.py     # TTL price cache (v10)
+│   ├── prometheus.py     # metrics registry and text exposition (v11)
+│   ├── shutdown.py       # SIGINT/SIGTERM controller (v11)
+│   ├── ohlcv.py          # candle backtester + strategies + CLI (v11)
+│   ├── validate.py       # environment validation rules (v11)
+│   └── doctor.py         # read-only pre-flight CLI (v11)
 ├── .env                  # your local config and keys (never share it)
 ├── .env.example          # template with every setting
 ├── paper_portfolio.db    # SQLite paper book (created automatically)
@@ -267,6 +291,9 @@ These additions are intentionally non-breaking: v9 behavior remains the default.
 - **Graceful shutdown**: `SIGINT`/`SIGTERM` stop new cycles, cancel monitor/confirmation tasks, close the aiohttp runner and append a `shutdown` audit event.
 - **Safer browser surface**: CORS is now an allowlist (`ALLOWED_ORIGINS`, localhost on any port by default) instead of `*`; responses carry `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a CSP for HTML pages. `CORS_ALLOW_ALL=true` restores the old behaviour.
 - **Dependency auditing**: `pip-audit` runs in CI on every push.
+- **Config validation**: `agentictrade/validate.py` checks numeric ranges, live-trading guards, token strength, profiles and timezones; `python -m agentictrade.doctor` adds package, database-schema, audit-path and port checks and exits non-zero on any `FAIL`.
+- **Bind control**: `COMMAND_CENTER_HOST` (default `0.0.0.0`) and `COMMAND_CENTER_PORT` (default `8080`) let you keep the dashboard loopback-only. `PAPER_DB_PATH` selects the portfolio database.
+- **Supply chain**: Dependabot (pip + Actions), CodeQL (`security-and-quality`) and a `SECURITY.md` policy.
 
 ```powershell
 # scrape metrics locally
@@ -274,6 +301,9 @@ curl.exe -H "X-Auth-Token: $env:DASHBOARD_TOKEN" http://127.0.0.1:8080/metrics
 
 # override the browser allowlist (empty = localhost only)
 $env:ALLOWED_ORIGINS="https://my-dashboard.example.com"
+
+# validate configuration before starting the bot
+python -m agentictrade.doctor
 ```
 
 ### Verifying v10

@@ -1,0 +1,75 @@
+# Changelog
+
+All notable changes to AgenticTrade are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions use
+`MAJOR.MINOR.PATCH`.
+
+## [11.0.0] - 2026-11-12
+
+### Added
+
+- `agentictrade/prometheus.py`: dependency-free counters, gauges and
+  histograms with Prometheus text 0.0.4 exposition.
+- `GET /metrics` (HTTP counters and latency, trades, win rate, net PnL, open
+  positions, wallet balance, breaker state, uptime, build info) and
+  `GET /ready` (database, AI, Telegram, auth and live-mode checks). Both honour
+  `DASHBOARD_TOKEN` and the rate limiter.
+- `agentictrade/shutdown.py`: cross-platform `SIGINT`/`SIGTERM` controller.
+  Shutdown stops new cycles, cancels monitor/confirmation tasks, closes the
+  aiohttp runner and writes a `shutdown` audit event.
+- `agentictrade/ohlcv.py`: event-driven OHLCV backtester with CSV/JSON/
+  GeckoTerminal loaders, EMA-cross and breakout strategies, fee/slippage/
+  latency modelling, stop/take-profit/trailing/time exits, walk-forward splits
+  and a Markdown/JSON CLI (`python -m agentictrade.ohlcv`).
+- `agentictrade/validate.py` and `agentictrade/doctor.py`: configuration
+  validation plus a read-only pre-flight CLI (`python -m agentictrade.doctor`).
+- `COMMAND_CENTER_HOST`, `COMMAND_CENTER_PORT` and `PAPER_DB_PATH` environment
+  variables.
+- Security headers on every response (`X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, and a CSP for
+  HTML pages).
+- `SECURITY.md`, `CHANGELOG.md`, Dependabot and CodeQL workflows.
+- `requirements-dev.txt`, `pyproject.toml`, `.pre-commit-config.yaml` and a
+  Ruff/mypy/audit/test-matrix CI pipeline.
+
+### Changed
+
+- CORS is now an origin allowlist (`ALLOWED_ORIGINS`). Localhost on any port is
+  accepted by default; `CORS_ALLOW_ALL=true` restores the old wildcard.
+- Runtime dependencies are pinned exactly; `aiohttp` and `python-dotenv` were
+  bumped to clear known advisories.
+- `PaperTradingManager` honours `PAPER_DB_PATH`.
+- CI runs Ruff, mypy, `pip-audit` and the test suite on Ubuntu and Windows with
+  Python 3.11 and 3.12.
+
+### Fixed
+
+- Prometheus histogram buckets are exposed as cumulative counts.
+- `aiohttp` timeout arguments use `aiohttp.ClientTimeout`, avoiding implicit
+  session timeout confusion.
+- Telegram update handling no longer shadows the `message` payload.
+
+## [10.0.0] - 2026-10-20
+
+### Added
+
+- `schema_version` table and migration helper (`agentictrade/migrations.py`).
+- Aggregate metrics (`agentictrade/metrics.py`), risk analytics (HHI, top
+  weight, exposure, drawdown, VaR95, expected shortfall, profit factor,
+  expectancy) and a realized-trade replay (`replay_v10.py`, `GET /api/backtest`).
+- JSONL audit trail, deduplicated Telegram alerts, optional `DASHBOARD_TOKEN`
+  auth and per-IP rate limiting.
+- Strategy profiles (`STRATEGY_PROFILE`) and an advisory ML model
+  (`agentictrade/ml.py`).
+- Shared TTL price cache (`agentictrade/price_feed.py`).
+
+## [9.0.0] - 2026-09-30
+
+### Added
+
+- Pump.fun WebSocket discovery, DexScreener scans, RugCheck security checks and
+  optional Gemini research.
+- SQLite paper portfolio with stop loss, TP1, trailing stop, fast invalidation,
+  step-up stops, time stops, flow and whale exits.
+- Local Command Center (`command_center.html`) and analytics dashboard.
+- Dry-run Jupiter/PumpPortal executor with live-trading guards.

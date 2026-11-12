@@ -212,6 +212,9 @@ from agentictrade.prometheus import MetricsRegistry
 from agentictrade.shutdown import ShutdownController
 
 DASHBOARD_TOKEN = (os.environ.get("DASHBOARD_TOKEN") or "").strip()
+# v11: bind address is configurable, defaulting to the historical 0.0.0.0.
+COMMAND_CENTER_HOST = (os.environ.get("COMMAND_CENTER_HOST") or "0.0.0.0").strip()
+COMMAND_CENTER_PORT = env_int("COMMAND_CENTER_PORT", 8080)
 API_RATE_LIMIT_PER_MIN = env_int("API_RATE_LIMIT_PER_MIN", 240)
 API_RATE_LIMITER = RateLimiter(max_requests=API_RATE_LIMIT_PER_MIN, window_seconds=60.0)
 AUDIT_LOG_PATH = os.environ.get("AUDIT_LOG_PATH") or str(BASE_DIR / "bot_audit.jsonl")
@@ -3583,7 +3586,7 @@ async def start_command_center_server(
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
+    site = web.TCPSite(runner, COMMAND_CENTER_HOST, port)
     await site.start()
     url = f"http://127.0.0.1:{port}"
     print(f"🌐 [Command Center Bridge] Lokalni API & Web server aktivan na: {url}")
@@ -3650,7 +3653,7 @@ async def run_research_pipeline(
     discovery = DiscoveryAgent()
     pumpfun_stream = PumpFunStreamAgent(max_dev_buy_sol=15.0, min_initial_sol_in_curve=30.2)
     executor = SolanaExecutionAgent(live_trading_enabled=live_trading_enabled)
-    portfolio = PaperTradingManager()
+    portfolio = PaperTradingManager(db_path=os.environ.get("PAPER_DB_PATH") or "paper_portfolio.db")
 
     mode_str = "🔥 LIVE ON-CHAIN TRADING" if executor.live_trading_enabled else "🛡️ PAPER TRADING + JUPITER DRY-RUN"
     print(f"⚙️  Mod izvršavanja: {mode_str} | Telegram: {'ON ✅' if TELEGRAM.enabled else 'OFF (dodaj u .env)'}")
@@ -3742,6 +3745,12 @@ async def run_research_pipeline(
 
 if __name__ == "__main__":
     try:
-        asyncio.run(run_research_pipeline(cycles=100, interval_seconds=20))
+        asyncio.run(
+            run_research_pipeline(
+                cycles=100,
+                interval_seconds=20,
+                server_port=COMMAND_CENTER_PORT,
+            )
+        )
     except KeyboardInterrupt:
         print("\n[Shutdown] Interrupted before the event loop was ready.")
