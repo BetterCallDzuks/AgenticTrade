@@ -16,7 +16,7 @@ async def fetch_json_with_retry(
     last_exc = None
     for attempt in range(max(1, retries)):
         try:
-            async with session.get(url, params=params, timeout=timeout) as resp:
+            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
                 if resp.status == 429 or resp.status >= 500:
                     await asyncio.sleep(backoff * (attempt + 1))
                     continue
@@ -43,7 +43,7 @@ async def post_json_with_retry(
     last_exc = None
     for attempt in range(max(1, retries)):
         try:
-            async with session.post(url, json=payload, timeout=timeout) as resp:
+            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
                 if resp.status == 429 or resp.status >= 500:
                     await asyncio.sleep(backoff * (attempt + 1))
                     continue

@@ -18,6 +18,14 @@ Use this checklist before any change that could enable real on-chain trading.
 - [ ] `/api/audit` shows dry-run events but no unexpected live sends
 - [ ] ML model treated as advisory only (`python -m agentictrade.ml status`)
 
+## v11 specifics
+- [ ] `GET /ready` returns `200` with `"database": true`
+- [ ] `GET /metrics` returns Prometheus text (`agentictrade_info`, HTTP counters)
+- [ ] CORS allowlist reviewed (`ALLOWED_ORIGINS`); `CORS_ALLOW_ALL` stays `false` when exposed
+- [ ] `SIGINT`/`SIGTERM` stops the bot cleanly and writes a `shutdown` audit event
+- [ ] `pip-audit -r requirements.txt` is clean (or findings are triaged)
+- [ ] Ruff and mypy pass (`ruff check .`, `mypy`)
+
 ## Paper trading validation
 - [ ] Run bot in paper mode for at least 24 hours
 - [ ] Review `/api/journal` for unexpected BUY/SELL decisions

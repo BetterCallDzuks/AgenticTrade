@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 
 def env_float(key: str, default: float) -> float:

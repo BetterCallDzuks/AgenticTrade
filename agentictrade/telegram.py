@@ -58,7 +58,7 @@ class TelegramNotifier:
         if buttons:
             payload["reply_markup"] = {"inline_keyboard": buttons}
         try:
-            async with session.post(url, json=payload, timeout=6) as resp:
+            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=6)) as resp:
                 await resp.read()
         except Exception:
             pass
@@ -69,7 +69,7 @@ class TelegramNotifier:
         if text:
             payload["text"] = text
         try:
-            async with session.post(url, json=payload, timeout=5) as resp:
+            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                 await resp.read()
         except Exception:
             pass
@@ -207,7 +207,7 @@ class TelegramNotifier:
         url = f"https://api.telegram.org/bot{self.token}/getUpdates"
         params = {"offset": self.last_update_id + 1, "timeout": 1}
         try:
-            async with session.get(url, params=params, timeout=5) as resp:
+            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                 if resp.status != 200:
                     return
                 data = await resp.json()
@@ -246,10 +246,10 @@ class TelegramNotifier:
                             await self.send_now(session, "⚠️ Nepoznata tipka.", MAIN_BUTTONS)
                         continue
 
-                    msg = upd.get("message") or {}
-                    if str(msg.get("chat", {}).get("id", "")) != self.chat_id:
+                    message = upd.get("message") or {}
+                    if str(message.get("chat", {}).get("id", "")) != self.chat_id:
                         continue
-                    text = (msg.get("text") or "").strip()
+                    text = (message.get("text") or "").strip()
                     if not text:
                         continue
 

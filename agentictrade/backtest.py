@@ -8,7 +8,7 @@ is still useful for finding bad exit rules, weak sources and drawdown clusters.
 
 import sqlite3
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from agentictrade.risk_analytics import summarize
 
@@ -35,7 +35,7 @@ def _group(rows: List[sqlite3.Row], key: str) -> Dict[str, dict]:
 
 
 def build_report(db_path: str, initial_sol: float = 10.0) -> dict:
-    report = {
+    report: Dict[str, Any] = {
         "db": db_path,
         "initialSol": float(initial_sol),
         "summary": summarize([], float(initial_sol)),

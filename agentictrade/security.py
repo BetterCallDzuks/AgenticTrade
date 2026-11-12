@@ -8,7 +8,33 @@ completely unsafe. Both features are opt-in / non-breaking by default.
 import hmac
 import time
 from collections import deque
-from typing import Deque, Dict, Optional, Tuple
+from typing import Deque, Dict, Optional, Set, Tuple
+from urllib.parse import urlparse
+
+
+def parse_allowed_origins(raw: Optional[str]) -> Set[str]:
+    """Parse a comma separated ALLOWED_ORIGINS value."""
+    return {item.strip() for item in (raw or "").split(",") if item.strip()}
+
+
+def is_origin_allowed(origin: Optional[str], allowed: Set[str]) -> bool:
+    """Return True when a browser Origin may talk to the API.
+
+    Localhost origins on any port are accepted by default so the dashboard keeps
+    working when the server runs on a custom port. Set ALLOWED_ORIGINS="*" to
+    restore the old permissive behaviour.
+    """
+    if not origin:
+        return False
+    if "*" in allowed or origin in allowed:
+        return True
+    try:
+        parsed = urlparse(origin)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    return parsed.hostname in ("127.0.0.1", "localhost", "::1")
 
 
 def is_authorized(provided: Optional[str], expected: Optional[str]) -> bool:

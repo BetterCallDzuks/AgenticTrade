@@ -71,7 +71,7 @@ def profile_values(name: str = "balanced") -> Dict[str, float]:
 
 def resolve_profile(env: dict, name: str = "balanced") -> Dict[str, object]:
     """Return attribute overrides for env keys that are absent or empty."""
-    overrides = {}
+    overrides: Dict[str, object] = {}
     for key, value in profile_values(name).items():
         if not str(env.get(key) or "").strip():
             overrides[ATTRIBUTE_MAP[key]] = value

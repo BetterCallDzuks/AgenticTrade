@@ -1,9 +1,9 @@
-# Solana Memecoin Multi-Agent Trading Bot: AgenticTrade v10.0
+# Solana Memecoin Multi-Agent Trading Bot: AgenticTrade v11.0
 
 [![CI](https://github.com/BetterCallDzuks/AgenticTrade/actions/workflows/tests.yml/badge.svg)](https://github.com/BetterCallDzuks/AgenticTrade/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-10.0.0-e3a452.svg)](https://github.com/BetterCallDzuks/AgenticTrade)
+[![Version](https://img.shields.io/badge/version-11.0.0-e3a452.svg)](https://github.com/BetterCallDzuks/AgenticTrade)
 
 A multi-agent system for discovering, checking and **paper-trading** Solana memecoins. It combines the Pump.fun WebSocket, the DexScreener API, RugCheck security checks, an optional Google Gemini analyst, a SQLite paper portfolio and a Jupiter/Jito dry-run executor, all behind a local web Command Center and an analytics dashboard.
 
@@ -130,6 +130,8 @@ AgenticTrade/
 | `GET /api/wallet_quality` | whale wallet scores |
 | `GET /api/circuit_breaker` | breaker state |
 | `GET /api/health` | lightweight health check |
+| `GET /ready` | readiness check (database, AI, Telegram, auth, live mode) |
+| `GET /metrics` | Prometheus 0.0.4 exposition (HTTP counters/latency, trades, PnL, breaker, uptime) |
 | `GET /api/metrics` | v10 aggregate metrics (trades, win rate, net PnL, open positions) |
 | `GET /api/portfolio_risk` | v10 portfolio risk: HHI, top position, open exposure, max drawdown, VaR95, expected shortfall, profit factor, expectancy, avg win/loss |
 | `GET /api/backtest` | realized replay: equity curve, daily PnL, exit/source/conviction breakdowns |
@@ -160,6 +162,8 @@ The project is being migrated incrementally from the original monolith into a sm
 - `agentictrade/strategies.py` — conservative/balanced/aggressive risk profiles (v10)
 - `agentictrade/ml.py` — dependency-free logistic advisory model (v10)
 - `agentictrade/price_feed.py` — TTL price cache shared by the scan and monitor loops (v10)
+- `agentictrade/prometheus.py` — dependency-free counters/gauges/histograms and text exposition (v11)
+- `agentictrade/shutdown.py` — cross-platform SIGINT/SIGTERM controller (v11)
 
 `research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
 
@@ -171,13 +175,13 @@ GitHub Actions workflow is located at:
 .github/workflows/tests.yml
 ```
 
-It runs on push and pull request, installs dependencies from `requirements.txt`, and executes:
+It runs on every push and pull request and has three jobs:
 
-```powershell
-python test_v9.py
-```
+- **lint**: Ruff (`E4`, `E7`, `E9`, `F`) plus mypy over the `agentictrade` package
+- **test**: Python 3.11 and 3.12 on Ubuntu and Windows; runs `python test_v9.py` and `python smoke_v10.py`
+- **audit**: `pip-audit` against the pinned runtime dependencies
 
-The workflow currently runs on Windows to match the primary development environment.
+Dependencies are fully pinned in `requirements.txt`; tooling lives in `requirements-dev.txt`. Optional local hooks are configured in `.pre-commit-config.yaml`.
 
 ## Docker (optional)
 
@@ -253,6 +257,22 @@ The repository now includes the full v10 layer:
 - dedicated analytics dashboard at `/analytics` (equity curve, risk ledger, concentration, exit anatomy, daily PnL, ML weights, audit feed, recent trades)
 
 These additions are intentionally non-breaking: v9 behavior remains the default. All new security features are opt-in.
+
+## v11.0 progress
+
+- **Reproducible builds**: exact pins in `requirements.txt`, separate dev tooling, `pyproject.toml` with Ruff/mypy settings, and a CI matrix (Ubuntu + Windows, Python 3.11 + 3.12).
+- **Observability**: dependency-free Prometheus registry, `GET /metrics` (counters, latency histogram, DB-derived gauges, breaker state, uptime) and `GET /ready` for dependency checks. Both honour `DASHBOARD_TOKEN`.
+- **Graceful shutdown**: `SIGINT`/`SIGTERM` stop new cycles, cancel monitor/confirmation tasks, close the aiohttp runner and append a `shutdown` audit event.
+- **Safer browser surface**: CORS is now an allowlist (`ALLOWED_ORIGINS`, localhost on any port by default) instead of `*`; responses carry `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a CSP for HTML pages. `CORS_ALLOW_ALL=true` restores the old behaviour.
+- **Dependency auditing**: `pip-audit` runs in CI on every push.
+
+```powershell
+# scrape metrics locally
+curl.exe -H "X-Auth-Token: $env:DASHBOARD_TOKEN" http://127.0.0.1:8080/metrics
+
+# override the browser allowlist (empty = localhost only)
+$env:ALLOWED_ORIGINS="https://my-dashboard.example.com"
+```
 
 ### Verifying v10
 

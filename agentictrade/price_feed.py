@@ -8,7 +8,7 @@ shape without touching the call sites.
 import copy
 import time
 from collections import OrderedDict
-from typing import Dict, Optional
+from typing import Optional
 
 
 class PriceCache:

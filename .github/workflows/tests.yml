@@ -5,13 +5,32 @@ on:
   pull_request:
 
 jobs:
-  test:
-    runs-on: windows-latest
+  lint:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Mypy (agentictrade package)
+        run: mypy
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Run self-tests
@@ -22,3 +41,15 @@ jobs:
         run: python smoke_v10.py
         env:
           PYTHONIOENCODING: utf-8
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install pip-audit
+        run: pip install pip-audit==2.10.1
+      - name: Audit pinned runtime dependencies
+        run: pip-audit -r requirements.txt

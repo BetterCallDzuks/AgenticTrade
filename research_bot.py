@@ -1,6 +1,5 @@
 import asyncio
 import os
-import sys
 import json
 import base64
 import sqlite3
@@ -12,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 import aiohttp
 from aiohttp import web
-from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -202,8 +200,16 @@ def record_whale_sell(mint: str, wallet: str, label: str, ts: Optional[float] = 
 TELEGRAM = TelegramNotifier()
 
 # Optional dashboard protection (disabled when DASHBOARD_TOKEN is empty).
-from agentictrade.security import RateLimiter, client_ip, is_authorized
+from agentictrade.security import (
+    RateLimiter,
+    client_ip,
+    is_authorized,
+    is_origin_allowed,
+    parse_allowed_origins,
+)
 from agentictrade.observability import AlertThrottle, audit_event, configure_json_logging, log_event, read_audit
+from agentictrade.prometheus import MetricsRegistry
+from agentictrade.shutdown import ShutdownController
 
 DASHBOARD_TOKEN = (os.environ.get("DASHBOARD_TOKEN") or "").strip()
 API_RATE_LIMIT_PER_MIN = env_int("API_RATE_LIMIT_PER_MIN", 240)
@@ -211,6 +217,43 @@ API_RATE_LIMITER = RateLimiter(max_requests=API_RATE_LIMIT_PER_MIN, window_secon
 AUDIT_LOG_PATH = os.environ.get("AUDIT_LOG_PATH") or str(BASE_DIR / "bot_audit.jsonl")
 ALERT_THROTTLE = AlertThrottle(cooldown_sec=env_float("ALERT_COOLDOWN_SEC", 300.0))
 ML_MODEL_PATH = os.environ.get("ML_MODEL_PATH") or str(BASE_DIR / "ml_model.json")
+
+# v11: browser origin allowlist. Defaults to same-origin plus localhost on any
+# port; set ALLOWED_ORIGINS="*" (or CORS_ALLOW_ALL=true) for the old behaviour.
+CORS_ALLOW_ALL = env_bool("CORS_ALLOW_ALL", False)
+ALLOWED_ORIGINS = parse_allowed_origins(os.environ.get("ALLOWED_ORIGINS", ""))
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+    "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+    "img-src 'self' data:; "
+    "connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; "
+    "frame-ancestors 'self'; base-uri 'self'; object-src 'none'"
+)
+
+# v11: in-process Prometheus registry. Scraped through GET /metrics.
+START_MONOTONIC = time.monotonic()
+HTTP_METRICS = MetricsRegistry()
+HTTP_METRICS.describe(
+    "agentictrade_http_requests_total",
+    "HTTP requests handled by the Command Center API.",
+    "counter",
+)
+HTTP_METRICS.describe(
+    "agentictrade_http_request_duration_seconds",
+    "Command Center request latency in seconds.",
+    "histogram",
+)
+HTTP_METRICS.describe("agentictrade_uptime_seconds", "Process uptime in seconds.", "gauge")
+HTTP_METRICS.describe("agentictrade_db_up", "1 when the portfolio database is readable.", "gauge")
+HTTP_METRICS.describe("agentictrade_trades_total", "Closed trades recorded in the database.", "gauge")
+HTTP_METRICS.describe("agentictrade_win_rate", "Win rate over closed trades (0-1).", "gauge")
+HTTP_METRICS.describe("agentictrade_net_pnl_sol", "Realized net PnL in SOL.", "gauge")
+HTTP_METRICS.describe("agentictrade_open_positions", "Currently open paper positions.", "gauge")
+HTTP_METRICS.describe("agentictrade_wallet_balance_sol", "Paper wallet balance in SOL.", "gauge")
+HTTP_METRICS.describe("agentictrade_circuit_breaker_active", "1 when the circuit breaker is tripped.", "gauge")
+HTTP_METRICS.describe("agentictrade_info", "Build and execution mode information.", "gauge")
 
 from agentictrade.price_feed import PriceCache
 
@@ -2827,7 +2870,7 @@ class PaperTradingManager:
         total_equity = w["balance_sol"] + w["locked_sol"]
 
         print("\n" + "-" * 70)
-        print("💼 PAPER TRADING PORTFELJ (SQLite Stanje v10.0):")
+        print("💼 PAPER TRADING PORTFELJ (SQLite Stanje v11.0):")
         print(
             f"   💰 Slobodno: {w['balance_sol']:.3f} SOL | U pozicijama: {w['locked_sol']:.3f} SOL | "
             f"Ukupni kapital: {total_equity:.3f} SOL"
@@ -2889,7 +2932,7 @@ async def evaluate_and_record_candidate(
     pf_event: Optional[dict] = None
 ):
     set_runtime_phase("EVALUATING_TOKEN", mint)
-    print(f"\n----------------------------------------------------------------------")
+    print("\n----------------------------------------------------------------------")
     print(f"🧪 [{source_tag}] Analiziram token: {mint}")
 
     market_data, security_data = await asyncio.gather(
@@ -3070,7 +3113,7 @@ def build_config_payload(portfolio, researcher, executor) -> dict:
     cfg["liveTradingEnabled"] = executor.live_trading_enabled
     cfg["telegramEnabled"] = TELEGRAM.enabled
     cfg["timezone"] = BOT_TIMEZONE_NAME
-    cfg["version"] = "v10.0"
+    cfg["version"] = "v11.0"
     return cfg
 
 
@@ -3108,23 +3151,66 @@ def apply_config_payload(data: dict, portfolio, researcher, executor) -> List[st
     return changed
 
 
+def _is_protected_path(path: str) -> bool:
+    return path.startswith("/api/") or path in ("/metrics", "/ready")
+
+
+@web.middleware
+async def metrics_middleware(request: web.Request, handler):
+    """Record request counts and latency before any auth decision is made."""
+    started = time.perf_counter()
+    status = 500
+    try:
+        response = await handler(request)
+        status = response.status
+        return response
+    finally:
+        elapsed = time.perf_counter() - started
+        path = request.path
+        HTTP_METRICS.inc(
+            "agentictrade_http_requests_total",
+            {"method": request.method, "path": path, "status": str(status)},
+        )
+        HTTP_METRICS.observe(
+            "agentictrade_http_request_duration_seconds",
+            elapsed,
+            {"method": request.method, "path": path},
+        )
+
+
 @web.middleware
 async def cors_middleware(request: web.Request, handler):
+    origin = request.headers.get("Origin")
+    allowed = CORS_ALLOW_ALL or is_origin_allowed(origin, ALLOWED_ORIGINS)
+
     if request.method == "OPTIONS":
-        resp = web.Response(status=200)
+        if origin and not allowed:
+            return web.Response(status=403, text="origin not allowed")
+        resp = web.Response(status=204)
     else:
         resp = await handler(request)
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+
+    if origin and allowed:
+        resp.headers["Access-Control-Allow-Origin"] = "*" if CORS_ALLOW_ALL else origin
+        resp.headers["Vary"] = "Origin"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Auth-Token"
+        resp.headers["Access-Control-Max-Age"] = "600"
+
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    if resp.content_type == "text/html":
+        resp.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     return resp
 
 
 @web.middleware
 async def security_middleware(request: web.Request, handler):
-    """Optional token auth plus a simple per-IP rate limit for /api routes."""
-    if request.method == "OPTIONS" or not request.path.startswith("/api/"):
+    """Optional token auth plus a simple per-IP rate limit for protected routes."""
+    if request.method == "OPTIONS" or not _is_protected_path(request.path):
         return await handler(request)
     token = request.headers.get("X-Auth-Token") or request.query.get("token")
     if not is_authorized(token, DASHBOARD_TOKEN):
@@ -3149,7 +3235,9 @@ async def start_command_center_server(
     session: aiohttp.ClientSession,
     port: int = 8080
 ):
-    app = web.Application(middlewares=[cors_middleware, security_middleware])
+    app = web.Application(
+        middlewares=[metrics_middleware, cors_middleware, security_middleware]
+    )
 
     async def handle_index(request: web.Request):
         html_path = BASE_DIR / "command_center.html"
@@ -3163,7 +3251,7 @@ async def start_command_center_server(
         risk = portfolio.get_risk_snapshot()
         return web.json_response({
             "status": "ok",
-            "version": "v10.0",
+            "version": "v11.0",
             "security": {
                 "authEnabled": bool(DASHBOARD_TOKEN),
                 "rateLimitPerMin": API_RATE_LIMIT_PER_MIN,
@@ -3213,6 +3301,59 @@ async def start_command_center_server(
 
     async def handle_api_portfolio_risk(request: web.Request):
         return web.json_response({"ok": True, "portfolioRisk": portfolio.get_portfolio_risk()})
+
+    async def handle_ready(request: web.Request):
+        checks = {"database": False, "ai": bool(researcher.client), "telegram": TELEGRAM.enabled}
+        try:
+            conn = portfolio._conn()
+            try:
+                conn.execute("SELECT 1").fetchone()
+                checks["database"] = True
+            finally:
+                conn.close()
+        except Exception as e:
+            checks["dbError"] = str(e)
+        checks["liveTradingEnabled"] = bool(executor.live_trading_enabled)
+        checks["authEnabled"] = bool(DASHBOARD_TOKEN)
+        ok = checks["database"]
+        return web.json_response({"ok": ok, "checks": checks}, status=200 if ok else 503)
+
+    async def handle_metrics(request: web.Request):
+        try:
+            from agentictrade.metrics import collect_basic_metrics
+            db_metrics = collect_basic_metrics(portfolio.db_path)
+            HTTP_METRICS.set("agentictrade_db_up", 1)
+        except Exception:
+            db_metrics = {}
+            HTTP_METRICS.set("agentictrade_db_up", 0)
+
+        HTTP_METRICS.set("agentictrade_uptime_seconds", time.monotonic() - START_MONOTONIC)
+        HTTP_METRICS.set("agentictrade_trades_total", db_metrics.get("totalTrades", 0))
+        HTTP_METRICS.set("agentictrade_win_rate", db_metrics.get("winRate", 0))
+        HTTP_METRICS.set("agentictrade_net_pnl_sol", db_metrics.get("netPnlSol", 0))
+        HTTP_METRICS.set("agentictrade_open_positions", db_metrics.get("openPositions", 0))
+        try:
+            wallet = portfolio.get_wallet_status()
+            HTTP_METRICS.set("agentictrade_wallet_balance_sol", wallet.get("balance_sol", 0))
+        except Exception:
+            HTTP_METRICS.set("agentictrade_wallet_balance_sol", 0)
+        try:
+            breaker = portfolio.get_circuit_breaker_state()
+            HTTP_METRICS.set("agentictrade_circuit_breaker_active", 1 if breaker.get("tripped") else 0)
+        except Exception:
+            HTTP_METRICS.set("agentictrade_circuit_breaker_active", 0)
+        HTTP_METRICS.set(
+            "agentictrade_info",
+            1,
+            {
+                "version": "11.0",
+                "mode": "LIVE" if executor.live_trading_enabled else "PAPER",
+            },
+        )
+        return web.Response(
+            text=HTTP_METRICS.render(),
+            headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"},
+        )
 
     async def handle_api_audit(request: web.Request):
         try:
@@ -3402,7 +3543,7 @@ async def start_command_center_server(
     async def handle_api_health(request: web.Request):
         return web.json_response({
             "ok": True,
-            "version": "v10.0",
+            "version": "v11.0",
             "serverTimeUtc": fmt_utc(portfolio.now()),
             "serverTimeMs": int(portfolio.now_ts() * 1000),
             "telegramEnabled": TELEGRAM.enabled,
@@ -3416,6 +3557,8 @@ async def start_command_center_server(
     app.router.add_get("/api/journal", handle_api_journal)
     app.router.add_get("/api/equity", handle_api_equity)
     app.router.add_get("/api/metrics", handle_api_metrics)
+    app.router.add_get("/metrics", handle_metrics)
+    app.router.add_get("/ready", handle_ready)
     app.router.add_get("/api/portfolio_risk", handle_api_portfolio_risk)
     app.router.add_get("/api/audit", handle_api_audit)
     app.router.add_get("/api/ml/status", handle_api_ml_status)
@@ -3444,7 +3587,7 @@ async def start_command_center_server(
     await site.start()
     url = f"http://127.0.0.1:{port}"
     print(f"🌐 [Command Center Bridge] Lokalni API & Web server aktivan na: {url}")
-    add_agent_log("DISCOVERY", f"Spojen lokalni SQLite Command Center Bridge v10.0 na {url}", "success")
+    add_agent_log("DISCOVERY", f"Spojen lokalni SQLite Command Center Bridge v11.0 na {url}", "success")
     return runner
 
 
@@ -3520,6 +3663,7 @@ async def run_research_pipeline(
         runner = None
         monitor_task = None
         confirm_task = None
+        shutdown = ShutdownController().install()
         try:
             runner = await start_command_center_server(
                 portfolio, researcher, discovery, executor, session, port=server_port
@@ -3535,22 +3679,29 @@ async def run_research_pipeline(
             monitor_task = asyncio.create_task(_position_monitor_loop(portfolio, researcher, session))
             confirm_task = asyncio.create_task(_confirmation_loop(portfolio, researcher, executor, session))
             for cycle in range(1, cycles + 1):
+                if shutdown.requested:
+                    add_agent_log("SYSTEM", f"Shutdown requested ({shutdown.reason}); stopping before cycle {cycle}.", "warn")
+                    break
                 RUNTIME_STATUS["cycle"] = cycle
                 print(f"\n🔄 Pokrećem ciklus {cycle}/{cycles} (Web Dashboard: http://127.0.0.1:{server_port})...")
 
                 dex_mints = await discovery.fetch_latest_solana_candidates(session, limit=3)
                 for mint in dex_mints:
+                    if shutdown.requested:
+                        break
                     await evaluate_and_record_candidate(
                         session, mint, "DEXSCREENER", researcher, portfolio, executor
                     )
                     await asyncio.sleep(0.8)
 
-                if enable_pumpfun_ws:
+                if enable_pumpfun_ws and not shutdown.requested:
                     tracked_map = portfolio.get_tracked_wallets_map()
                     pf_events = await pumpfun_stream.listen_for_events(
                         session, tracked_wallets_map=tracked_map, duration_seconds=8, max_candidates=2
                     )
                     for ev in pf_events:
+                        if shutdown.requested:
+                            break
                         src = ev.get("source", "PUMPFUN_STREAM")
                         await evaluate_and_record_candidate(
                             session, ev["mint"], src, researcher, portfolio, executor, pf_event=ev
@@ -3560,9 +3711,15 @@ async def run_research_pipeline(
                 portfolio.print_portfolio_summary()
                 set_runtime_phase("IDLE_WAITING", None)
 
+                if shutdown.requested:
+                    break
                 if cycle < cycles:
-                    await asyncio.sleep(interval_seconds)
+                    try:
+                        await asyncio.wait_for(shutdown.event.wait(), timeout=interval_seconds)
+                    except asyncio.TimeoutError:
+                        pass
         finally:
+            set_runtime_phase("SHUTTING_DOWN", None)
             for task in (monitor_task, confirm_task):
                 if task:
                     task.cancel()
@@ -3572,7 +3729,19 @@ async def run_research_pipeline(
                         pass
             if runner:
                 await runner.cleanup()
+            shutdown.uninstall()
+            audit_event(
+                AUDIT_LOG_PATH,
+                "shutdown",
+                reason=shutdown.reason or "completed",
+                cycle=RUNTIME_STATUS.get("cycle"),
+            )
+            add_agent_log("SYSTEM", f"Shutdown complete ({shutdown.reason or 'completed'}).", "info")
+            print("\n[Shutdown] Tasks cancelled, HTTP runner closed, audit event written.")
 
 
 if __name__ == "__main__":
-    asyncio.run(run_research_pipeline(cycles=100, interval_seconds=20))
+    try:
+        asyncio.run(run_research_pipeline(cycles=100, interval_seconds=20))
+    except KeyboardInterrupt:
+        print("\n[Shutdown] Interrupted before the event loop was ready.")

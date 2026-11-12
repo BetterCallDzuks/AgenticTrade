@@ -1,5 +1,4 @@
 import sqlite3
-from typing import Optional
 
 
 CURRENT_SCHEMA_VERSION = "10.0.0"

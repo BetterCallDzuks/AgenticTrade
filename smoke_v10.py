@@ -45,7 +45,7 @@ async def main():
         await asyncio.sleep(0.8)
 
         health = await fetch(session, "/api/health")
-        assert '"v10.0"' in health, health
+        assert '"v11.0"' in health, health
 
         state = await fetch(session, "/api/state")
         for key in ("strategyProfile", "priceCache", "security"):
@@ -63,8 +63,40 @@ async def main():
         await fetch(session, "/api/journal?limit=5")
         await fetch(session, "/api/circuit_breaker")
 
+        ready = await fetch(session, "/ready")
+        assert '"database": true' in ready, ready
+        assert '"ok": true' in ready, ready
+
+        metrics = await fetch(session, "/metrics")
+        for key in ("agentictrade_info", "agentictrade_db_up", "agentictrade_http_requests_total"):
+            assert key in metrics, key
+        assert "# TYPE agentictrade_http_request_duration_seconds histogram" in metrics
+
         auth = await fetch(session, "/api/health", token=None, expect=401)
         assert "unauthorized" in auth
+        await fetch(session, "/metrics", token=None, expect=401)
+
+        async with session.get(
+            f"{BASE}/api/health",
+            headers={"Origin": "http://127.0.0.1:9999", "X-Auth-Token": TOKEN},
+        ) as resp:
+            assert resp.status == 200
+            assert resp.headers.get("Access-Control-Allow-Origin") == "http://127.0.0.1:9999"
+            assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+            assert resp.headers.get("X-Frame-Options") == "SAMEORIGIN"
+
+        async with session.get(
+            f"{BASE}/api/health",
+            headers={"Origin": "https://evil.example.com", "X-Auth-Token": TOKEN},
+        ) as resp:
+            assert resp.status == 200
+            assert "Access-Control-Allow-Origin" not in resp.headers
+
+        async with session.options(
+            f"{BASE}/api/state",
+            headers={"Origin": "https://evil.example.com"},
+        ) as resp:
+            assert resp.status == 403
 
         async with session.get(f"{BASE}/analytics") as resp:
             html = await resp.text()

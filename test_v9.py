@@ -108,7 +108,7 @@ def test_risk_snapshot_and_health_shape():
         researcher = rb.ResearchAgent()
         executor = rb.SolanaExecutionAgent(live_trading_enabled=False)
         cfg = rb.build_config_payload(portfolio, researcher, executor)
-        assert cfg["version"] == "v10.0"
+        assert cfg["version"] == "v11.0"
         assert cfg["liveTradingEnabled"] is False
         risk = portfolio.get_risk_snapshot()
         assert "circuitBreaker" in risk
@@ -677,8 +677,72 @@ def test_v10_price_cache():
     print("  v10 price cache: OK")
 
 
+def test_v11_prometheus():
+    from agentictrade.prometheus import MetricsRegistry
+
+    registry = MetricsRegistry(buckets=(0.1, 1.0))
+    registry.inc("requests_total", {"method": "GET", "path": "/api/state"})
+    registry.inc("requests_total", {"method": "GET", "path": "/api/state"})
+    registry.set("balance_sol", 9.5, {"wallet": "paper"})
+    registry.observe("latency_seconds", 0.05)
+    registry.observe("latency_seconds", 0.5)
+    registry.observe("latency_seconds", 2.0)
+    text = registry.render()
+
+    assert "# TYPE requests_total counter" in text
+    assert 'requests_total{method="GET",path="/api/state"} 2.0' in text
+    assert 'balance_sol{wallet="paper"} 9.5' in text
+    assert "# TYPE latency_seconds histogram" in text
+    assert 'latency_seconds_bucket{le="0.1"} 1' in text
+    assert 'latency_seconds_bucket{le="1.0"} 2' in text
+    assert 'latency_seconds_bucket{le="+Inf"} 3' in text
+    assert 'latency_seconds_count 3' in text
+    assert 'latency_seconds_sum 2.55' in text
+
+    escaped = MetricsRegistry()
+    escaped.set("gauge", 1, {"label": 'a"b\\c'})
+    assert 'label="a\\"b\\\\c"' in escaped.render()
+    print("  v11 prometheus: OK")
+
+
+def test_v11_origin_policy():
+    from agentictrade.security import is_origin_allowed, parse_allowed_origins
+
+    allowed = parse_allowed_origins("https://example.com, https://app.example.com")
+    assert allowed == {"https://example.com", "https://app.example.com"}
+    assert is_origin_allowed("https://example.com", allowed) is True
+    assert is_origin_allowed("https://evil.example.com", allowed) is False
+    assert is_origin_allowed("http://127.0.0.1:8080", set()) is True
+    assert is_origin_allowed("http://localhost:18080", set()) is True
+    assert is_origin_allowed("null", set()) is False
+    assert is_origin_allowed("https://example.com", {"*"}) is True
+    assert is_origin_allowed(None, allowed) is False
+    assert rb._is_protected_path("/api/state") is True
+    assert rb._is_protected_path("/metrics") is True
+    assert rb._is_protected_path("/ready") is True
+    assert rb._is_protected_path("/analytics") is False
+    print("  v11 origin policy: OK")
+
+
+def test_v11_shutdown_controller():
+    import asyncio
+    from agentictrade.shutdown import ShutdownController
+
+    async def scenario():
+        controller = ShutdownController()
+        assert controller.requested is False
+        controller.request("SIGTERM")
+        assert controller.requested is True and controller.reason == "SIGTERM"
+        controller.request("SIGINT")
+        assert controller.reason == "SIGTERM"
+        controller.uninstall()
+
+    asyncio.run(scenario())
+    print("  v11 shutdown controller: OK")
+
+
 def main():
-    print("Running AgenticTrade v10.0 self-tests...")
+    print("Running AgenticTrade v11.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
     original_audit_path = rb.AUDIT_LOG_PATH
     rb.AUDIT_LOG_PATH = str(run_audit_path)
@@ -701,6 +765,9 @@ def main():
         test_v10_strategy_profiles()
         test_v10_ml_advisory()
         test_v10_price_cache()
+        test_v11_prometheus()
+        test_v11_origin_policy()
+        test_v11_shutdown_controller()
     finally:
         rb.AUDIT_LOG_PATH = original_audit_path
         try:
