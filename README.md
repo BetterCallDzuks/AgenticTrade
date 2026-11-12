@@ -164,6 +164,7 @@ The project is being migrated incrementally from the original monolith into a sm
 - `agentictrade/price_feed.py` — TTL price cache shared by the scan and monitor loops (v10)
 - `agentictrade/prometheus.py` — dependency-free counters/gauges/histograms and text exposition (v11)
 - `agentictrade/shutdown.py` — cross-platform SIGINT/SIGTERM controller (v11)
+- `agentictrade/ohlcv.py` — event-driven OHLCV backtester, strategy library and walk-forward splits (v11)
 
 `research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
 
@@ -261,6 +262,7 @@ These additions are intentionally non-breaking: v9 behavior remains the default.
 ## v11.0 progress
 
 - **Reproducible builds**: exact pins in `requirements.txt`, separate dev tooling, `pyproject.toml` with Ruff/mypy settings, and a CI matrix (Ubuntu + Windows, Python 3.11 + 3.12).
+- **Research**: event-driven OHLCV backtester (`agentictrade/ohlcv.py`) with CSV/JSON/GeckoTerminal loaders, momentum and breakout strategies, fee/slippage/latency modelling and walk-forward splits. See `examples/candles_sample.csv`.
 - **Observability**: dependency-free Prometheus registry, `GET /metrics` (counters, latency histogram, DB-derived gauges, breaker state, uptime) and `GET /ready` for dependency checks. Both honour `DASHBOARD_TOKEN`.
 - **Graceful shutdown**: `SIGINT`/`SIGTERM` stop new cycles, cancel monitor/confirmation tasks, close the aiohttp runner and append a `shutdown` audit event.
 - **Safer browser surface**: CORS is now an allowlist (`ALLOWED_ORIGINS`, localhost on any port by default) instead of `*`; responses carry `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a CSP for HTML pages. `CORS_ALLOW_ALL=true` restores the old behaviour.
@@ -282,7 +284,30 @@ python test_v9.py      # unit + integration self-tests
 python smoke_v10.py    # starts the real API on port 18080 and checks every endpoint
 python replay_v10.py   # realized-trade replay report
 python -m agentictrade.ml status
+python -m agentictrade.ohlcv --help   # candle backtester CLI
 ```
+
+## OHLCV backtesting
+
+`agentictrade/ohlcv.py` is a real candle backtester, separate from the realized-trade replay:
+
+- loads CSV, JSON, or GeckoTerminal USD candles
+- long-only, one position at a time
+- signal at candle close, fill at a later candle open (no look-ahead)
+- configurable fees, slippage, latency, stop loss, take profit, trailing stop and time stop
+- stop is checked before trailing and take profit, so wide candles are handled conservatively
+- reports return, max drawdown, profit factor, expectancy, exposure, fees, per-trade Sharpe and exit reasons
+- `--walk-forward N` evaluates sequential out-of-sample segments
+
+```powershell
+# CSV columns: ts,open,high,low,close,volume (ISO timestamps or epoch seconds)
+python -m agentictrade.ohlcv --csv candles.csv --strategy momentum --fast 5 --slow 13
+python -m agentictrade.ohlcv --json candles.json --strategy breakout --lookback 30
+python -m agentictrade.ohlcv --pool <geckoterminal-pool> --timeframe hour --walk-forward 3
+python -m agentictrade.ohlcv --csv candles.csv --output json --save result.json
+```
+
+This engine ships with a momentum (EMA cross) and a breakout strategy. It is a research tool: a positive backtest is not a promise of future profit.
 
 ## Known limitations
 
@@ -292,7 +317,9 @@ python -m agentictrade.ml status
 - Wallet quality starts neutral and only becomes meaningful after a few closed trades per wallet.
 - Some older log and hard-filter messages are still in Croatian. The newer risk-engine messages are in English.
 - The web API is intended for local use. If you must expose port 8080 on a LAN, set `DASHBOARD_TOKEN` and keep the rate limit enabled. Do not expose it to the internet.
-- The ML model and the backtest are advisory/reporting only: the backtest replays realized trades (no synthetic OHLCV), and the model never opens, blocks or resizes trades.
+- The ML model is advisory only and never opens, blocks or resizes trades. The realized replay and the OHLCV backtester are research tools, not forecasts.
+- The OHLCV backtester uses close-based signals and conservative high/low exit checks; it cannot model order-book depth, MEV or partial fills.
+- Walk-forward segments reset the bankroll and do not re-optimize parameters; use it to compare strategies out of sample, not to tune them automatically.
 - Strategy profiles only fill environment variables that are not set explicitly; change `.env` values to override them.
 
 ## License

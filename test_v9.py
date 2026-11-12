@@ -741,6 +741,185 @@ def test_v11_shutdown_controller():
     print("  v11 shutdown controller: OK")
 
 
+def _synthetic_candles(closes):
+    from agentictrade.ohlcv import Candle
+
+    candles = []
+    previous = closes[0]
+    for index, close in enumerate(closes):
+        open_price = previous
+        high = max(open_price, close) * 1.01
+        low = min(open_price, close) * 0.99
+        candles.append(
+            Candle(
+                ts=float(index * 60),
+                open=open_price,
+                high=high,
+                low=low,
+                close=close,
+                volume=1000.0 + index,
+            )
+        )
+        previous = close
+    return candles
+
+
+class _RoundTripStrategy:
+    name = "round_trip"
+
+    def generate(self, history):
+        if len(history) == 2:
+            return "BUY"
+        if len(history) == 8:
+            return "SELL"
+        return None
+
+
+class _FirstBuyStrategy:
+    name = "first_buy"
+
+    def __init__(self):
+        self.done = False
+
+    def generate(self, history):
+        if not self.done and len(history) >= 2:
+            self.done = True
+            return "BUY"
+        return None
+
+
+def test_v11_ohlcv():
+    import tempfile
+    from pathlib import Path
+    from agentictrade.ohlcv import (
+        BacktestConfig,
+        BreakoutStrategy,
+        Candle,
+        EmaCrossStrategy,
+        candle_from_mapping,
+        load_candles_csv,
+        load_candles_json,
+        make_strategy,
+        normalize_candles,
+        run_backtest,
+        walk_forward,
+    )
+
+    rising = [1.0 + i * 0.02 for i in range(20)]
+    candles = _synthetic_candles(rising)
+
+    zero_cost = BacktestConfig(
+        initial_sol=10.0,
+        trade_size_sol=0.5,
+        fee_bps=0.0,
+        slippage_bps=0.0,
+        latency_candles=1,
+        stop_loss_pct=0.0,
+        take_profit_pct=0.0,
+        trailing_stop_pct=0.0,
+    )
+    result = run_backtest(candles, _RoundTripStrategy(), zero_cost)
+    assert len(result.trades) == 1, result.trades
+    assert result.trades[0]["exitReason"] == "SIGNAL"
+    assert result.trades[0]["pnlSol"] > 0
+    assert result.summary["trades"] == 1
+    assert result.summary["finalEquitySol"] > 10.0
+    assert result.summary["exposurePct"] > 0
+
+    costly = BacktestConfig(
+        initial_sol=10.0,
+        trade_size_sol=0.5,
+        fee_bps=100.0,
+        slippage_bps=300.0,
+        latency_candles=1,
+        stop_loss_pct=0.0,
+        take_profit_pct=0.0,
+        trailing_stop_pct=0.0,
+    )
+    costly_result = run_backtest(candles, _RoundTripStrategy(), costly)
+    assert costly_result.trades[0]["pnlSol"] < result.trades[0]["pnlSol"]
+    assert costly_result.summary["feesPaidSol"] > 0
+
+    stop_config = BacktestConfig(
+        initial_sol=10.0,
+        trade_size_sol=0.5,
+        fee_bps=0.0,
+        slippage_bps=0.0,
+        latency_candles=1,
+        stop_loss_pct=-10.0,
+        take_profit_pct=0.0,
+        trailing_stop_pct=0.0,
+    )
+    stop_candles = _synthetic_candles([1.0] * 10 + [0.85, 0.7])
+    stop_result = run_backtest(stop_candles, _FirstBuyStrategy(), stop_config)
+    assert stop_result.trades[0]["exitReason"] == "STOP_LOSS"
+    assert stop_result.trades[0]["pnlSol"] < 0
+
+    trend = _synthetic_candles([1.0] * 10 + [1.0 + i * 0.03 for i in range(1, 31)] + [1.9 - i * 0.03 for i in range(1, 31)])
+    momentum = run_backtest(trend, EmaCrossStrategy(fast=3, slow=8), zero_cost)
+    assert momentum.trades, "momentum strategy should trade on a clear trend"
+    assert momentum.summary["maxDrawdownPct"] >= 0
+
+    breakout = BreakoutStrategy(lookback=5, threshold_pct=0.1)
+    assert make_strategy("breakout", lookback=5).name == "breakout"
+    assert make_strategy("ema", fast=3, slow=8).name == "momentum"
+    assert breakout.generate(trend[:10]) in (None, "BUY", "SELL")
+
+    # Input handling
+    mapped = candle_from_mapping(
+        {"time": "2026-01-01T00:00:00Z", "open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 10}
+    )
+    assert mapped.ts > 0 and mapped.high == 2.0
+    try:
+        candle_from_mapping({"ts": 1, "open": 1, "high": 0.5, "low": 1, "close": 1})
+        raise AssertionError("invalid candle should fail")
+    except ValueError:
+        pass
+
+    with tempfile.TemporaryDirectory() as tmp:
+        csv_path = Path(tmp) / "candles.csv"
+        csv_path.write_text(
+            "ts,open,high,low,close,volume\n"
+            "2026-01-01T00:00:00Z,1.0,1.1,0.9,1.05,100\n"
+            "2026-01-01T00:01:00Z,1.05,1.2,1.0,1.15,120\n",
+            encoding="utf-8",
+        )
+        loaded = load_candles_csv(str(csv_path))
+        assert len(loaded) == 2 and loaded[1].close == 1.15
+
+        json_path = Path(tmp) / "candles.json"
+        json_path.write_text(
+            '{"candles": [{"t": 1, "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 4}]}',
+            encoding="utf-8",
+        )
+        try:
+            load_candles_json(str(json_path))
+            raise AssertionError("unknown keys should fail")
+        except ValueError:
+            pass
+
+        good_json = Path(tmp) / "good.json"
+        good_json.write_text(
+            '[[60, 1.0, 1.2, 0.9, 1.1, 10], [120, 1.1, 1.3, 1.0, 1.2, 11]]',
+            encoding="utf-8",
+        )
+        assert len(load_candles_json(str(good_json))) == 2
+
+    duplicate = normalize_candles([Candle(1, 1, 1, 1, 1), Candle(1, 2, 2, 2, 2)])
+    assert len(duplicate) == 1 and duplicate[0].close == 2
+
+    wf = walk_forward(
+        _synthetic_candles([1.0 + i * 0.01 for i in range(100)] + [2.0 - i * 0.01 for i in range(100)]),
+        lambda: EmaCrossStrategy(fast=3, slow=8),
+        zero_cost,
+        segments=2,
+        train_ratio=0.5,
+    )
+    assert wf["aggregate"]["segments"] == 2
+    assert len(wf["segments"]) == 2
+    print("  v11 OHLCV backtest: OK")
+
+
 def main():
     print("Running AgenticTrade v11.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
@@ -768,6 +947,7 @@ def main():
         test_v11_prometheus()
         test_v11_origin_policy()
         test_v11_shutdown_controller()
+        test_v11_ohlcv()
     finally:
         rb.AUDIT_LOG_PATH = original_audit_path
         try:

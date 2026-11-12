@@ -24,6 +24,7 @@ Use this checklist before any change that could enable real on-chain trading.
 - [ ] CORS allowlist reviewed (`ALLOWED_ORIGINS`); `CORS_ALLOW_ALL` stays `false` when exposed
 - [ ] `SIGINT`/`SIGTERM` stops the bot cleanly and writes a `shutdown` audit event
 - [ ] `pip-audit -r requirements.txt` is clean (or findings are triaged)
+- [ ] `python -m agentictrade.ohlcv --csv <sample.csv>` produces a sane report (sanity-check fees and slippage)
 - [ ] Ruff and mypy pass (`ruff check .`, `mypy`)
 
 ## Paper trading validation
