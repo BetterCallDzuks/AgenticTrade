@@ -3164,7 +3164,7 @@ class PaperTradingManager:
         total_equity = w["balance_sol"] + w["locked_sol"]
 
         print("\n" + "-" * 70)
-        print("💼 PAPER TRADING PORTFELJ (SQLite Stanje v11.0):")
+        print("💼 PAPER TRADING PORTFELJ (SQLite Stanje v12.0):")
         print(
             f"   💰 Slobodno: {w['balance_sol']:.3f} SOL | U pozicijama: {w['locked_sol']:.3f} SOL | "
             f"Ukupni kapital: {total_equity:.3f} SOL"
@@ -3414,7 +3414,7 @@ def build_config_payload(portfolio, researcher, executor) -> dict:
     cfg["liveTradingEnabled"] = executor.live_trading_enabled
     cfg["telegramEnabled"] = TELEGRAM.enabled
     cfg["timezone"] = BOT_TIMEZONE_NAME
-    cfg["version"] = "v11.0"
+    cfg["version"] = "v12.0"
     cfg["configHash"] = portfolio.config_hash
     cfg["costModel"] = portfolio._cost_model("BUY").as_dict()
     cfg["exitCostModel"] = portfolio._cost_model("SELL").as_dict()
@@ -3594,7 +3594,7 @@ async def start_command_center_server(
         risk = portfolio.get_risk_snapshot()
         return web.json_response({
             "status": "ok",
-            "version": "v11.0",
+            "version": "v12.0",
             "security": {
                 "authEnabled": bool(DASHBOARD_TOKEN),
                 "rateLimitPerMin": API_RATE_LIMIT_PER_MIN,
@@ -3689,7 +3689,7 @@ async def start_command_center_server(
             "agentictrade_info",
             1,
             {
-                "version": "11.0",
+                "version": "12.0",
                 "mode": "LIVE" if executor.live_trading_enabled else "PAPER",
             },
         )
@@ -3895,7 +3895,7 @@ async def start_command_center_server(
     async def handle_api_health(request: web.Request):
         return web.json_response({
             "ok": True,
-            "version": "v11.0",
+            "version": "v12.0",
             "serverTimeUtc": fmt_utc(portfolio.now()),
             "serverTimeMs": int(portfolio.now_ts() * 1000),
             "telegramEnabled": TELEGRAM.enabled,
@@ -3939,7 +3939,7 @@ async def start_command_center_server(
     await site.start()
     url = f"http://127.0.0.1:{port}"
     print(f"🌐 [Command Center Bridge] Lokalni API & Web server aktivan na: {url}")
-    add_agent_log("DISCOVERY", f"Spojen lokalni SQLite Command Center Bridge v11.0 na {url}", "success")
+    add_agent_log("DISCOVERY", f"Spojen lokalni SQLite Command Center Bridge v12.0 na {url}", "success")
     return runner
 
 
@@ -3988,7 +3988,7 @@ async def run_research_pipeline(
     server_port: int = 8080
 ):
     print("=" * 70)
-    print("🚀 SOLANA MEMECOIN MULTI-AGENT BOT (v9.0 — Mint/Freeze Fix · Time-Stop · Step-Up · Telegram)")
+    print("🚀 SOLANA MEMECOIN MULTI-AGENT BOT (v12.0 — Mint/Freeze Fix · Time-Stop · Step-Up · Telegram)")
     print("=" * 70)
 
     researcher = ResearchAgent()

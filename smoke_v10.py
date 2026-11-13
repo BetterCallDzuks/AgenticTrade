@@ -45,7 +45,7 @@ async def main():
         await asyncio.sleep(0.8)
 
         health = await fetch(session, "/api/health")
-        assert '"v11.0"' in health, health
+        assert '"v12.0"' in health, health
 
         state = await fetch(session, "/api/state")
         for key in ("strategyProfile", "priceCache", "security"):

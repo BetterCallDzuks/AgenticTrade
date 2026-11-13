@@ -28,6 +28,14 @@ Use this checklist before any change that could enable real on-chain trading.
 - [ ] `python -m agentictrade.ohlcv --csv <sample.csv>` produces a sane report (sanity-check fees and slippage)
 - [ ] Ruff and mypy pass (`ruff check .`, `mypy`)
 
+## v12 specifics
+- [ ] `python -m agentictrade.live_readiness` prints `PAPER` (exit 0) with 0 guard failures and 0 network calls
+- [ ] `python -m agentictrade.live_readiness --probe` is only run against the intended cluster and reaches RPC + Jupiter
+- [ ] `python -m agentictrade.ohlcv --csv <sample.csv> --stress-costs` reports a break-even multiplier
+- [ ] `python -m agentictrade.ohlcv --csv <sample.csv> --compare` ranks strategies deterministically on out-of-sample metrics
+- [ ] Rolling/anchored windows were re-run after changing strategy parameters (`--window-mode`, `--train-candles`, `--test-candles`)
+- [ ] `LIVE_TRADING_CONFIRMED` is unset or `false` until the live section below is complete
+
 ## Paper trading validation
 - [ ] Run bot in paper mode for at least 24 hours
 - [ ] Review `/api/journal` for unexpected BUY/SELL decisions

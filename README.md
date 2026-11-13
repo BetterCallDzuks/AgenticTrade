@@ -1,13 +1,280 @@
-# Solana Memecoin Multi-Agent Trading Bot: AgenticTrade v11.0
+# Solana Memecoin Multi-Agent Trading Bot: AgenticTrade v12.0
 
 [![CI](https://github.com/BetterCallDzuks/AgenticTrade/actions/workflows/tests.yml/badge.svg)](https://github.com/BetterCallDzuks/AgenticTrade/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-11.0.0-e3a452.svg)](https://github.com/BetterCallDzuks/AgenticTrade)
+[![Version](https://img.shields.io/badge/version-12.0.0-e3a452.svg)](https://github.com/BetterCallDzuks/AgenticTrade)
 
 A multi-agent system for discovering, checking and **paper-trading** Solana memecoins. It combines the Pump.fun WebSocket, the DexScreener API, RugCheck security checks, an optional AI analyst (Google Gemini or any local OpenAI-compatible model), a SQLite paper portfolio and a Jupiter/Jito dry-run executor, all behind a local web Command Center and an analytics dashboard.
 
 > **Paper trading only by default.** `LIVE_TRADING_ENABLED=false` stays off, and nothing in v10 turns it on (the dashboard cannot either). This software does not promise or predict profit. Memecoins are extremely risky. Replay and paper results are a way to test rules, not a forecast.
+
+---
+
+## Contents
+
+- [Quick start](#quick-start)
+- [Using the bot](#using-the-bot)
+- [Install / run (Linux / Ubuntu)](#install--run-linux--ubuntu)
+- [Install / run (Windows PowerShell)](#install--run-windows-powershell)
+- [Project layout](#project-layout)
+- [Agents](#agents)
+- [API](#api-camelcase)
+- [v12.0 progress](#v120-progress)
+- [OHLCV backtesting](#ohlcv-backtesting)
+- [Backup and restore](#backup-and-restore)
+- [Docker](#docker-optional)
+- [Troubleshooting](#troubleshooting)
+- [Known limitations](#known-limitations)
+
+## Quick start
+
+The shortest path from a clean checkout to a running **paper-trading** bot. No
+wallet, private key or SOL is needed for paper mode.
+
+### 1. Prerequisites
+
+- **Python 3.11+** with `venv` support (`python3 -m venv --help` must work).
+- Internet access for DexScreener and Pump.fun discovery, and optionally for an
+  LLM provider.
+- Optional: a `GEMINI_API_KEY` or a local OpenAI-compatible server. With no LLM
+  the bot runs a strict heuristic that deliberately never auto-buys.
+
+### 2. Install
+
+Linux / macOS:
+
+```bash
+git clone https://github.com/BetterCallDzuks/AgenticTrade.git
+cd AgenticTrade
+cp .env.example .env
+$EDITOR .env
+./run.sh
+```
+
+`run.sh` creates `.venv/`, installs the pinned dependencies, warns if `.env` is
+missing, runs the pre-flight doctor, and starts the bot.
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/BetterCallDzuks/AgenticTrade.git
+cd AgenticTrade
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+notepad .env
+.\.venv\Scripts\python.exe -m agentictrade.doctor
+.\.venv\Scripts\python.exe research_bot.py
+```
+
+Both paths install the same pins. Re-running `./run.sh` (or `bootstrap.sh`) is
+safe and only reinstalls when `requirements.txt` changes.
+
+### 3. Configure
+
+`cp .env.example .env` and edit it. These are the only values that change
+behaviour on day one:
+
+| Variable | Default | What to do |
+|---|---|---|
+| `LIVE_TRADING_ENABLED` | `false` | **Leave it `false`.** Paper mode cannot send an on-chain order. |
+| `GEMINI_API_KEY` | empty | Optional. Enables the Gemini analyst. |
+| `LLM_BASE_URL` + `LLM_MODEL` | empty | Optional alternative: Ollama, llama.cpp, LM Studio, vLLM. |
+| `INITIAL_PAPER_SOL` | `10.0` | Paper bankroll. |
+| `TRADE_SIZE_SOL` | `0.5` | Paper size per entry. |
+| `STRATEGY_PROFILE` | `balanced` | `conservative`, `balanced` or `aggressive`. |
+| `DASHBOARD_TOKEN` | empty | Only needed if the dashboard binds beyond `127.0.0.1`. |
+
+Everything else in `.env.example` is grouped by topic with comments; the
+defaults are a complete, working paper configuration. Explicit environment
+values always win over `STRATEGY_PROFILE` defaults. `.env` is read at startup,
+so restart after editing it.
+
+### 4. Verify before the first run
+
+```bash
+python -m agentictrade.doctor          # must print: Result: OK
+python -m agentictrade.live_readiness  # must print: Status: PAPER
+```
+
+Optional but quick:
+
+```bash
+python test_v9.py     # prints ALL TESTS PASSED
+python smoke_v10.py   # starts the real API on an ephemeral port, prints SMOKE OK
+```
+
+### 5. Run it
+
+```bash
+./run.sh
+# or, with the venv active:
+python research_bot.py
+```
+
+Open **http://127.0.0.1:8080** — the bot also tries to open a browser. A run is
+**100 scan cycles, 20 seconds apart (roughly 35 minutes)**, plus endpoint
+monitoring every `POSITION_MONITOR_SEC` (4s) and pending confirmations every 2s.
+When the cycles finish, or on `Ctrl+C`/`SIGTERM`, it shuts down cleanly and
+writes a `shutdown` audit event. Restart it for another session.
+
+Watch the first cycles before changing anything: discovery, filters, AI verdict
+and risk checks are all visible in the terminal, the dashboard and
+`bot_history.log`.
+
+### 6. Stop it
+
+Press `Ctrl+C` in the terminal (or send `SIGTERM`). Open positions are paper
+positions and remain in `paper_portfolio.db` for the next run.
+
+---
+
+## Using the bot
+
+### What a run does
+
+1. **Discovery** — scans the latest DexScreener candidates (3 per cycle) and
+   listens to Pump.fun WebSocket events (new tokens, migrations, tracked-whale
+   trades) for 8 seconds per cycle.
+2. **Research and gates** — free hard filters run first (liquidity, volume,
+   holder concentration, chase/dump checks, freshness). Only survivors reach the
+   LLM or heuristic analyst, which returns BUY / WATCH / SKIP with risk and hype
+   scores.
+3. **Entry confirmation** — an automatic BUY is not filled immediately. The bot
+   watches the price for `ENTRY_CONFIRM_SEC` (20s) and cancels if it drops more
+   than `ENTRY_CONFIRM_MAX_DROP_PCT` (4%). Pending entries are persisted and
+   survive a restart within `ENTRY_CONFIRM_RECOVERY_MAX_SEC` (900s).
+4. **Paper fill** — the position is opened in SQLite using the shared cost model
+   (fee, slippage, impact, priority fee, failed-transaction probability).
+5. **Monitoring** — every 4s the position is marked to market and the shared
+   exit ladder runs (see [Exit order](#whats-in-v90-still-active)).
+6. **Execution dry-run** — with live trading off, the execution agent returns a
+   `DRY_RUN_READY` (Pump.fun curve) or `DRY_RUN_QUOTED` (Jupiter) plan and
+   records it in the audit log. No order leaves the machine.
+
+### The Command Center
+
+Open **http://127.0.0.1:8080**:
+
+- **`/`** — KPI cards (balance, locked SOL, open positions, PnL, win rate), the
+  four agent cards (Discovery, Research, Risk, Execution), open positions with a
+  sell button, pending confirmations, the circuit-breaker banner, a runtime
+  config panel, the decision journal, the equity chart and the audit feed.
+- **`/analytics`** — equity curve, portfolio risk ledger, concentration (HHI),
+  exit anatomy, daily PnL, ML weights, audit feed and recent trades.
+- **`/metrics`** — Prometheus text exposition (honours `DASHBOARD_TOKEN`).
+- **`/ready`** — dependency readiness (database, AI, Telegram, auth, live mode).
+- **`/api/state`** — everything the dashboard polls, as JSON.
+
+Some legacy UI labels are still Croatian; the underlying data and API are
+English.
+
+### Manual controls
+
+| Action | Dashboard | API |
+|---|---|---|
+| Analyze a mint | paste mint → analyze | `POST /api/analyze` `{"mint": "..."}` |
+| Paper buy | paste mint → BUY | `POST /api/buy` `{"mint": "..."}` |
+| Close a position | sell 100% on the row | `POST /api/sell` `{"mint": "..."}` |
+| Cancel a pending entry | `cancel` on the confirmation | `POST /api/confirmations/cancel` `{"mint": "..."}` |
+| Reset the circuit breaker | banner button | `POST /api/breaker/reset` |
+| Change runtime knobs | config panel | `POST /api/config` |
+
+Manual buys are fail-closed: without a fresh DexScreener quote the API returns
+`400` and journals a `BLOCK`/`STALE_PRICE` decision instead of guessing a price.
+`/api/config` can change sizing and risk settings at runtime but **cannot**
+enable live trading; that only comes from `.env` and a restart.
+
+### Strategy profiles
+
+`STRATEGY_PROFILE` fills the risk defaults for keys you have not set explicitly:
+
+| Profile | Trade size | Max open | Stop | TP1 | Daily stops | Daily drawdown |
+|---|---|---|---|---|---|---|
+| `conservative` | 0.25 SOL | 2 | -18% | +60% | 1 | 3% |
+| `balanced` | 0.5 SOL | 2 | -25% | +80% | 2 | 5% |
+| `aggressive` | 0.75 SOL | 3 | -35% | +120% | 3 | 8% |
+
+Explicit env values always win. The most useful knobs to tune after a few paper
+sessions are `TRADE_SIZE_SOL`, `MAX_OPEN_POSITIONS`, `STOP_LOSS_PCT`, `TP1_PCT`,
+`TP1_FRACTION`, `FINAL_TAKE_PROFIT_PCT`, `MAX_DAILY_TRADES`,
+`MAX_DAILY_DRAWDOWN_PCT`, `MIN_LIQUIDITY_USD` and `MAX_TOP10_HOLDER_PCT`.
+
+### Where to look when something happens
+
+| Artifact | What it contains |
+|---|---|
+| terminal | live cycle log, AI/agent decisions and errors |
+| `bot_history.log` | persistent text log |
+| `bot_audit.jsonl` | JSONL events: `dry_run_buy`, `live_buy_blocked`, `live_tx_sent`, `live_tx_rpc_error`, `shutdown`, WS failures |
+| `paper_portfolio.db` | SQLite paper book (schema `10.1.0`): positions, trades, journal, equity, pending confirmations |
+| `GET /api/journal`, `/api/equity`, `/api/portfolio_risk`, `/api/backtest` | decision and performance views |
+| `python replay_v10.py` | realized-trade replay report |
+
+`JSON_LOGS=true` switches the file logger to structured JSON. `/api/audit`
+returns the tail of the audit trail.
+
+### Research before risking money
+
+These commands are local, deterministic and never place an order. See
+[OHLCV backtesting](#ohlcv-backtesting) for flags and examples.
+
+```bash
+# Backtest one parameter set
+python -m agentictrade.ohlcv --csv examples/candles_sample.csv --strategy momentum
+
+# Select parameters on train slices, then measure them out of sample
+python -m agentictrade.ohlcv --csv candles.csv --optimize --objective sharpe
+
+# Ask how much worse costs can get before the edge disappears
+python -m agentictrade.ohlcv --csv candles.csv --stress-costs
+
+# Rank momentum vs breakout on the same windows and costs
+python -m agentictrade.ohlcv --csv candles.csv --compare
+```
+
+A positive research result is evidence about a rule, not a forecast. Treat
+`--compare` as "which candidate held up best", never as "this will profit".
+
+### Before arming live trading
+
+Live trading is a deliberate, separate step:
+
+1. Keep `LIVE_TRADING_ENABLED=false` until paper results and the readiness audit
+   are clean.
+2. Install the optional signing package: `pip install solders`.
+3. Run `python -m agentictrade.live_readiness --probe` (or add `--env-file`).
+   While live trading is still off it prints `PAPER`, and the probe must reach
+   your RPC and Jupiter.
+4. Set `SOLANA_RPC_URL`, `SOLANA_PRIVATE_KEY`, `LIVE_TRADING_ENABLED=true`,
+   `LIVE_TRADING_CONFIRMED=true` and a small `MAX_LIVE_TRADE_SOL`.
+5. Re-run the readiness audit. It must print `READY` with zero failed guard
+   scenarios and a matching RPC. `READY` means the guards are armed, not that a
+   trade is safe.
+6. Read [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and start with the smallest
+   size you can afford to lose.
+
+### Operating checklists
+
+**Every session**
+
+- `python -m agentictrade.doctor` → `Result: OK`.
+- Open `/ready` and `/metrics`; confirm the DB and AI are healthy.
+- Watch the first cycle in the terminal and the journal.
+- Review `bot_audit.jsonl` for unexpected `live_buy_blocked` or error events.
+
+**Weekly**
+
+- Run `./backup.sh` (or `.\backup.ps1`).
+- `chmod 600 .env` and rotate `DASHBOARD_TOKEN` if it was ever shared.
+- Review closed trades and exit reasons in `/analytics`.
+- Re-run the research commands after changing strategy parameters.
+
+**After pulling changes**
+
+- Re-run `./run.sh` (it reinstalls only when pins change) and the full gates:
+  `ruff check .`, `mypy`, `python test_v9.py`, `python smoke_v10.py`.
 
 ---
 
@@ -92,7 +359,7 @@ python -m agentictrade.doctor            # must print: Result: OK
 python research_bot.py
 ```
 
-Open **http://localhost:8080** — the header shows **v11.0**. The dashboard binds
+Open **http://localhost:8080** — the header shows **v12.0**. The dashboard binds
 loopback (`127.0.0.1`) by default. To reach it from another machine, set
 `COMMAND_CENTER_HOST=0.0.0.0` **and** a `DASHBOARD_TOKEN`: the bot refuses to
 start on a non-loopback bind without a token (override with
@@ -126,16 +393,32 @@ directly.
 
 ## Install / run (Windows PowerShell)
 
-1. Back up `paper_portfolio.db` and `.env` if you already have them.
-2. Install the pinned packages:
+Requires **Python 3.11+** (install from python.org and tick *Add python.exe to
+PATH*) and PowerShell 5.1+. The bot always runs inside a project virtualenv, so
+the install never touches the system interpreter.
 
 ```powershell
-cd C:\Users\LiveTony\Documents\AgenticTrade
+git clone https://github.com/BetterCallDzuks/AgenticTrade.git
+cd AgenticTrade
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-3. Create or update `.env` from `.env.example`. Keep `LIVE_TRADING_ENABLED=false`.
-4. Run the pre-flight checks and fix every `FAIL` line before starting:
+If `Activate.ps1` is blocked by the execution policy, either allow it for the
+current user (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`) or skip
+activation and call the interpreter directly:
+`.\.venv\Scripts\python.exe -m pip install -r requirements.txt`.
+
+1. Create `.env` from `.env.example` and keep `LIVE_TRADING_ENABLED=false`:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+2. Run the pre-flight checks and fix every `FAIL` line before starting:
 
 ```powershell
 python -m agentictrade.doctor
@@ -159,15 +442,16 @@ It prints `PAPER` (exit 0), `READY` (exit 0, live is armed and the guards
 passed) or `BLOCKED` (exit 1) with the failing configuration keys. It never
 places an order and never prints the private key.
 
-5. Run the bot and open the dashboard:
+3. Run the bot and open the dashboard:
 
 ```powershell
 python research_bot.py
 ```
 
-Open **http://localhost:8080**. The header shows **v11.0**.
+Open **http://127.0.0.1:8080** — the header shows **v12.0**. `START_BOT.bat` is
+a convenience wrapper that runs `python research_bot.py` from its own folder.
 
-6. Optional checks:
+4. Optional checks:
 
 ```powershell
 python test_v9.py
@@ -177,15 +461,10 @@ python smoke_v10.py
 The first runs local self-tests and prints `ALL TESTS PASSED`; the second starts
 the real API on an ephemeral port and prints `SMOKE OK`.
 
-7. Optional backup:
+5. Optional backup and restore:
 
 ```powershell
 .\backup.ps1
-```
-
-8. Optional restore from the latest backup:
-
-```powershell
 .\restore.ps1
 ```
 
@@ -492,6 +771,34 @@ python -m agentictrade.ml status
 python -m agentictrade.ohlcv --help   # candle backtester CLI
 ```
 
+## v12.0 progress
+
+v12 turns the research and execution-readiness layers from "one backtest" into
+evidence that is harder to fool, without changing the paper-trading default:
+
+- **Rolling and anchored walk-forward windows** (`--window-mode rolling|anchored`,
+  `--train-candles`, `--test-candles`) with a per-window stability score, so a
+  parameter set must survive more than one lucky split.
+- **Cost stress and break-even** (`--stress-costs`, `--cost-multipliers`): sweeps
+  fees, slippage, impact and failed-transaction probability and reports how much
+  worse execution can get before the edge disappears.
+- **Out-of-sample strategy comparison** (`--compare`, `--compare-strategies`):
+  runs momentum and breakout through the same optimizer and cost sweep, then
+  ranks them by objective, break-even, stability and name in one report
+  (`agentictrade/compare.py`).
+- **Live-execution readiness audit** (`python -m agentictrade.live_readiness
+  [--json] [--probe]`): drives the real `execute_buy` guards against a session
+  that refuses every request, proving `DRY_RUN_READY`, `BLOCKED` and `ERROR`
+  paths with zero network calls. Reports `PAPER`/`READY`/`BLOCKED`, never prints
+  the private key, and only touches the network with `--probe`.
+- **Consistent cost model everywhere**: the paper book, the OHLCV backtester,
+  cost stress, the optimizer, the comparison and the ML labels all share
+  `COST_MODEL_VERSION` and `agentictrade/costs.py`, so a research result is
+  measured against the same round-trip cost the bot actually pays.
+
+None of this predicts profit. It makes the failures cheaper: you can reject a
+strategy, or refuse to arm the live path, before it costs anything.
+
 ## OHLCV backtesting
 
 `agentictrade/ohlcv.py` is a real candle backtester, separate from the realized-trade replay:
@@ -620,6 +927,32 @@ research artifact, not a recommendation: two strategies can both lose money and
 still be ranked.
 
 This engine ships with a momentum (EMA cross) and a breakout strategy. It is a research tool: a positive backtest is not a promise of future profit.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `error: externally-managed-environment` on `pip install` | You are installing into the distro Python (PEP 668) | Use the project venv: `./run.sh` or `.venv/bin/python -m pip install -r requirements.txt`. Never `pip install` as root. |
+| `ModuleNotFoundError: aiohttp` / `pydantic` / `dotenv` | The venv is not active, or dependencies are missing | `source .venv/bin/activate` (Windows: `.\.venv\Scripts\Activate.ps1`), then `pip install -r requirements.txt`. Re-run `./run.sh` if unsure. |
+| `./run.sh: Permission denied` | The script is not executable | `chmod +x run.sh bootstrap.sh backup.sh restore.sh` |
+| `Activate.ps1 cannot be loaded` (Windows) | PowerShell execution policy | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or call `.\.venv\Scripts\python.exe` directly. |
+| Doctor prints `FAIL` for `live_trading_confirmed` / `SOLANA_PRIVATE_KEY` | `LIVE_TRADING_ENABLED=true` without a complete live configuration | Set `LIVE_TRADING_ENABLED=false` for paper mode, or finish the live checklist in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and re-run `python -m agentictrade.live_readiness`. |
+| `python -m agentictrade.live_readiness` prints `BLOCKED` | A configuration key is missing or a guard failed | The report lists each failing key. Fix it, then re-run. A `blocked` guard is a bug, not a warning — do not arm live trading. |
+| Doctor warns the dashboard token is empty on a non-loopback bind | The bot refuses to expose an unauthenticated trading API | Bind `127.0.0.1` (default), or set `DASHBOARD_TOKEN` (and open `/?token=...` once). `ALLOW_INSECURE_DASHBOARD=true` is the explicit, unsafe opt-out. |
+| Dashboard returns `401` / `403` | `DASHBOARD_TOKEN` is set and the browser has no token cookie | Open `http://127.0.0.1:8080/?token=<value>` once; the cookie is then reused. |
+| Port `8080` already in use | Another process (often a previous bot) holds the port | Stop it, or set `COMMAND_CENTER_PORT=8081` in `.env` and restart. The bot falls back to terminal-only mode when the port is busy. |
+| The bot exits on its own after ~35 minutes | A run is 100 cycles × 20 seconds by design | Restart it, or run it under `tmux`/`systemd`. Open paper positions persist in `paper_portfolio.db`. |
+| No automatic buys, only `SKIP`/`WATCH` | No LLM configured; the strict heuristic stays below the auto-BUY threshold | Set `GEMINI_API_KEY`, or `LLM_BASE_URL` + `LLM_MODEL` for a local server. This is fail-closed by design. |
+| Manual buy returns `400` and journals `BLOCK`/`STALE_PRICE` | DexScreener has no fresh quote for that mint | Wait for a DexScreener pair (or enable `PUMPFUN_CURVE_ENABLED=true` for bonding-curve tokens) and retry. The bot never guesses a price. |
+| Journal/audit shows `NO_ROUTE` | No Jupiter route or no Pump.fun route for the amount | The token is too new, too illiquid or the amount is too small. Try later or a different mint. |
+| `live_buy_blocked` in `bot_audit.jsonl` | A live guard refused the order (unconfirmed, over `MAX_LIVE_TRADE_SOL`, missing key) | This is the guard working. Check the `reason` field and fix the configuration; do not bypass the guard. |
+| `solders` missing / signing fails | Live signing needs the optional package | `pip install solders` inside the venv. Paper mode does not need it. |
+| Edited `.env` but nothing changed | `.env` is read once at startup | Restart the bot. `python -m agentictrade.doctor` shows the values it will use. |
+| Dashboard shows stale or empty data | The bot process stopped, or the browser cached an old page | Check the terminal/`bot_history.log`, reload with `Ctrl+F5`, and confirm `GET /ready` returns `200`. |
+
+If a run behaves oddly, capture `python -m agentictrade.doctor`, the last
+terminal lines, and the tail of `bot_audit.jsonl` before restarting — those three
+answer most questions.
 
 ## Known limitations
 
