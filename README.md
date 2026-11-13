@@ -223,7 +223,7 @@ AgenticTrade/
 │   ├── prometheus.py     # metrics registry and text exposition (v11)
 │   ├── shutdown.py       # SIGINT/SIGTERM controller (v11)
 │   ├── ohlcv.py          # candle backtester + strategies + CLI (v11)
-│   ├── optimizer.py      # walk-forward parameter grid search (v12)
+│   ├── optimizer.py      # walk-forward param search + rolling stability (v12)
 │   ├── cost_stress.py    # cost multiplier sweep + break-even (v12)
 │   ├── validate.py       # environment validation rules (v11)
 │   ├── doctor.py         # read-only pre-flight CLI (v11)
@@ -315,7 +315,7 @@ The project is being migrated incrementally from the original monolith into a sm
 - `agentictrade/exits.py` — one shared exit policy for the paper book and the backtester (v11)
 - `agentictrade/costs.py` — one shared transaction-cost model with depth decay (v11)
 - `agentictrade/llm.py` — provider-neutral LLM client: Gemini or local OpenAI-compatible servers (v11)
-- `agentictrade/optimizer.py` — walk-forward parameter grid search with out-of-sample scoring and baseline uplift (v12)
+- `agentictrade/optimizer.py` — walk-forward parameter grid search with fixed/anchored/rolling windows, stability scoring and baseline uplift (v12)
 - `agentictrade/cost_stress.py` — cost multiplier sweep and interpolated break-even (v12)
 
 `research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
@@ -521,6 +521,35 @@ python -m agentictrade.ohlcv --csv candles.csv --strategy breakout --optimize \
 produced at least `--min-trades` trades on the train slice; a slice with no
 eligible candidate is reported as skipped instead of being filled with an
 untested winner.
+
+### Window modes and stability
+
+`--window-mode` controls how the optimizer slices the series:
+
+- `fixed` (default) — `segments` equal blocks, each cut at `--train-ratio`.
+- `anchored` — the train window always starts at the first candle and grows; the
+  test window steps forward (`--train-candles`, `--test-candles`).
+- `rolling` — a constant-size train window slides forward with the test window.
+
+`--train-candles 0` / `--test-candles 0` derive sizes from the series length
+(`max(60, n/3)` and `max(20, n/8)`). Every report carries a `stability` block:
+
+- `dominantSharePct` — how often the most-picked parameter set won
+- `profitableSharePct` — share of traded windows with positive test PnL
+- `paramSets` — every picked set with its window count and share
+- `bestWindowPnlSol` / `medianWindowPnlSol` / `worstWindowPnlSol` / `pnlStdevSol`
+- `consistency` — `stable` when both shares are at least 60%, `unstable` when
+  either is below 40%, otherwise `mixed`
+
+```bash
+python -m agentictrade.ohlcv --csv candles.csv --optimize \
+  --window-mode rolling --train-candles 240 --test-candles 90 --objective sharpe
+python -m agentictrade.ohlcv --csv candles.csv --optimize --window-mode anchored
+```
+
+`--window-mode`, `--train-candles` and `--test-candles` only apply to
+`--optimize` (and the candle sizes only to `anchored`/`rolling`); the CLI errors
+instead of silently ignoring them.
 
 ### Cost stress and break-even
 

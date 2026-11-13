@@ -2406,6 +2406,246 @@ def test_v12_cost_stress():
     print("  v12 cost stress and break-even: OK")
 
 
+def test_v12_rolling_windows():
+    import json
+    import math
+
+    from agentictrade.ohlcv import BacktestConfig
+    from agentictrade.optimizer import (
+        WINDOW_MODES,
+        default_grid,
+        optimize_walk_forward,
+        render_report,
+        window_ranges,
+    )
+
+    # Fixed mode keeps the original block split.
+    fixed = window_ranges(600, "fixed", segments=3, train_ratio=0.6)
+    assert len(fixed) == 3
+    assert fixed[0] == {
+        "index": 1,
+        "trainStart": 0,
+        "trainEnd": 120,
+        "testStart": 120,
+        "testEnd": 200,
+    }
+    assert fixed[-1]["testEnd"] == 600
+
+    # Anchored: train always starts at zero and grows; tests are contiguous.
+    anchored = window_ranges(600, "anchored", train_candles=240, test_candles=90)
+    assert len(anchored) == 4
+    assert all(window["trainStart"] == 0 for window in anchored)
+    assert [window["trainEnd"] - window["trainStart"] for window in anchored] == [240, 330, 420, 510]
+    assert anchored[0]["testStart"] == 240
+    for left, right in zip(anchored, anchored[1:]):
+        assert left["testEnd"] == right["testStart"]
+    assert anchored[-1]["testEnd"] == 600
+
+    # Rolling: constant train size, both windows slide forward.
+    rolling = window_ranges(600, "rolling", train_candles=240, test_candles=90)
+    assert len(rolling) == 4
+    assert all(window["trainEnd"] - window["trainStart"] == 240 for window in rolling)
+    assert [window["trainStart"] for window in rolling] == [0, 90, 180, 270]
+    assert all(window["trainEnd"] == window["testStart"] for window in rolling)
+
+    # Auto sizes only need the series length.
+    auto = window_ranges(600, "rolling")
+    assert auto and auto[0]["trainEnd"] - auto[0]["trainStart"] == 200
+    assert auto[0]["testEnd"] - auto[0]["testStart"] == 75
+
+    for bad_mode in ("nope", "sideways"):
+        try:
+            window_ranges(600, bad_mode)
+            raise AssertionError("bad window mode should raise")
+        except ValueError:
+            pass
+    # An empty mode is normalised to the default rather than rejected.
+    assert window_ranges(600, "") == window_ranges(600, "fixed")
+    for kwargs in (
+        {"train_candles": 600, "test_candles": 90},
+        {"train_candles": 1, "test_candles": 90},
+        {"train_candles": 240, "test_candles": 5},
+    ):
+        try:
+            window_ranges(600, "rolling", **kwargs)
+            raise AssertionError(f"{kwargs} should raise")
+        except ValueError:
+            pass
+
+    # Walk-forward data: 600 deterministic candles with a tradable rhythm.
+    closes = []
+    price = 1.0
+    for index in range(600):
+        price *= 1.0 + 0.012 * math.sin(index / 6.0) + 0.0015
+        closes.append(max(0.05, price))
+    candles = _synthetic_candles(closes)
+    config = BacktestConfig(initial_sol=10.0, trade_size_sol=0.5)
+    grid = default_grid("momentum")
+
+    reports = {}
+    for mode in ("anchored", "rolling"):
+        report = optimize_walk_forward(
+            candles,
+            "momentum",
+            grid,
+            config,
+            window_mode=mode,
+            train_candles=240,
+            test_candles=90,
+            min_trades=1,
+            baseline_params={"fast": 9, "slow": 21},
+        )
+        again = optimize_walk_forward(
+            candles,
+            "momentum",
+            grid,
+            config,
+            window_mode=mode,
+            train_candles=240,
+            test_candles=90,
+            min_trades=1,
+            baseline_params={"fast": 9, "slow": 21},
+        )
+        assert json.dumps(report, sort_keys=True, default=str) == json.dumps(
+            again, sort_keys=True, default=str
+        )
+        reports[mode] = report
+        assert report["windowMode"] == mode
+        assert report["windowCount"] == len(
+            window_ranges(600, mode, train_candles=240, test_candles=90)
+        )
+        assert report["windowCount"] == len(report["segments"])
+        traded = [item for item in report["segments"] if not item.get("skipped")]
+        assert traded
+        assert abs(
+            report["aggregate"]["netPnlSol"] - sum(item["testPnlSol"] for item in traded)
+        ) < 1e-9
+
+        stability = report["stability"]
+        assert stability["windows"] == len(traded)
+        assert stability["profitableWindows"] == sum(
+            1 for item in traded if item["testPnlSol"] > 0
+        )
+        shares = [entry["sharePct"] for entry in stability["paramSets"]]
+        assert abs(sum(shares) - 100.0) < 1e-9
+        assert shares == sorted(shares, reverse=True)
+        assert stability["bestWindowPnlSol"] >= stability["medianWindowPnlSol"] >= stability[
+            "worstWindowPnlSol"
+        ]
+        assert stability["consistency"] in ("stable", "mixed", "unstable")
+        assert stability["dominantSharePct"] >= shares[0]
+
+    # The anchored and rolling modes really build different windows.
+    anchored_starts = [item["trainStartTs"] for item in reports["anchored"]["segments"]]
+    rolling_starts = [item["trainStartTs"] for item in reports["rolling"]["segments"]]
+    assert len(set(anchored_starts)) == 1
+    assert len(set(rolling_starts)) == len(rolling_starts)
+
+    # No eligible candidate anywhere: stability has nothing to score.
+    flat = optimize_walk_forward(
+        candles,
+        "momentum",
+        grid,
+        config,
+        window_mode="anchored",
+        train_candles=240,
+        test_candles=90,
+        min_trades=10_000,
+        baseline_params={"fast": 9, "slow": 21},
+    )
+    assert flat["stability"]["windows"] == 0
+    assert flat["stability"]["paramSets"] == []
+    assert flat["stability"]["consistency"] == "unstable"
+    assert flat["aggregate"]["trades"] == 0
+
+    # Too little test data per window is refused instead of silently empty.
+    try:
+        optimize_walk_forward(
+            candles[:120],
+            "momentum",
+            grid,
+            config,
+            window_mode="rolling",
+            train_candles=115,
+            test_candles=20,
+        )
+        raise AssertionError("all-short windows should raise")
+    except ValueError:
+        pass
+
+    markdown = render_report(reports["rolling"])
+    assert "Window mode: `rolling`" in markdown
+    assert "## Stability" in markdown
+    assert "Consistency:" in markdown
+
+    # CLI: the mode flags reach the optimizer and are rejected elsewhere.
+    from agentictrade import ohlcv as ohlcv_module
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+        json.dump(
+            [
+                {
+                    "ts": candle.ts,
+                    "open": candle.open,
+                    "high": candle.high,
+                    "low": candle.low,
+                    "close": candle.close,
+                    "volume": candle.volume,
+                }
+                for candle in candles
+            ],
+            handle,
+        )
+        candle_path = handle.name
+    try:
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = ohlcv_module.main(
+                [
+                    "--json",
+                    candle_path,
+                    "--optimize",
+                    "--window-mode",
+                    "rolling",
+                    "--train-candles",
+                    "240",
+                    "--test-candles",
+                    "90",
+                    "--min-trades",
+                    "1",
+                    "--output",
+                    "json",
+                ]
+            )
+        assert code == 0
+        payload = json.loads(buffer.getvalue())
+        assert payload["optimization"]["windowMode"] == "rolling"
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert ohlcv_module.main(
+                ["--json", candle_path, "--window-mode", "rolling"]
+            ) == 2
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert ohlcv_module.main(
+                ["--json", candle_path, "--stress-costs", "--window-mode", "rolling"]
+            ) == 2
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert ohlcv_module.main(
+                ["--json", candle_path, "--optimize", "--train-candles", "240"]
+            ) == 2
+        assert "fixed" in WINDOW_MODES and "anchored" in WINDOW_MODES
+    finally:
+        try:
+            os.remove(candle_path)
+        except OSError:
+            pass
+
+    print("  v12 rolling windows and stability: OK")
+
+
 def main():
     print("Running AgenticTrade v11.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
@@ -2422,6 +2662,7 @@ def main():
         test_v12_pumpfun_curve_quote()
         test_v12_walk_forward_optimizer()
         test_v12_cost_stress()
+        test_v12_rolling_windows()
         test_exit_rules()
         test_flow_exit()
         test_whale_exit()

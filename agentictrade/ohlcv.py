@@ -959,6 +959,24 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lookback-grid", default="", help="e.g. 10,20,30,55 (empty uses the default grid)")
     parser.add_argument("--threshold-grid", default="", help="e.g. 0.0,0.5,1.0 (empty uses the default grid)")
     parser.add_argument(
+        "--window-mode",
+        default="fixed",
+        choices=("fixed", "anchored", "rolling"),
+        help="optimizer window layout: equal blocks, expanding train, or sliding train",
+    )
+    parser.add_argument(
+        "--train-candles",
+        type=int,
+        default=0,
+        help="train window size for anchored/rolling modes (0 derives it from the series)",
+    )
+    parser.add_argument(
+        "--test-candles",
+        type=int,
+        default=0,
+        help="test window size for anchored/rolling modes (0 derives it from the series)",
+    )
+    parser.add_argument(
         "--cost-multipliers",
         default="",
         help="comma-separated cost multipliers for --stress-costs "
@@ -1017,6 +1035,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         time_stop_enabled=args.time_stop,
         max_hold_candles=args.max_hold,
     )
+
+    if not args.optimize and (
+        args.window_mode != "fixed" or args.train_candles or args.test_candles
+    ):
+        print(
+            "--window-mode/--train-candles/--test-candles only apply to --optimize.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.optimize and args.window_mode == "fixed" and (args.train_candles or args.test_candles):
+        print(
+            "--train-candles/--test-candles only apply to --window-mode anchored or rolling.",
+            file=sys.stderr,
+        )
+        return 2
 
     def factory() -> Strategy:
         if args.strategy == "breakout":
@@ -1098,6 +1131,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             objective=args.objective,
             min_trades=args.min_trades,
             baseline_params=baseline_params,
+            window_mode=args.window_mode,
+            train_candles=args.train_candles or None,
+            test_candles=args.test_candles or None,
         )
         payload = {"optimization": optimization}
         if args.output == "json":

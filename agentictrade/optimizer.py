@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import statistics
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from agentictrade.costs import COST_MODEL_VERSION
@@ -31,6 +32,8 @@ from agentictrade.ohlcv import (
 from agentictrade.risk_analytics import summarize
 
 OBJECTIVES = ("pnl", "return_pct", "profit_factor", "expectancy", "sharpe")
+
+WINDOW_MODES = ("fixed", "anchored", "rolling")
 
 _DEFAULT_GRIDS: Dict[str, Dict[str, List[Any]]] = {
     "momentum": {"fast": [5, 9, 13], "slow": [13, 21, 34]},
@@ -146,6 +149,164 @@ def _finite(value: float) -> Optional[float]:
     return value if math.isfinite(value) else None
 
 
+def _auto_train_candles(total: int) -> int:
+    return max(60, total // 3)
+
+
+def _auto_test_candles(total: int) -> int:
+    return max(20, total // 8)
+
+
+def window_ranges(
+    candles: int,
+    mode: str = "fixed",
+    *,
+    segments: int = 3,
+    train_ratio: float = 0.6,
+    train_candles: Optional[int] = None,
+    test_candles: Optional[int] = None,
+) -> List[Dict[str, int]]:
+    """Split ``candles`` into train/test ranges for the requested window mode.
+
+    ``fixed`` keeps the original behaviour: ``segments`` equal blocks, each cut
+    at ``train_ratio``. ``anchored`` uses an expanding train window that always
+    starts at candle 0 and a test window that steps forward. ``rolling`` keeps
+    the train window a constant size and slides both windows forward.
+
+    Anchored and rolling modes need a train and a test size; ``None`` derives
+    them from the series length (``max(60, n // 3)`` and ``max(20, n // 8)``).
+    Ranges with fewer than 10 test candles are still returned so the caller can
+    report them as skipped; the caller decides what to do with them.
+    """
+    mode = (mode or "fixed").strip().lower()
+    if mode not in WINDOW_MODES:
+        raise ValueError(f"window mode must be one of {', '.join(WINDOW_MODES)}")
+
+    if mode == "fixed":
+        segments = max(1, int(segments))
+        train_ratio = min(max(float(train_ratio), 0.1), 0.9)
+        block_size = max(1, candles // segments)
+        ranges: List[Dict[str, int]] = []
+        for segment in range(segments):
+            start = segment * block_size
+            end = candles if segment == segments - 1 else (segment + 1) * block_size
+            split = start + max(1, int((end - start) * train_ratio))
+            ranges.append(
+                {
+                    "index": segment + 1,
+                    "trainStart": start,
+                    "trainEnd": split,
+                    "testStart": split,
+                    "testEnd": end,
+                }
+            )
+        return ranges
+
+    train_size = int(train_candles) if train_candles else _auto_train_candles(candles)
+    test_size = int(test_candles) if test_candles else _auto_test_candles(candles)
+    if train_size < 2:
+        raise ValueError("train_candles must be at least 2")
+    if test_size < 10:
+        raise ValueError("test_candles must be at least 10")
+    if train_size >= candles:
+        raise ValueError(
+            f"train_candles ({train_size}) must be smaller than the series ({candles})"
+        )
+
+    ranges = []
+    index = 1
+    test_start = train_size
+    while test_start < candles:
+        test_end = min(test_start + test_size, candles)
+        train_start = 0 if mode == "anchored" else test_start - train_size
+        ranges.append(
+            {
+                "index": index,
+                "trainStart": train_start,
+                "trainEnd": test_start,
+                "testStart": test_start,
+                "testEnd": test_end,
+            }
+        )
+        index += 1
+        test_start = test_end
+        if test_end >= candles:
+            break
+    if not ranges:
+        raise ValueError("no walk-forward windows fit in this series; lower train_candles")
+    return ranges
+
+
+_CONSISTENCY_STABLE = 0.6
+_CONSISTENCY_UNSTABLE = 0.4
+
+
+def _stability(windows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    """How consistently the optimizer picked and profited across windows.
+
+    ``consistency`` is a coarse label, not a score: ``stable`` needs the
+    dominant parameter set to win at least 60% of the traded windows *and* at
+    least 60% of them to be profitable; ``unstable`` is either share below 40%;
+    everything else is ``mixed``.
+    """
+    traded = [window for window in windows if not window.get("skipped")]
+    if not traded:
+        return {
+            "windows": 0,
+            "paramSets": [],
+            "dominantSharePct": 0.0,
+            "profitableWindows": 0,
+            "profitableSharePct": 0.0,
+            "bestWindowPnlSol": None,
+            "worstWindowPnlSol": None,
+            "medianWindowPnlSol": None,
+            "pnlStdevSol": 0.0,
+            "consistency": "unstable",
+        }
+
+    counts: Dict[tuple, int] = {}
+    params_by_key: Dict[tuple, Dict[str, Any]] = {}
+    for window in traded:
+        params = window.get("bestParams") or {}
+        key = tuple(sorted(params.items()))
+        counts[key] = counts.get(key, 0) + 1
+        params_by_key[key] = dict(params)
+
+    param_sets: List[Dict[str, Any]] = [
+        {
+            "params": params_by_key[key],
+            "count": count,
+            "sharePct": count / len(traded) * 100.0,
+        }
+        for key, count in sorted(counts.items(), key=lambda item: (-item[1], str(item[0])))
+    ]
+    dominant_share = param_sets[0]["sharePct"] / 100.0
+
+    pnls = [float(window["testPnlSol"]) for window in traded]
+    profitable = [pnl for pnl in pnls if pnl > 0.0]
+    profitable_share = len(profitable) / len(pnls)
+
+    if dominant_share >= _CONSISTENCY_STABLE and profitable_share >= _CONSISTENCY_STABLE:
+        consistency = "stable"
+    elif dominant_share < _CONSISTENCY_UNSTABLE or profitable_share < _CONSISTENCY_UNSTABLE:
+        consistency = "unstable"
+    else:
+        consistency = "mixed"
+
+    return {
+        "windows": len(traded),
+        "paramSets": param_sets,
+        "dominantSharePct": dominant_share * 100.0,
+        "profitableWindows": len(profitable),
+        "profitableSharePct": profitable_share * 100.0,
+        "bestWindowPnlSol": max(pnls),
+        "worstWindowPnlSol": min(pnls),
+        "medianWindowPnlSol": statistics.median(pnls),
+        "pnlStdevSol": statistics.pstdev(pnls) if len(pnls) >= 2 else 0.0,
+        "consistency": consistency,
+    }
+
+
 def optimize_walk_forward(
     candles: Sequence[Candle],
     strategy_name: str,
@@ -157,15 +318,26 @@ def optimize_walk_forward(
     objective: str = "pnl",
     min_trades: int = 3,
     baseline_params: Optional[Mapping[str, Any]] = None,
+    window_mode: str = "fixed",
+    train_candles: Optional[int] = None,
+    test_candles: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Grid-search each train slice and trade the winner on the test slice.
 
-    Returns a JSON-friendly report with per-segment choices, aggregate
-    out-of-sample performance and (when ``baseline_params`` is given) the same
-    windows traded with the unoptimized parameters.
+    ``window_mode`` selects how the slices are built: ``fixed`` (default)
+    cuts ``segments`` equal blocks; ``anchored`` uses an expanding train window
+    from the first candle; ``rolling`` slides a constant-size train window.
+
+    Returns a JSON-friendly report with per-window choices, a ``stability``
+    block (parameter persistence and the share of profitable windows),
+    aggregate out-of-sample performance and, when ``baseline_params`` is given,
+    the same windows traded with the unoptimized parameters.
     """
     if objective not in OBJECTIVES:
         raise ValueError(f"objective must be one of {', '.join(OBJECTIVES)}")
+    mode = (window_mode or "fixed").strip().lower()
+    if mode not in WINDOW_MODES:
+        raise ValueError(f"window mode must be one of {', '.join(WINDOW_MODES)}")
     data = normalize_candles(candles)
     if not data:
         raise ValueError("no candles supplied")
@@ -181,7 +353,21 @@ def optimize_walk_forward(
     segments = max(1, int(segments))
     train_ratio = min(max(float(train_ratio), 0.1), 0.9)
     min_trades = max(0, int(min_trades))
-    block_size = max(1, len(data) // segments)
+    windows = window_ranges(
+        len(data),
+        mode,
+        segments=segments,
+        train_ratio=train_ratio,
+        train_candles=train_candles,
+        test_candles=test_candles,
+    )
+    if mode != "fixed" and not any(
+        window["testEnd"] - window["testStart"] >= 10 for window in windows
+    ):
+        raise ValueError(
+            "no walk-forward window has at least 10 test candles; "
+            "lower train_candles or test_candles"
+        )
 
     baseline_runner = None
     if baseline_params is not None:
@@ -193,13 +379,10 @@ def optimize_walk_forward(
     baseline_pnls: List[float] = []
     baseline_test_candles = 0
 
-    for segment in range(segments):
-        start = segment * block_size
-        end = len(data) if segment == segments - 1 else (segment + 1) * block_size
-        block = data[start:end]
-        split = max(1, int(len(block) * train_ratio))
-        train = block[:split]
-        test = block[split:]
+    for window in windows:
+        segment = window["index"]
+        train = data[window["trainStart"] : window["trainEnd"]]
+        test = data[window["testStart"] : window["testEnd"]]
         if len(test) < 10:
             continue
 
@@ -236,6 +419,7 @@ def optimize_walk_forward(
                     "segment": segment + 1,
                     "trainCandles": len(train),
                     "testCandles": len(test),
+                    "trainStartTs": train[0].ts if train else None,
                     "startTs": test[0].ts,
                     "endTs": test[-1].ts,
                     "skipped": True,
@@ -253,6 +437,7 @@ def optimize_walk_forward(
                 "segment": segment + 1,
                 "trainCandles": len(train),
                 "testCandles": len(test),
+                "trainStartTs": train[0].ts if train else None,
                 "startTs": test[0].ts,
                 "endTs": test[-1].ts,
                 "bestParams": best_params,
@@ -286,14 +471,21 @@ def optimize_walk_forward(
     report: Dict[str, Any] = {
         "strategy": strategy_name,
         "objective": objective,
+        "windowMode": mode,
         "minTrades": min_trades,
-        "trainRatio": train_ratio,
-        "segmentCount": segments,
+        "trainRatio": train_ratio if mode == "fixed" else None,
+        "segmentCount": segments if mode == "fixed" else len(windows),
+        "windowCount": len(windows),
         "grid": {name: list(values) for name, values in grid.items()},
         "combinations": len(combinations),
         "segments": results,
+        "stability": _stability(results),
         "aggregate": aggregate,
     }
+    if mode != "fixed":
+        first = windows[0]
+        report["trainCandles"] = first["trainEnd"] - first["trainStart"]
+        report["testCandles"] = first["testEnd"] - first["testStart"]
 
     if baseline_runner is not None and baseline_segments:
         baseline_summary = summarize(baseline_pnls, cfg.initial_sol)
@@ -350,9 +542,21 @@ def render_report(report: Mapping[str, Any]) -> str:
         f"# Walk-forward optimization — {strategy}",
         "",
         f"- Objective: `{objective}`",
+        f"- Window mode: `{report.get('windowMode', 'fixed')}` "
+        f"({report.get('windowCount', report.get('segmentCount', 0))} window(s))",
         f"- Grid: {grid_text or '—'} ({report.get('combinations', 0)} combinations)",
-        f"- Segments: {report.get('segmentCount', 0)} "
-        f"(train ratio {_fmt(report.get('trainRatio', 0.0) * 100, 0)}%)",
+    ]
+    if report.get("windowMode", "fixed") == "fixed":
+        lines.append(
+            f"- Segments: {report.get('segmentCount', 0)} "
+            f"(train ratio {_fmt(float(report.get('trainRatio') or 0.0) * 100, 0)}%)"
+        )
+    else:
+        lines.append(
+            f"- Window sizes: {report.get('trainCandles', '—')} train / "
+            f"{report.get('testCandles', '—')} test candles"
+        )
+    lines += [
         f"- Minimum train trades per candidate: {report.get('minTrades', 0)}",
         "",
         "| Segment | Train | Test | Best params | Train net | Test net | Test trades | Test return |"
@@ -407,6 +611,31 @@ def render_report(report: Mapping[str, Any]) -> str:
     skipped = aggregate.get("skippedSegments", 0)
     if skipped:
         lines.append(f"Skipped {skipped} segment(s) with no eligible parameter set.")
+
+    stability = report.get("stability") or {}
+    if stability.get("windows"):
+        lines += [
+            "",
+            "## Stability",
+            "",
+            f"- Consistency: **{stability.get('consistency', 'unknown')}**",
+            f"- Dominant parameter set share: {_fmt(stability.get('dominantSharePct'), 1)}%",
+            f"- Profitable windows: {stability.get('profitableWindows', 0)}"
+            f"/{stability.get('windows', 0)} ({_fmt(stability.get('profitableSharePct'), 1)}%)",
+            f"- Window PnL: best {_fmt(stability.get('bestWindowPnlSol'), 6)}, "
+            f"median {_fmt(stability.get('medianWindowPnlSol'), 6)}, "
+            f"worst {_fmt(stability.get('worstWindowPnlSol'), 6)} SOL "
+            f"(stdev {_fmt(stability.get('pnlStdevSol'), 6)})",
+            "",
+            "| Parameter set | Windows | Share |",
+            "|---|---|---|",
+        ]
+        for entry in stability.get("paramSets") or []:
+            lines.append(
+                f"| {_params_text(entry.get('params'))} | {entry.get('count', 0)} | "
+                f"{_fmt(entry.get('sharePct'), 1)}% |"
+            )
+
     if "upliftSol" in report:
         lines.append(
             f"Uplift over baseline: **{_fmt(report['upliftSol'], 6)} SOL** "

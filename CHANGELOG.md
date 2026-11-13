@@ -71,6 +71,12 @@ All notable changes to AgenticTrade are documented here. The format follows
   ineligible, a slice with no eligible candidate is reported as skipped, and
   the report compares the out-of-sample aggregate against the unoptimized
   `--fast/--slow/--lookback/--threshold` baseline (`upliftSol`).
+- Rolling walk-forward and stability scoring: `--window-mode anchored` uses an
+  expanding train window, `--window-mode rolling` slides a constant-size train
+  window, and `--train-candles`/`--test-candles` size both. Every optimization
+  report gains a `stability` block (dominant parameter-set share, profitable
+  window share, per-window PnL spread and a `stable`/`mixed`/`unstable`
+  label), so one lucky window cannot carry the result unnoticed.
 - Cost stress and break-even analysis: `agentictrade/cost_stress.py` replays one
   strategy across a multiplier sweep and reports the cost level at which the
   edge disappears. `--stress-costs`, `--cost-multipliers` and `--cost-baseline`
@@ -82,6 +88,9 @@ All notable changes to AgenticTrade are documented here. The format follows
 - `python -m agentictrade.ohlcv --optimize` reuses the `--walk-forward` segment
   count (default 3 when it is 0) and `--train-ratio`; the plain
   `--walk-forward` path still evaluates one fixed parameter set.
+- `--window-mode` (fixed/anchored/rolling) and `--train-candles`/`--test-candles`
+  are optimizer-only; the CLI rejects them for `--walk-forward`,
+  `--stress-costs` and plain backtests instead of ignoring them.
 - `--stress-costs` is a third mode, mutually exclusive with `--optimize`: it
   sweeps the whole series instead of the walk-forward windows and refuses to
   combine with `--walk-forward` rather than silently ignoring it.
