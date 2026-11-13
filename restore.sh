@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Restore AgenticTrade state from a backup created by ./backup.sh.
+# Restore BetterCallTrader state from a backup created by ./backup.sh.
 #
-#   ./restore.sh                 # newest backup under ~/AgenticTradeBackup
+#   ./restore.sh                 # newest backup under ~/BetterCallTraderBackup
 #   ./restore.sh <backup-dir>    # explicit backup directory
 #   ./restore.sh -y <backup-dir> # skip the confirmation prompt
 #
@@ -13,7 +13,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-BACKUP_ROOT="$HOME/AgenticTradeBackup"
+BACKUP_ROOT="$HOME/BetterCallTraderBackup"
 ASSUME_YES=0
 BACKUP_PATH=""
 

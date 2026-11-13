@@ -249,7 +249,7 @@ class _ForbiddenSession:
 def _isolated_audit_log(research_bot: Any):
     """Point the execution agent's audit writes at a throwaway directory."""
     original = research_bot.AUDIT_LOG_PATH
-    directory = tempfile.mkdtemp(prefix="agentictrade-readiness-")
+    directory = tempfile.mkdtemp(prefix="bettercalltrader-readiness-")
     research_bot.AUDIT_LOG_PATH = os.path.join(directory, "audit.jsonl")
     try:
         yield research_bot.AUDIT_LOG_PATH
@@ -496,7 +496,7 @@ def render_report(report: Mapping[str, Any]) -> str:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m agentictrade.live_readiness",
+        prog="python -m bettercalltrader.live_readiness",
         description=(
             "Read-only live-execution readiness audit. Never places an order; "
             "the network is only used with --probe."
@@ -522,7 +522,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     resolved_env = Path(args.env_file)
     env_note: Optional[str] = None
     if args.env_file and resolved_env.exists():
-        from agentictrade.doctor import load_env_file
+        from bettercalltrader.doctor import load_env_file
 
         values.update(load_env_file(resolved_env))
         env_note = str(resolved_env)

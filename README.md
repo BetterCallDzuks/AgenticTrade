@@ -1,9 +1,9 @@
-# Solana Memecoin Multi-Agent Trading Bot: AgenticTrade v12.0
+# Solana Memecoin Multi-Agent Trading Bot: BetterCallTrader v12.0
 
-[![CI](https://github.com/BetterCallDzuks/AgenticTrade/actions/workflows/tests.yml/badge.svg)](https://github.com/BetterCallDzuks/AgenticTrade/actions/workflows/tests.yml)
+[![CI](https://github.com/BetterCallDzuks/BetterCallTrader/actions/workflows/tests.yml/badge.svg)](https://github.com/BetterCallDzuks/BetterCallTrader/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-12.0.0-e3a452.svg)](https://github.com/BetterCallDzuks/AgenticTrade)
+[![Version](https://img.shields.io/badge/version-12.0.0-e3a452.svg)](https://github.com/BetterCallDzuks/BetterCallTrader)
 
 A multi-agent system for discovering, checking and **paper-trading** Solana memecoins. It combines the Pump.fun WebSocket, the DexScreener API, RugCheck security checks, an optional AI analyst (Google Gemini or any local OpenAI-compatible model), a SQLite paper portfolio and a Jupiter/Jito dry-run executor, all behind a local web Command Center and an analytics dashboard.
 
@@ -45,8 +45,8 @@ wallet, private key or SOL is needed for paper mode.
 Linux / macOS:
 
 ```bash
-git clone https://github.com/BetterCallDzuks/AgenticTrade.git
-cd AgenticTrade
+git clone https://github.com/BetterCallDzuks/BetterCallTrader.git
+cd BetterCallTrader
 cp .env.example .env
 $EDITOR .env
 ./run.sh
@@ -58,13 +58,13 @@ missing, runs the pre-flight doctor, and starts the bot.
 Windows PowerShell:
 
 ```powershell
-git clone https://github.com/BetterCallDzuks/AgenticTrade.git
-cd AgenticTrade
+git clone https://github.com/BetterCallDzuks/BetterCallTrader.git
+cd BetterCallTrader
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env
 notepad .env
-.\.venv\Scripts\python.exe -m agentictrade.doctor
+.\.venv\Scripts\python.exe -m bettercalltrader.doctor
 .\.venv\Scripts\python.exe research_bot.py
 ```
 
@@ -94,8 +94,8 @@ so restart after editing it.
 ### 4. Verify before the first run
 
 ```bash
-python -m agentictrade.doctor          # must print: Result: OK
-python -m agentictrade.live_readiness  # must print: Status: PAPER
+python -m bettercalltrader.doctor          # must print: Result: OK
+python -m bettercalltrader.live_readiness  # must print: Status: PAPER
 ```
 
 Optional but quick:
@@ -222,16 +222,16 @@ These commands are local, deterministic and never place an order. See
 
 ```bash
 # Backtest one parameter set
-python -m agentictrade.ohlcv --csv examples/candles_sample.csv --strategy momentum
+python -m bettercalltrader.ohlcv --csv examples/candles_sample.csv --strategy momentum
 
 # Select parameters on train slices, then measure them out of sample
-python -m agentictrade.ohlcv --csv candles.csv --optimize --objective sharpe
+python -m bettercalltrader.ohlcv --csv candles.csv --optimize --objective sharpe
 
 # Ask how much worse costs can get before the edge disappears
-python -m agentictrade.ohlcv --csv candles.csv --stress-costs
+python -m bettercalltrader.ohlcv --csv candles.csv --stress-costs
 
 # Rank momentum vs breakout on the same windows and costs
-python -m agentictrade.ohlcv --csv candles.csv --compare
+python -m bettercalltrader.ohlcv --csv candles.csv --compare
 ```
 
 A positive research result is evidence about a rule, not a forecast. Treat
@@ -244,7 +244,7 @@ Live trading is a deliberate, separate step:
 1. Keep `LIVE_TRADING_ENABLED=false` until paper results and the readiness audit
    are clean.
 2. Install the optional signing package: `pip install solders`.
-3. Run `python -m agentictrade.live_readiness --probe` (or add `--env-file`).
+3. Run `python -m bettercalltrader.live_readiness --probe` (or add `--env-file`).
    While live trading is still off it prints `PAPER`, and the probe must reach
    your RPC and Jupiter.
 4. Set `SOLANA_RPC_URL`, `SOLANA_PRIVATE_KEY`, `LIVE_TRADING_ENABLED=true`,
@@ -259,7 +259,7 @@ Live trading is a deliberate, separate step:
 
 **Every session**
 
-- `python -m agentictrade.doctor` → `Result: OK`.
+- `python -m bettercalltrader.doctor` → `Result: OK`.
 - Open `/ready` and `/metrics`; confirm the DB and AI are healthy.
 - Watch the first cycle in the terminal and the journal.
 - Review `bot_audit.jsonl` for unexpected `live_buy_blocked` or error events.
@@ -299,7 +299,7 @@ v9.0 keeps the v8 risk engine and adds time-based and step-up protection plus Te
 7. **TRAILING_STOP** 📉 / **BREAKEVEN_STOP** 🛡️ / **STEP_UP_STOP** 🪜: stop = max(trailing stop, breakeven floor, step-up floors).
 8. **TAKE_PROFIT** 🚀: optional `FINAL_TAKE_PROFIT_PCT` hard target for the remaining moonbag (0 disables it).
 
-The same rules live in `agentictrade/exits.py` (`ExitPolicy`) and drive both
+The same rules live in `bettercalltrader/exits.py` (`ExitPolicy`) and drive both
 the paper book (`classify_tick`) and the OHLCV backtester (`intrabar`), so a
 research run measures the policy the bot actually trades.
 
@@ -322,7 +322,7 @@ python3 --version   # must be 3.11 or newer
 ### One-command start
 
 ```bash
-cd ~/AgenticTrade
+cd ~/BetterCallTrader
 ./run.sh
 ```
 
@@ -333,7 +333,7 @@ cd ~/AgenticTrade
    (`VENV_DIR=...` to change the location), installs `requirements.txt` and
    only reinstalls when that file changes,
 2. warns if `.env` is missing,
-3. runs `python -m agentictrade.doctor` and aborts on any `FAIL`,
+3. runs `python -m bettercalltrader.doctor` and aborts on any `FAIL`,
 4. starts the bot, printing the Command Center URL.
 
 `bootstrap.sh` is the single setup path shared with CI, so a green pipeline
@@ -345,7 +345,7 @@ Useful flags: `./run.sh --skip-doctor`, `./run.sh --help`.
 ### Manual start
 
 ```bash
-cd ~/AgenticTrade
+cd ~/BetterCallTrader
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt          # runtime deps
@@ -355,7 +355,7 @@ cp .env.example .env
 $EDITOR .env                             # set GEMINI_API_KEY / DASHBOARD_TOKEN
                                          # keep LIVE_TRADING_ENABLED=false
 
-python -m agentictrade.doctor            # must print: Result: OK
+python -m bettercalltrader.doctor            # must print: Result: OK
 python research_bot.py
 ```
 
@@ -376,7 +376,7 @@ ruff check . && mypy     # lint + types
 Optional backup and restore (the `.ps1` scripts are Windows-only):
 
 ```bash
-./backup.sh                 # -> ~/AgenticTradeBackup/<timestamp>/
+./backup.sh                 # -> ~/BetterCallTraderBackup/<timestamp>/
 ./restore.sh                # newest backup, asks for confirmation
 ./restore.sh -y <backup-dir>
 ```
@@ -398,8 +398,8 @@ PATH*) and PowerShell 5.1+. The bot always runs inside a project virtualenv, so
 the install never touches the system interpreter.
 
 ```powershell
-git clone https://github.com/BetterCallDzuks/AgenticTrade.git
-cd AgenticTrade
+git clone https://github.com/BetterCallDzuks/BetterCallTrader.git
+cd BetterCallTrader
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -421,7 +421,7 @@ notepad .env
 2. Run the pre-flight checks and fix every `FAIL` line before starting:
 
 ```powershell
-python -m agentictrade.doctor
+python -m bettercalltrader.doctor
 ```
 
 The doctor validates numbers, live-trading guards, the dashboard token, the
@@ -433,9 +433,9 @@ It drives the real `execute_buy` guards with a session that refuses every
 request, so it verifies the fail-closed paths without a key or a socket:
 
 ```powershell
-python -m agentictrade.live_readiness
-python -m agentictrade.live_readiness --json
-python -m agentictrade.live_readiness --probe   # opt-in network probes
+python -m bettercalltrader.live_readiness
+python -m bettercalltrader.live_readiness --json
+python -m bettercalltrader.live_readiness --probe   # opt-in network probes
 ```
 
 It prints `PAPER` (exit 0), `READY` (exit 0, live is armed and the guards
@@ -473,7 +473,7 @@ the real API on an ephemeral port and prints `SMOKE OK`.
 ## Project layout
 
 ```
-AgenticTrade/
+BetterCallTrader/
 ├── research_bot.py       # Python multi-agent bot + local web/API server (http://localhost:8080)
 ├── command_center.html   # Web Command Center, live-synced with the bot
 ├── analytics.html        # v10 analytics dashboard (/analytics)
@@ -499,7 +499,7 @@ AgenticTrade/
 ├── .github/workflows/tests.yml
 ├── .github/workflows/codeql.yml
 ├── .github/dependabot.yml
-├── agentictrade/         # incremental modular package
+├── bettercalltrader/         # incremental modular package
 │   ├── config.py         # env helpers
 │   ├── http.py           # retry/backoff helpers
 │   ├── models.py         # Pydantic models
@@ -539,7 +539,7 @@ AgenticTrade/
 
 ### Local AI models
 
-`agentictrade/llm.py` treats every backend the same way. `LLM_PROVIDER=auto`
+`bettercalltrader/llm.py` treats every backend the same way. `LLM_PROVIDER=auto`
 (default) uses Gemini when `GEMINI_API_KEY` is set, otherwise a local server
 when `LLM_BASE_URL` is set, otherwise heuristics. An explicitly configured
 provider falls back to the other configured provider before heuristics.
@@ -587,33 +587,33 @@ is local under `config.llm`.
 | `POST /api/config` | change runtime settings (never changes live trading) |
 | `POST /api/buy` / `POST /api/sell` | manual paper buy / manual close |
 
-## Modular package (`agentictrade/`)
+## Modular package (`bettercalltrader/`)
 
 The project is being migrated incrementally from the original monolith into a small package:
 
-- `agentictrade/config.py` — environment variable helpers
-- `agentictrade/http.py` — retry/backoff helpers for HTTP calls
-- `agentictrade/models.py` — Pydantic models such as `TokenAnalysisDecision`
-- `agentictrade/telegram.py` — Telegram notifier and inline buttons
-- `agentictrade/migrations.py` — schema version and migrations (v10)
-- `agentictrade/metrics.py` — aggregate metrics (v10)
-- `agentictrade/observability.py` — file/JSON logger, JSONL audit trail, alert throttle (v10)
-- `agentictrade/risk_analytics.py` — drawdown, VaR, expected shortfall, profit factor, HHI (v10)
-- `agentictrade/backtest.py` — realized-trade replay report (v10)
-- `agentictrade/security.py` — optional dashboard token and rate limiter (v10)
-- `agentictrade/strategies.py` — conservative/balanced/aggressive risk profiles (v10)
-- `agentictrade/ml.py` — dependency-free logistic advisory model (v10)
-- `agentictrade/price_feed.py` — TTL price cache shared by the scan and monitor loops (v10)
-- `agentictrade/prometheus.py` — dependency-free counters/gauges/histograms and text exposition (v11)
-- `agentictrade/shutdown.py` — cross-platform SIGINT/SIGTERM controller (v11)
-- `agentictrade/ohlcv.py` — event-driven OHLCV backtester, strategy library and walk-forward splits (v11)
-- `agentictrade/exits.py` — one shared exit policy for the paper book and the backtester (v11)
-- `agentictrade/costs.py` — one shared transaction-cost model with depth decay (v11)
-- `agentictrade/llm.py` — provider-neutral LLM client: Gemini or local OpenAI-compatible servers (v11)
-- `agentictrade/optimizer.py` — walk-forward parameter grid search with fixed/anchored/rolling windows, stability scoring and baseline uplift (v12)
-- `agentictrade/cost_stress.py` — cost multiplier sweep and interpolated break-even (v12)
-- `agentictrade/compare.py` — optimize, cost-stress and rank several strategies in one report (v12)
-- `agentictrade/live_readiness.py` — read-only live-execution readiness audit with a no-network guard harness (v12)
+- `bettercalltrader/config.py` — environment variable helpers
+- `bettercalltrader/http.py` — retry/backoff helpers for HTTP calls
+- `bettercalltrader/models.py` — Pydantic models such as `TokenAnalysisDecision`
+- `bettercalltrader/telegram.py` — Telegram notifier and inline buttons
+- `bettercalltrader/migrations.py` — schema version and migrations (v10)
+- `bettercalltrader/metrics.py` — aggregate metrics (v10)
+- `bettercalltrader/observability.py` — file/JSON logger, JSONL audit trail, alert throttle (v10)
+- `bettercalltrader/risk_analytics.py` — drawdown, VaR, expected shortfall, profit factor, HHI (v10)
+- `bettercalltrader/backtest.py` — realized-trade replay report (v10)
+- `bettercalltrader/security.py` — optional dashboard token and rate limiter (v10)
+- `bettercalltrader/strategies.py` — conservative/balanced/aggressive risk profiles (v10)
+- `bettercalltrader/ml.py` — dependency-free logistic advisory model (v10)
+- `bettercalltrader/price_feed.py` — TTL price cache shared by the scan and monitor loops (v10)
+- `bettercalltrader/prometheus.py` — dependency-free counters/gauges/histograms and text exposition (v11)
+- `bettercalltrader/shutdown.py` — cross-platform SIGINT/SIGTERM controller (v11)
+- `bettercalltrader/ohlcv.py` — event-driven OHLCV backtester, strategy library and walk-forward splits (v11)
+- `bettercalltrader/exits.py` — one shared exit policy for the paper book and the backtester (v11)
+- `bettercalltrader/costs.py` — one shared transaction-cost model with depth decay (v11)
+- `bettercalltrader/llm.py` — provider-neutral LLM client: Gemini or local OpenAI-compatible servers (v11)
+- `bettercalltrader/optimizer.py` — walk-forward parameter grid search with fixed/anchored/rolling windows, stability scoring and baseline uplift (v12)
+- `bettercalltrader/cost_stress.py` — cost multiplier sweep and interpolated break-even (v12)
+- `bettercalltrader/compare.py` — optimize, cost-stress and rank several strategies in one report (v12)
+- `bettercalltrader/live_readiness.py` — read-only live-execution readiness audit with a no-network guard harness (v12)
 
 `research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
 
@@ -627,7 +627,7 @@ GitHub Actions workflow is located at:
 
 It runs on every push and pull request and has four jobs:
 
-- **lint**: `bash -n` over the shell entry points, Ruff (`E4`, `E7`, `E9`, `F`) plus mypy over the `agentictrade` package
+- **lint**: `bash -n` over the shell entry points, Ruff (`E4`, `E7`, `E9`, `F`) plus mypy over the `bettercalltrader` package
 - **test**: Python 3.11 and 3.12 on Ubuntu and Windows; runs `python test_v9.py` and `python smoke_v10.py`
 - **launcher**: boots the app through `./run.sh` on Linux and asserts the dashboard answers on its port
 - **audit**: `pip-audit` against the pinned runtime dependencies
@@ -688,11 +688,11 @@ Restore from the latest backup:
 Or restore from a specific folder:
 
 ```powershell
-.\restore.ps1 -BackupPath "C:\Users\LiveTony\Desktop\AgenticTradeBackup\20260101_120000"
+.\restore.ps1 -BackupPath "C:\Users\LiveTony\Desktop\BetterCallTraderBackup\20260101_120000"
 ```
 
 ```bash
-./restore.sh ~/AgenticTradeBackup/20260101_120000
+./restore.sh ~/BetterCallTraderBackup/20260101_120000
 ```
 
 The restore script asks for confirmation before overwriting local files.
@@ -712,10 +712,10 @@ Slash commands are still supported for compatibility.
 The repository now includes the full v10 layer:
 
 **Data & risk**
-- `schema_version` table and migration helper (`agentictrade/migrations.py`), current schema `10.1.0`
-- aggregate metrics (`agentictrade/metrics.py`) and a shared risk-analytics library
+- `schema_version` table and migration helper (`bettercalltrader/migrations.py`), current schema `10.1.0`
+- aggregate metrics (`bettercalltrader/metrics.py`) and a shared risk-analytics library
 - portfolio risk now reports HHI concentration, top position weight, open exposure %, max drawdown, VaR95, expected shortfall, profit factor, expectancy and average win/loss
-- realized-trade backtest report (`agentictrade/backtest.py`, `replay_v10.py`, `GET /api/backtest`)
+- realized-trade backtest report (`bettercalltrader/backtest.py`, `replay_v10.py`, `GET /api/backtest`)
 
 **Execution safety**
 - `LIVE_TRADING_CONFIRMED` and `MAX_LIVE_TRADE_SOL` guards in `SolanaExecutionAgent.execute_buy`
@@ -729,7 +729,7 @@ The repository now includes the full v10 layer:
 - TTL price cache to cut duplicate DexScreener calls (`PRICE_CACHE_ENABLED`, `PRICE_CACHE_TTL_SEC`)
 
 **Analytics**
-- dependency-free logistic advisory model (`agentictrade/ml.py`); it never changes sizing or trade decisions
+- dependency-free logistic advisory model (`bettercalltrader/ml.py`); it never changes sizing or trade decisions
 - dedicated analytics dashboard at `/analytics` (equity curve, risk ledger, concentration, exit anatomy, daily PnL, ML weights, audit feed, recent trades)
 
 These additions are intentionally non-breaking: v9 behavior remains the default. All new security features are opt-in.
@@ -737,15 +737,15 @@ These additions are intentionally non-breaking: v9 behavior remains the default.
 ## v11.0 progress
 
 - **Reproducible builds**: exact pins in `requirements.txt`, separate dev tooling, `pyproject.toml` with Ruff/mypy settings, and a CI matrix (Ubuntu + Windows, Python 3.11 + 3.12).
-- **Research**: event-driven OHLCV backtester (`agentictrade/ohlcv.py`) with CSV/JSON/GeckoTerminal loaders, momentum and breakout strategies, fee/slippage/latency modelling, walk-forward splits and walk-forward parameter optimization (`--optimize`, `agentictrade/optimizer.py`). `--compare` runs several strategies through the same optimizer and cost stress and ranks them in one artifact (`agentictrade/compare.py`). See `examples/candles_sample.csv`.
+- **Research**: event-driven OHLCV backtester (`bettercalltrader/ohlcv.py`) with CSV/JSON/GeckoTerminal loaders, momentum and breakout strategies, fee/slippage/latency modelling, walk-forward splits and walk-forward parameter optimization (`--optimize`, `bettercalltrader/optimizer.py`). `--compare` runs several strategies through the same optimizer and cost stress and ranks them in one artifact (`bettercalltrader/compare.py`). See `examples/candles_sample.csv`.
 - **Observability**: dependency-free Prometheus registry, `GET /metrics` (counters, latency histogram, DB-derived gauges, breaker state, uptime) and `GET /ready` for dependency checks. Both honour `DASHBOARD_TOKEN`.
 - **Graceful shutdown**: `SIGINT`/`SIGTERM` stop new cycles, cancel monitor/confirmation tasks, close the aiohttp runner and append a `shutdown` audit event.
 - **Safer browser surface**: CORS is now an allowlist (`ALLOWED_ORIGINS`, localhost on any port by default) instead of `*`; responses carry `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a CSP for HTML pages. `CORS_ALLOW_ALL=true` restores the old behaviour.
 - **Dependency auditing**: `pip-audit` runs in CI on every push.
-- **Config validation**: `agentictrade/validate.py` checks numeric ranges, live-trading guards, token strength, profiles and timezones; `python -m agentictrade.doctor` adds package, database-schema, audit-path and port checks and exits non-zero on any `FAIL`.
+- **Config validation**: `bettercalltrader/validate.py` checks numeric ranges, live-trading guards, token strength, profiles and timezones; `python -m bettercalltrader.doctor` adds package, database-schema, audit-path and port checks and exits non-zero on any `FAIL`.
 - **Bind control**: `COMMAND_CENTER_HOST` (default `127.0.0.1`) and `COMMAND_CENTER_PORT` (default `8080`) keep the dashboard loopback-only out of the box. A non-loopback bind without `DASHBOARD_TOKEN` is refused at startup (doctor exits non-zero); `ALLOW_INSECURE_DASHBOARD=true` is the explicit escape hatch. `X-Forwarded-For` is only honoured when `TRUST_PROXY_HEADERS=true`. `PAPER_DB_PATH` selects the portfolio database.
 - **Supply chain**: Dependabot (pip + Actions), CodeQL (`security-and-quality`) and a `SECURITY.md` policy.
-- **Incremental extraction**: time helpers and the paper fill/exit model now live in `agentictrade/timeutils.py` and `agentictrade/fills.py`, re-exported by `research_bot.py` so existing imports keep working.
+- **Incremental extraction**: time helpers and the paper fill/exit model now live in `bettercalltrader/timeutils.py` and `bettercalltrader/fills.py`, re-exported by `research_bot.py` so existing imports keep working.
 - **Crash-safe confirmations**: pending entries are written to the `pending_confirmations` table (schema `10.1.0`) and restored on startup. Entries older than `ENTRY_CONFIRM_RECOVERY_MAX_SEC` (default 900s) are dropped as `CONFIRM_EXPIRED` instead of being resumed with a stale signal.
 - **Pump.fun curve pricing**: with `PUMPFUN_CURVE_ENABLED=true`, a token that has no DexScreener pair yet is quoted from the Pump.fun bonding curve (`frontend-api-v3.pump.fun/coins/<mint>`), so it can pass entry confirmation and manual buys. Quotes are cached for `PUMPFUN_CURVE_CACHE_SEC` (5s) and misses for `PUMPFUN_CURVE_MISS_CACHE_SEC` (60s).
 
@@ -757,7 +757,7 @@ curl.exe -H "X-Auth-Token: $env:DASHBOARD_TOKEN" http://127.0.0.1:8080/metrics
 $env:ALLOWED_ORIGINS="https://my-dashboard.example.com"
 
 # validate configuration before starting the bot
-python -m agentictrade.doctor
+python -m bettercalltrader.doctor
 ```
 
 ### Verifying v10
@@ -767,8 +767,8 @@ $env:PYTHONIOENCODING='utf-8'
 python test_v9.py      # unit + integration self-tests
 python smoke_v10.py    # starts the real API on port 18080 and checks every endpoint
 python replay_v10.py   # realized-trade replay report
-python -m agentictrade.ml status
-python -m agentictrade.ohlcv --help   # candle backtester CLI
+python -m bettercalltrader.ml status
+python -m bettercalltrader.ohlcv --help   # candle backtester CLI
 ```
 
 ## v12.0 progress
@@ -785,15 +785,15 @@ evidence that is harder to fool, without changing the paper-trading default:
 - **Out-of-sample strategy comparison** (`--compare`, `--compare-strategies`):
   runs momentum and breakout through the same optimizer and cost sweep, then
   ranks them by objective, break-even, stability and name in one report
-  (`agentictrade/compare.py`).
-- **Live-execution readiness audit** (`python -m agentictrade.live_readiness
+  (`bettercalltrader/compare.py`).
+- **Live-execution readiness audit** (`python -m bettercalltrader.live_readiness
   [--json] [--probe]`): drives the real `execute_buy` guards against a session
   that refuses every request, proving `DRY_RUN_READY`, `BLOCKED` and `ERROR`
   paths with zero network calls. Reports `PAPER`/`READY`/`BLOCKED`, never prints
   the private key, and only touches the network with `--probe`.
 - **Consistent cost model everywhere**: the paper book, the OHLCV backtester,
   cost stress, the optimizer, the comparison and the ML labels all share
-  `COST_MODEL_VERSION` and `agentictrade/costs.py`, so a research result is
+  `COST_MODEL_VERSION` and `bettercalltrader/costs.py`, so a research result is
   measured against the same round-trip cost the bot actually pays.
 
 None of this predicts profit. It makes the failures cheaper: you can reject a
@@ -801,42 +801,42 @@ strategy, or refuse to arm the live path, before it costs anything.
 
 ## OHLCV backtesting
 
-`agentictrade/ohlcv.py` is a real candle backtester, separate from the realized-trade replay:
+`bettercalltrader/ohlcv.py` is a real candle backtester, separate from the realized-trade replay:
 
 - loads CSV, JSON, or GeckoTerminal USD candles
 - long-only, one position at a time
 - signal at candle close, fill at a later candle open (no look-ahead)
 - configurable AMM fee, entry/exit slippage, priority fee, failed-transaction probability, liquidity impact, latency, stop loss, take profit, trailing stop and time stop
-- one shared `CostModel` (`agentictrade/costs.py`) for the paper book, the backtester and the ML labels, so a round trip costs the same everywhere
+- one shared `CostModel` (`bettercalltrader/costs.py`) for the paper book, the backtester and the ML labels, so a round trip costs the same everywhere
 - depth-aware impact: the exit pays for the share of the pool the entry consumed (`--impact-exponent`, default linear; `0.5` for the square-root AMM curve)
-- one shared `ExitPolicy` (`agentictrade/exits.py`): take profit is partial (`--tp1-fraction`, 50% by default) and the remainder runs on the same stop ladder as the paper book
+- one shared `ExitPolicy` (`bettercalltrader/exits.py`): take profit is partial (`--tp1-fraction`, 50% by default) and the remainder runs on the same stop ladder as the paper book
 - optional volume-participation cap (`--max-participation`): a thin candle fills a smaller position instead of a fantasy fill
 - gap-aware exits: a stop gaps to `min(open, stop)`, take profit to `max(open, tp)`
 - trailing stops use the peak before the current candle; the entry candle cannot exit the position it opened
 - if a stop and take profit share a candle, the stop wins and the trade is flagged `ambiguousBar`
 - reports return, max drawdown, profit factor, expectancy, exposure, fees, total costs, per-trade Sharpe, exit reasons and a `configHash`
 - `--walk-forward N` evaluates sequential out-of-sample segments with one fixed parameter set
-- `--optimize` does the other half: it grid-searches the parameters on each train slice and trades only the winner on the untouched test slice, then reports the out-of-sample aggregate against the unoptimized `--fast/--slow/--lookback/--threshold` baseline (`agentictrade/optimizer.py`)
+- `--optimize` does the other half: it grid-searches the parameters on each train slice and trades only the winner on the untouched test slice, then reports the out-of-sample aggregate against the unoptimized `--fast/--slow/--lookback/--threshold` baseline (`bettercalltrader/optimizer.py`)
 
 ```powershell
 # CSV columns: ts,open,high,low,close,volume (ISO timestamps or epoch seconds)
-python -m agentictrade.ohlcv --csv candles.csv --strategy momentum --fast 5 --slow 13
-python -m agentictrade.ohlcv --json candles.json --strategy breakout --lookback 30
-python -m agentictrade.ohlcv --pool <geckoterminal-pool> --timeframe hour --walk-forward 3
-python -m agentictrade.ohlcv --csv candles.csv --output json --save result.json
+python -m bettercalltrader.ohlcv --csv candles.csv --strategy momentum --fast 5 --slow 13
+python -m bettercalltrader.ohlcv --json candles.json --strategy breakout --lookback 30
+python -m bettercalltrader.ohlcv --pool <geckoterminal-pool> --timeframe hour --walk-forward 3
+python -m bettercalltrader.ohlcv --csv candles.csv --output json --save result.json
 
 # Partial TP1 (50%), a 200% moonbag target and a 5% volume cap
-python -m agentictrade.ohlcv --csv candles.csv --take-profit 80 --tp1-fraction 0.5 \
+python -m bettercalltrader.ohlcv --csv candles.csv --take-profit 80 --tp1-fraction 0.5 \
   --final-take-profit 200 --max-participation 0.05
 
 # Exit the whole position at TP1, and opt into the paper book's 900s time stop
-python -m agentictrade.ohlcv --csv candles.csv --tp1-fraction 1.0 --time-stop
+python -m bettercalltrader.ohlcv --csv candles.csv --tp1-fraction 1.0 --time-stop
 
 # Walk-forward optimization: 3 segments, maximize Sharpe, custom grids
-python -m agentictrade.ohlcv --csv candles.csv --optimize --objective sharpe \
+python -m bettercalltrader.ohlcv --csv candles.csv --optimize --objective sharpe \
   --fast-grid 5,9,13 --slow-grid 13,21,34 --min-trades 5
 
-python -m agentictrade.ohlcv --csv candles.csv --strategy breakout --optimize \
+python -m bettercalltrader.ohlcv --csv candles.csv --strategy breakout --optimize \
   --lookback-grid 10,20,30,55 --threshold-grid 0.0,0.5,1.0 --output json --save opt.json
 ```
 
@@ -867,9 +867,9 @@ untested winner.
   either is below 40%, otherwise `mixed`
 
 ```bash
-python -m agentictrade.ohlcv --csv candles.csv --optimize \
+python -m bettercalltrader.ohlcv --csv candles.csv --optimize \
   --window-mode rolling --train-candles 240 --test-candles 90 --objective sharpe
-python -m agentictrade.ohlcv --csv candles.csv --optimize --window-mode anchored
+python -m bettercalltrader.ohlcv --csv candles.csv --optimize --window-mode anchored
 ```
 
 `--window-mode`, `--train-candles` and `--test-candles` only apply to
@@ -884,10 +884,10 @@ cost (gross edge), `1` is the normal cost level, and larger values stress a
 busier pool or a worse slot:
 
 ```bash
-python -m agentictrade.ohlcv --csv candles.csv --stress-costs
-python -m agentictrade.ohlcv --csv candles.csv --stress-costs \
+python -m bettercalltrader.ohlcv --csv candles.csv --stress-costs
+python -m bettercalltrader.ohlcv --csv candles.csv --stress-costs \
   --cost-multipliers 0,0.5,1,2,4,8 --cost-baseline 1
-python -m agentictrade.ohlcv --strategy breakout --csv candles.csv --stress-costs --output json
+python -m bettercalltrader.ohlcv --strategy breakout --csv candles.csv --stress-costs --output json
 ```
 
 The report scales the AMM fee, entry/exit slippage, impact coefficient and
@@ -907,11 +907,11 @@ walk-forward optimizer (so params are always picked on train slices) and the
 same cost sweep, then ranked on out-of-sample, cost-adjusted evidence:
 
 ```bash
-python -m agentictrade.ohlcv --csv candles.csv --compare
-python -m agentictrade.ohlcv --csv candles.csv --compare \
+python -m bettercalltrader.ohlcv --csv candles.csv --compare
+python -m bettercalltrader.ohlcv --csv candles.csv --compare \
   --compare-strategies momentum,breakout --objective sharpe \
   --window-mode rolling --train-candles 240 --test-candles 90
-python -m agentictrade.ohlcv --csv candles.csv --compare --output json --save compare.json
+python -m bettercalltrader.ohlcv --csv candles.csv --compare --output json --save compare.json
 ```
 
 The ranking key is fixed and deterministic: the chosen `--objective` on the
@@ -936,8 +936,8 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 | `ModuleNotFoundError: aiohttp` / `pydantic` / `dotenv` | The venv is not active, or dependencies are missing | `source .venv/bin/activate` (Windows: `.\.venv\Scripts\Activate.ps1`), then `pip install -r requirements.txt`. Re-run `./run.sh` if unsure. |
 | `./run.sh: Permission denied` | The script is not executable | `chmod +x run.sh bootstrap.sh backup.sh restore.sh` |
 | `Activate.ps1 cannot be loaded` (Windows) | PowerShell execution policy | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or call `.\.venv\Scripts\python.exe` directly. |
-| Doctor prints `FAIL` for `live_trading_confirmed` / `SOLANA_PRIVATE_KEY` | `LIVE_TRADING_ENABLED=true` without a complete live configuration | Set `LIVE_TRADING_ENABLED=false` for paper mode, or finish the live checklist in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and re-run `python -m agentictrade.live_readiness`. |
-| `python -m agentictrade.live_readiness` prints `BLOCKED` | A configuration key is missing or a guard failed | The report lists each failing key. Fix it, then re-run. A `blocked` guard is a bug, not a warning — do not arm live trading. |
+| Doctor prints `FAIL` for `live_trading_confirmed` / `SOLANA_PRIVATE_KEY` | `LIVE_TRADING_ENABLED=true` without a complete live configuration | Set `LIVE_TRADING_ENABLED=false` for paper mode, or finish the live checklist in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and re-run `python -m bettercalltrader.live_readiness`. |
+| `python -m bettercalltrader.live_readiness` prints `BLOCKED` | A configuration key is missing or a guard failed | The report lists each failing key. Fix it, then re-run. A `blocked` guard is a bug, not a warning — do not arm live trading. |
 | Doctor warns the dashboard token is empty on a non-loopback bind | The bot refuses to expose an unauthenticated trading API | Bind `127.0.0.1` (default), or set `DASHBOARD_TOKEN` (and open `/?token=...` once). `ALLOW_INSECURE_DASHBOARD=true` is the explicit, unsafe opt-out. |
 | Dashboard returns `401` / `403` | `DASHBOARD_TOKEN` is set and the browser has no token cookie | Open `http://127.0.0.1:8080/?token=<value>` once; the cookie is then reused. |
 | Port `8080` already in use | Another process (often a previous bot) holds the port | Stop it, or set `COMMAND_CENTER_PORT=8081` in `.env` and restart. The bot falls back to terminal-only mode when the port is busy. |
@@ -947,10 +947,10 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 | Journal/audit shows `NO_ROUTE` | No Jupiter route or no Pump.fun route for the amount | The token is too new, too illiquid or the amount is too small. Try later or a different mint. |
 | `live_buy_blocked` in `bot_audit.jsonl` | A live guard refused the order (unconfirmed, over `MAX_LIVE_TRADE_SOL`, missing key) | This is the guard working. Check the `reason` field and fix the configuration; do not bypass the guard. |
 | `solders` missing / signing fails | Live signing needs the optional package | `pip install solders` inside the venv. Paper mode does not need it. |
-| Edited `.env` but nothing changed | `.env` is read once at startup | Restart the bot. `python -m agentictrade.doctor` shows the values it will use. |
+| Edited `.env` but nothing changed | `.env` is read once at startup | Restart the bot. `python -m bettercalltrader.doctor` shows the values it will use. |
 | Dashboard shows stale or empty data | The bot process stopped, or the browser cached an old page | Check the terminal/`bot_history.log`, reload with `Ctrl+F5`, and confirm `GET /ready` returns `200`. |
 
-If a run behaves oddly, capture `python -m agentictrade.doctor`, the last
+If a run behaves oddly, capture `python -m bettercalltrader.doctor`, the last
 terminal lines, and the tail of `bot_audit.jsonl` before restarting — those three
 answer most questions.
 

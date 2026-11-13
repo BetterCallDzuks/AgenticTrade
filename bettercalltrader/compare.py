@@ -17,10 +17,10 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from agentictrade.cost_stress import DEFAULT_MULTIPLIERS, stress_costs
-from agentictrade.costs import COST_MODEL_VERSION
-from agentictrade.ohlcv import BacktestConfig, Candle, make_strategy, normalize_candles
-from agentictrade.optimizer import (
+from bettercalltrader.cost_stress import DEFAULT_MULTIPLIERS, stress_costs
+from bettercalltrader.costs import COST_MODEL_VERSION
+from bettercalltrader.ohlcv import BacktestConfig, Candle, make_strategy, normalize_candles
+from bettercalltrader.optimizer import (
     OBJECTIVES,
     WINDOW_MODES,
     default_grid,

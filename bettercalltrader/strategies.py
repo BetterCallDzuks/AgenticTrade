@@ -2,12 +2,12 @@
 
 Profiles only fill values that are not explicitly set in the environment, so an
 existing .env keeps full control. `balanced` mirrors the historical defaults,
-which now live in :mod:`agentictrade.defaults`.
+which now live in :mod:`bettercalltrader.defaults`.
 """
 
 from typing import Dict
 
-from agentictrade.defaults import STRATEGY_DEFAULTS
+from bettercalltrader.defaults import STRATEGY_DEFAULTS
 
 PROFILES: Dict[str, Dict[str, float]] = {
     "conservative": {

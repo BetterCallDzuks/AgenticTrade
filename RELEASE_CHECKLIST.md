@@ -16,23 +16,23 @@ Use this checklist before any change that could enable real on-chain trading.
 - [ ] `STRATEGY_PROFILE` matches your intent; explicit env values still override it
 - [ ] `AUDIT_LOG_PATH` points somewhere persistent and is included in backups
 - [ ] `/api/audit` shows dry-run events but no unexpected live sends
-- [ ] ML model treated as advisory only (`python -m agentictrade.ml status`)
+- [ ] ML model treated as advisory only (`python -m bettercalltrader.ml status`)
 
 ## v11 specifics
-- [ ] `python -m agentictrade.doctor` prints `Result: OK` (or every warning is understood)
+- [ ] `python -m bettercalltrader.doctor` prints `Result: OK` (or every warning is understood)
 - [ ] `GET /ready` returns `200` with `"database": true`
-- [ ] `GET /metrics` returns Prometheus text (`agentictrade_info`, HTTP counters)
+- [ ] `GET /metrics` returns Prometheus text (`bettercalltrader_info`, HTTP counters)
 - [ ] CORS allowlist reviewed (`ALLOWED_ORIGINS`); `CORS_ALLOW_ALL` stays `false` when exposed
 - [ ] `SIGINT`/`SIGTERM` stops the bot cleanly and writes a `shutdown` audit event
 - [ ] `pip-audit -r requirements.txt` is clean (or findings are triaged)
-- [ ] `python -m agentictrade.ohlcv --csv <sample.csv>` produces a sane report (sanity-check fees and slippage)
+- [ ] `python -m bettercalltrader.ohlcv --csv <sample.csv>` produces a sane report (sanity-check fees and slippage)
 - [ ] Ruff and mypy pass (`ruff check .`, `mypy`)
 
 ## v12 specifics
-- [ ] `python -m agentictrade.live_readiness` prints `PAPER` (exit 0) with 0 guard failures and 0 network calls
-- [ ] `python -m agentictrade.live_readiness --probe` is only run against the intended cluster and reaches RPC + Jupiter
-- [ ] `python -m agentictrade.ohlcv --csv <sample.csv> --stress-costs` reports a break-even multiplier
-- [ ] `python -m agentictrade.ohlcv --csv <sample.csv> --compare` ranks strategies deterministically on out-of-sample metrics
+- [ ] `python -m bettercalltrader.live_readiness` prints `PAPER` (exit 0) with 0 guard failures and 0 network calls
+- [ ] `python -m bettercalltrader.live_readiness --probe` is only run against the intended cluster and reaches RPC + Jupiter
+- [ ] `python -m bettercalltrader.ohlcv --csv <sample.csv> --stress-costs` reports a break-even multiplier
+- [ ] `python -m bettercalltrader.ohlcv --csv <sample.csv> --compare` ranks strategies deterministically on out-of-sample metrics
 - [ ] Rolling/anchored windows were re-run after changing strategy parameters (`--window-mode`, `--train-candles`, `--test-candles`)
 - [ ] `LIVE_TRADING_CONFIRMED` is unset or `false` until the live section below is complete
 

@@ -1,11 +1,11 @@
-"""Pre-flight diagnostics for AgenticTrade.
+"""Pre-flight diagnostics for BetterCallTrader.
 
 Run this before starting the bot, or in CI, to catch configuration mistakes
 early instead of discovering them in the middle of a trading cycle::
 
-    python -m agentictrade.doctor
-    python -m agentictrade.doctor --json
-    python -m agentictrade.doctor --no-port-check
+    python -m bettercalltrader.doctor
+    python -m bettercalltrader.doctor --json
+    python -m bettercalltrader.doctor --no-port-check
 
 The command is read-only. It never places orders, never enables live trading and
 never writes to the portfolio database (it only reads the schema version).
@@ -23,9 +23,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence
 
-from agentictrade import validate as validation
-from agentictrade.llm import LLMConfig, probe as probe_llm
-from agentictrade.live_readiness import check_environment
+from bettercalltrader import validate as validation
+from bettercalltrader.llm import LLMConfig, probe as probe_llm
+from bettercalltrader.live_readiness import check_environment
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 REQUIRED_PACKAGES = ("aiohttp", "pydantic", "python-dotenv")
@@ -113,7 +113,7 @@ def check_database(db_path: Path) -> Check:
         return Check("database", "ok", f"{db_path} will be created on first run")
 
     try:
-        from agentictrade.migrations import apply_migrations
+        from bettercalltrader.migrations import apply_migrations
 
         version = apply_migrations(str(db_path))
     except Exception as exc:  # pragma: no cover - depends on real sqlite state
@@ -202,7 +202,7 @@ def check_timezone(name: Optional[str]) -> Check:
 def check_live_readiness(values: Mapping[str, str]) -> Check:
     """Summarise live-execution readiness without importing the bot or a socket.
 
-    The full guard harness lives in ``python -m agentictrade.live_readiness``;
+    The full guard harness lives in ``python -m bettercalltrader.live_readiness``;
     this check only reports whether the configuration is paper, armed, or
     ambiguous, so ``doctor`` stays fast and read-only.
     """
@@ -213,26 +213,26 @@ def check_live_readiness(values: Mapping[str, str]) -> Check:
                 "live_readiness",
                 "warn",
                 f"live trading is ON with {report['fails']} blocker(s); run "
-                "python -m agentictrade.live_readiness before arming",
+                "python -m bettercalltrader.live_readiness before arming",
             )
         return Check(
             "live_readiness",
             "warn",
             "live trading is ON and the pre-flight checks pass; run "
-            "python -m agentictrade.live_readiness --probe before arming",
+            "python -m bettercalltrader.live_readiness --probe before arming",
         )
     if report["fails"]:
         return Check(
             "live_readiness",
             "warn",
             f"{report['fails']} readiness issue(s) make the execution mode ambiguous; "
-            "run python -m agentictrade.live_readiness",
+            "run python -m bettercalltrader.live_readiness",
         )
     return Check(
         "live_readiness",
         "info",
         "paper mode; on-chain orders are disabled. "
-        "Run: python -m agentictrade.live_readiness",
+        "Run: python -m bettercalltrader.live_readiness",
     )
 
 
@@ -345,8 +345,8 @@ def render(checks: Sequence[Check], *, show_info: bool = True) -> str:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m agentictrade.doctor",
-        description="Validate AgenticTrade configuration before starting the bot.",
+        prog="python -m bettercalltrader.doctor",
+        description="Validate BetterCallTrader configuration before starting the bot.",
     )
     parser.add_argument("--env-file", default=".env", help="path to the .env file (default: .env)")
     parser.add_argument("--db", help="portfolio database path (default: PAPER_DB_PATH or paper_portfolio.db)")

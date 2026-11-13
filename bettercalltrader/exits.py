@@ -2,7 +2,7 @@
 
 Before this module the stop/take-profit/trailing order existed twice: once as a
 tick-by-tick ``if/elif`` chain in ``PaperTradingManager`` and once as a
-candle-by-candle chain in ``agentictrade.ohlcv``. The two drifted (the
+candle-by-candle chain in ``bettercalltrader.ohlcv``. The two drifted (the
 backtester exited 100% at take profit while the paper book sold half), so a
 research run measured a policy the bot never traded.
 
@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
-from agentictrade.defaults import EXIT_DEFAULTS, STRATEGY_DEFAULTS
+from bettercalltrader.defaults import EXIT_DEFAULTS, STRATEGY_DEFAULTS
 
 # Exit reasons. Keep these strings stable: they are written to
 # ``trade_history.exit_reason`` and counted in analytics reports.

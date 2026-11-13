@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AgenticTrade — Analytics</title>
+<title>BetterCallTrader — Analytics</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
@@ -288,7 +288,7 @@
           </div>
           <div class="min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
-              <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">AgenticTrade</h1>
+              <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">BetterCallTrader</h1>
               <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-sol-purple/20 text-sol-purple border border-sol-purple/40 font-semibold" data-i18n="app.version">v10 · paper</span>
               <span id="connPill" class="pill"><i class="dot"></i><span id="connText" data-i18n="status.connecting">Connecting</span></span>
             </div>
@@ -531,7 +531,7 @@
 
 <script>
   /* ============================ i18n ============================ */
-  const LANG_KEY = "agentictrade_lang";
+  const LANG_KEY = "bettercalltrader_lang";
   const I18N = {
     hr: {
       "app.version": "v10 · paper",
@@ -741,7 +741,7 @@
     root.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
     root.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
     document.documentElement.lang = state.lang;
-    document.title = state.lang === "hr" ? "AgenticTrade — Analitika" : "AgenticTrade — Analytics";
+    document.title = state.lang === "hr" ? "BetterCallTrader — Analitika" : "BetterCallTrader — Analytics";
     document.querySelectorAll("[data-lang]").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.lang === state.lang);
       btn.setAttribute("aria-pressed", String(btn.dataset.lang === state.lang));
@@ -761,10 +761,10 @@
       const params = new URL(window.location.href).searchParams;
       const fromUrl = params.get("token");
       if (fromUrl) {
-        localStorage.setItem("agentictrade_token", fromUrl);
+        localStorage.setItem("bettercalltrader_token", fromUrl);
         return fromUrl;
       }
-      return localStorage.getItem("agentictrade_token") || "";
+      return localStorage.getItem("bettercalltrader_token") || "";
     } catch (err) {
       return "";
     }
@@ -1184,11 +1184,11 @@
   });
 
   $("tokenBtn").addEventListener("click", () => {
-    const current = localStorage.getItem("agentictrade_token") || "";
+    const current = localStorage.getItem("bettercalltrader_token") || "";
     const next = prompt("Dashboard token (leave empty to clear):", current);
     if (next === null) return;
-    if (next.trim()) localStorage.setItem("agentictrade_token", next.trim());
-    else localStorage.removeItem("agentictrade_token");
+    if (next.trim()) localStorage.setItem("bettercalltrader_token", next.trim());
+    else localStorage.removeItem("bettercalltrader_token");
     toast(t("toast.tokenSaved"));
     setTimeout(() => window.location.reload(), 400);
   });

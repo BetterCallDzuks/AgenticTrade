@@ -11,7 +11,7 @@ Each slice starts from the same bankroll, matching ``walk_forward``. A
 parameter set is only eligible when the train run produced at least
 ``min_trades`` trades; a slice with no eligible candidate is skipped rather
 than filled with an untested winner. All costs, exits and sizing come from the
-same :class:`agentictrade.ohlcv.BacktestConfig` as a normal backtest.
+same :class:`bettercalltrader.ohlcv.BacktestConfig` as a normal backtest.
 """
 
 from __future__ import annotations
@@ -21,15 +21,15 @@ import math
 import statistics
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from agentictrade.costs import COST_MODEL_VERSION
-from agentictrade.ohlcv import (
+from bettercalltrader.costs import COST_MODEL_VERSION
+from bettercalltrader.ohlcv import (
     BacktestConfig,
     Candle,
     make_strategy,
     normalize_candles,
     run_backtest,
 )
-from agentictrade.risk_analytics import summarize
+from bettercalltrader.risk_analytics import summarize
 
 OBJECTIVES = ("pnl", "return_pct", "profit_factor", "expectancy", "sharpe")
 

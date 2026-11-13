@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Back up the mutable AgenticTrade state (DB, secrets, logs, audit, ML model).
+# Back up the mutable BetterCallTrader state (DB, secrets, logs, audit, ML model).
 #
-#   ./backup.sh                          # -> ~/AgenticTradeBackup/<timestamp>/
+#   ./backup.sh                          # -> ~/BetterCallTraderBackup/<timestamp>/
 #   ./backup.sh /media/usb/at-backups    # custom destination root
 #   ./backup.sh --no-secrets             # omit .env (recommended when sharing)
 #
@@ -32,7 +32,7 @@ for arg in "$@"; do
     esac
 done
 
-DEST_ROOT="${DEST_ROOT:-$HOME/AgenticTradeBackup}"
+DEST_ROOT="${DEST_ROOT:-$HOME/BetterCallTraderBackup}"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 TARGET="$DEST_ROOT/$TIMESTAMP"
 

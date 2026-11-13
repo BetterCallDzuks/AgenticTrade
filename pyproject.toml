@@ -1,5 +1,5 @@
 [project]
-name = "agentictrade"
+name = "bettercalltrader"
 version = "12.0.0"
 description = "Paper-first Solana memecoin trading bot with an AI research agent and a local Command Center."
 requires-python = ">=3.11"
@@ -23,7 +23,7 @@ ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["agentictrade"]
+files = ["bettercalltrader"]
 ignore_missing_imports = true
 check_untyped_defs = true
 no_implicit_optional = true

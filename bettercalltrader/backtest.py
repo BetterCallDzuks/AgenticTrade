@@ -10,7 +10,7 @@ import sqlite3
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
-from agentictrade.risk_analytics import summarize
+from bettercalltrader.risk_analytics import summarize
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -111,7 +111,7 @@ def _fmt(value: Optional[float], digits: int = 4) -> str:
 def to_markdown(report: dict) -> str:
     s = report["summary"]
     lines = [
-        "# AgenticTrade v10 backtest report",
+        "# BetterCallTrader v10 backtest report",
         "",
         f"Database: `{report['db']}`",
         f"Initial equity: {report['initialSol']:.4f} SOL",

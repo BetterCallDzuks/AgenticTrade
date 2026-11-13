@@ -1,4 +1,4 @@
-name: AgenticTrade tests
+name: BetterCallTrader tests
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       - name: Ruff
         run: |
           "$VENV_PY" -m ruff check .
-      - name: Mypy (agentictrade package)
+      - name: Mypy (bettercalltrader package)
         run: |
           "$VENV_PY" -m mypy
 
@@ -52,7 +52,7 @@ jobs:
       - name: Config doctor
         shell: bash
         run: |
-          "$VENV_PY" -m agentictrade.doctor --no-port-check --no-info
+          "$VENV_PY" -m bettercalltrader.doctor --no-port-check --no-info
         env:
           PYTHONIOENCODING: utf-8
       - name: Run self-tests

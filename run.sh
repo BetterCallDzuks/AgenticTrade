@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# AgenticTrade launcher for Linux / Ubuntu (and macOS).
+# BetterCallTrader launcher for Linux / Ubuntu (and macOS).
 #
 #   ./run.sh              # pre-flight doctor check, then start the bot
 #   ./run.sh --skip-doctor
@@ -56,12 +56,12 @@ fi
 
 # --- 3. Pre-flight -------------------------------------------------------
 if [ "$SKIP_DOCTOR" -eq 0 ]; then
-    log "Running pre-flight checks (python -m agentictrade.doctor)"
-    if ! "$PY" -m agentictrade.doctor; then
+    log "Running pre-flight checks (python -m bettercalltrader.doctor)"
+    if ! "$PY" -m bettercalltrader.doctor; then
         die "pre-flight checks reported FAIL - fix them before starting. Re-run with --skip-doctor to bypass."
     fi
 fi
 
 # --- 4. Start ------------------------------------------------------------
-log "Starting AgenticTrade - Command Center at http://localhost:${COMMAND_CENTER_PORT:-8080}"
+log "Starting BetterCallTrader - Command Center at http://localhost:${COMMAND_CENTER_PORT:-8080}"
 exec "$PY" research_bot.py

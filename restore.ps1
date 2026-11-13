@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 $source = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 if (-not $BackupPath) {
-    $backupRoot = "$env:USERPROFILE\Desktop\AgenticTradeBackup"
+    $backupRoot = "$env:USERPROFILE\Desktop\BetterCallTraderBackup"
     if (-not (Test-Path $backupRoot)) {
         throw "Backup folder not found: $backupRoot"
     }

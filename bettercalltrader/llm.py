@@ -32,7 +32,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Type
 
-from agentictrade.defaults import LLM_DEFAULTS
+from bettercalltrader.defaults import LLM_DEFAULTS
 
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 PROVIDERS = ("auto", "gemini", "openai", "ollama", "none")

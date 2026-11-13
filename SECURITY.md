@@ -13,7 +13,7 @@
 Please **do not open a public issue** for security problems. Use GitHub's
 private vulnerability reporting:
 
-1. Go to <https://github.com/BetterCallDzuks/AgenticTrade/security/advisories/new>.
+1. Go to <https://github.com/BetterCallDzuks/BetterCallTrader/security/advisories/new>.
 2. Describe the issue, reproduction steps and impact.
 3. Do not include real private keys, API tokens or wallet seed phrases.
 
@@ -35,7 +35,7 @@ This repository never ships credentials. `.env` is gitignored; only
   before it can send a swap.
 - The dashboard binds `127.0.0.1:8080` by default. Binding any other
   interface requires `DASHBOARD_TOKEN`; the bot refuses to start and
-  `python -m agentictrade.doctor` exits non-zero otherwise. The only override
+  `python -m bettercalltrader.doctor` exits non-zero otherwise. The only override
   is `ALLOW_INSECURE_DASHBOARD=true`, which is logged and warned about.
 - Mutating API routes (`POST`/`PUT`/`PATCH`/`DELETE`) reject cross-site
   browser requests unless the origin is allowlisted (`ALLOWED_ORIGINS` or
@@ -44,7 +44,7 @@ This repository never ships credentials. `.env` is gitignored; only
   unless `TRUST_PROXY_HEADERS=true`, so clients cannot spoof their address to
   bypass the limiter.
 - `GET /metrics` and `GET /ready` are protected by the same token as `/api/*`.
-- `python -m agentictrade.doctor` reports unsafe configuration (missing token,
+- `python -m bettercalltrader.doctor` reports unsafe configuration (missing token,
   live mode without confirmation, broken limits, unrecognised boolean values)
   before the bot starts.
 - Keep `.env` mode `0600`; `doctor` warns on POSIX when it is readable by

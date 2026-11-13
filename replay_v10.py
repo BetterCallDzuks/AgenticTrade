@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from agentictrade.backtest import build_report, to_markdown
+from bettercalltrader.backtest import build_report, to_markdown
 
 
 def snapshot_database(src: Path, target: Path) -> None:
@@ -26,7 +26,7 @@ def snapshot_database(src: Path, target: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="AgenticTrade v10 realized-trade replay")
+    parser = argparse.ArgumentParser(description="BetterCallTrader v10 realized-trade replay")
     parser.add_argument("--db", default="paper_portfolio.db", help="path to the paper trading database")
     parser.add_argument("--initial-sol", type=float, default=10.0, help="starting equity in SOL")
     parser.add_argument("--json", action="store_true", help="print the full JSON report")

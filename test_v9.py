@@ -507,8 +507,8 @@ def test_circuit_breaker_trips():
 def test_v10_schema_and_metrics():
     import asyncio
     import sqlite3
-    from agentictrade.metrics import collect_basic_metrics
-    from agentictrade.migrations import apply_migrations, CURRENT_SCHEMA_VERSION
+    from bettercalltrader.metrics import collect_basic_metrics
+    from bettercalltrader.migrations import apply_migrations, CURRENT_SCHEMA_VERSION
 
     db_path = make_temp_db()
     log_path = db_path + ".log"
@@ -536,7 +536,7 @@ def test_v10_schema_and_metrics():
         assert abs(metrics["netPnlSol"] - 0.4) < 1e-9
         assert metrics["openPositions"] == 1.0
 
-        from agentictrade.observability import configure_file_logger
+        from bettercalltrader.observability import configure_file_logger
         logger = configure_file_logger(log_path)
         logger.info("v10 observability test")
         assert Path(log_path).exists() and Path(log_path).stat().st_size > 0
@@ -576,8 +576,8 @@ def test_v10_schema_and_metrics():
 
 def test_v10_risk_and_backtest():
     import sqlite3
-    from agentictrade.risk_analytics import herfindahl_index, summarize
-    from agentictrade.backtest import build_report
+    from bettercalltrader.risk_analytics import herfindahl_index, summarize
+    from bettercalltrader.backtest import build_report
 
     stats = summarize([0.5, -0.2, 1.0, -0.4], initial_equity=10.0)
     assert stats["trades"] == 4
@@ -639,7 +639,7 @@ def test_v10_risk_and_backtest():
 
 
 def test_v10_security():
-    from agentictrade.security import RateLimiter, client_ip, is_authorized, is_mutation_allowed
+    from bettercalltrader.security import RateLimiter, client_ip, is_authorized, is_mutation_allowed
 
     assert is_authorized(None, "") is True
     assert is_authorized("abc", "abc") is True
@@ -681,7 +681,7 @@ def test_v10_security():
 
 def test_v11_phase0_hardening():
     """Phase 0: fail-closed bind, honest exits, stale-quote and boolean guards."""
-    from agentictrade.validate import summarize, validate_env
+    from bettercalltrader.validate import summarize, validate_env
 
     # Bind guard: loopback or a token is required for a network bind.
     assert rb.dashboard_bind_error("127.0.0.1", "", False) is None
@@ -692,7 +692,7 @@ def test_v11_phase0_hardening():
     assert rb.dashboard_bind_error("0.0.0.0", "", True) is None
     print("  dashboard bind guard: OK")
 
-    from agentictrade.doctor import check_exposure, check_env_permissions
+    from bettercalltrader.doctor import check_exposure, check_env_permissions
     assert check_exposure("0.0.0.0", "").status == "fail"
     assert check_exposure("0.0.0.0", "", allow_insecure=True).status == "warn"
     assert check_exposure("127.0.0.1", "").status == "warn"
@@ -790,7 +790,7 @@ def test_v11_phase0_hardening():
 def test_v10_observability():
     import json
     import logging
-    from agentictrade.observability import (
+    from bettercalltrader.observability import (
         AlertThrottle, JsonFormatter, audit_event, configure_json_logging, log_event, read_audit,
     )
 
@@ -845,7 +845,7 @@ def test_v10_observability():
 
 
 def test_v10_strategy_profiles():
-    from agentictrade.strategies import normalize_profile, profile_values, resolve_profile
+    from bettercalltrader.strategies import normalize_profile, profile_values, resolve_profile
 
     assert normalize_profile("AGGRESSIVE") == "aggressive"
     assert normalize_profile("nonsense") == "balanced"
@@ -889,7 +889,7 @@ def test_v10_strategy_profiles():
 
 def test_v10_ml_advisory():
     import sqlite3
-    from agentictrade.ml import (
+    from bettercalltrader.ml import (
         build_training_rows, load_model, model_summary, predict_mint,
         predict_probability, save_model, train_model,
     )
@@ -960,7 +960,7 @@ def test_v10_ml_advisory():
 
 
 def test_v10_price_cache():
-    from agentictrade.price_feed import PriceCache
+    from bettercalltrader.price_feed import PriceCache
 
     cache = PriceCache(max_entries=2, default_ttl_sec=3.0)
     assert cache.get("AAA", now=0.0) is None
@@ -985,7 +985,7 @@ def test_v10_price_cache():
 
 
 def test_v11_prometheus():
-    from agentictrade.prometheus import MetricsRegistry
+    from bettercalltrader.prometheus import MetricsRegistry
 
     registry = MetricsRegistry(buckets=(0.1, 1.0))
     registry.inc("requests_total", {"method": "GET", "path": "/api/state"})
@@ -1013,7 +1013,7 @@ def test_v11_prometheus():
 
 
 def test_v11_origin_policy():
-    from agentictrade.security import is_origin_allowed, parse_allowed_origins
+    from bettercalltrader.security import is_origin_allowed, parse_allowed_origins
 
     allowed = parse_allowed_origins("https://example.com, https://app.example.com")
     assert allowed == {"https://example.com", "https://app.example.com"}
@@ -1033,7 +1033,7 @@ def test_v11_origin_policy():
 
 def test_v11_shutdown_controller():
     import asyncio
-    from agentictrade.shutdown import ShutdownController
+    from bettercalltrader.shutdown import ShutdownController
 
     async def scenario():
         controller = ShutdownController()
@@ -1049,7 +1049,7 @@ def test_v11_shutdown_controller():
 
 
 def _synthetic_candles(closes):
-    from agentictrade.ohlcv import Candle
+    from bettercalltrader.ohlcv import Candle
 
     candles = []
     previous = closes[0]
@@ -1098,7 +1098,7 @@ class _FirstBuyStrategy:
 def test_v11_ohlcv():
     import tempfile
     from pathlib import Path
-    from agentictrade.ohlcv import (
+    from bettercalltrader.ohlcv import (
         BacktestConfig,
         BreakoutStrategy,
         Candle,
@@ -1228,7 +1228,7 @@ def test_v11_ohlcv():
 
 
 def test_v11_config_validation():
-    from agentictrade.validate import summarize, validate_env
+    from bettercalltrader.validate import summarize, validate_env
 
     safe = {
         "LIVE_TRADING_ENABLED": "false",
@@ -1290,7 +1290,7 @@ def test_v11_config_validation():
 def test_v11_doctor():
     import tempfile
     from pathlib import Path
-    from agentictrade.doctor import load_env_file, run_checks
+    from bettercalltrader.doctor import load_env_file, run_checks
 
     env = {
         "LIVE_TRADING_ENABLED": "false",
@@ -1338,7 +1338,7 @@ def test_v11_doctor():
 def test_v11_extracted_helpers():
     from datetime import datetime
 
-    from agentictrade import fills, timeutils
+    from bettercalltrader import fills, timeutils
 
     assert rb.paper_fill is fills.paper_fill
     assert rb.exit_icon is fills.exit_icon
@@ -1375,8 +1375,8 @@ def test_v11_extracted_helpers():
 
 
 def test_v11_cost_model():
-    from agentictrade.costs import COST_MODEL_VERSION, CostModel, replay_round_trip
-    from agentictrade.defaults import COST_DEFAULTS, STRATEGY_DEFAULTS, config_hash
+    from bettercalltrader.costs import COST_MODEL_VERSION, CostModel, replay_round_trip
+    from bettercalltrader.defaults import COST_DEFAULTS, STRATEGY_DEFAULTS, config_hash
 
     zero = CostModel(base_bps=0, amm_fee_bps=0, impact_coeff=0, priority_fee_sol=0, failed_tx_prob=0)
     buy = zero.entry(2.0, 1.0)
@@ -1435,7 +1435,7 @@ def test_v11_cost_model():
 
 
 def _ohlc_candles(rows):
-    from agentictrade.ohlcv import Candle
+    from bettercalltrader.ohlcv import Candle
 
     return [
         Candle(ts=float(index * 60), open=open_, high=high, low=low, close=close, volume=1.0)
@@ -1444,8 +1444,8 @@ def _ohlc_candles(rows):
 
 
 def test_v11_backtest_exits():
-    from agentictrade.costs import COST_MODEL_VERSION
-    from agentictrade.ohlcv import BacktestConfig, run_backtest
+    from bettercalltrader.costs import COST_MODEL_VERSION
+    from bettercalltrader.ohlcv import BacktestConfig, run_backtest
 
     def free_config(**overrides):
         values = dict(
@@ -1537,8 +1537,8 @@ def test_v11_backtest_exits():
 
 
 def test_v11_cost_parity():
-    from agentictrade.costs import replay_round_trip
-    from agentictrade.ohlcv import BacktestConfig, run_backtest
+    from bettercalltrader.costs import replay_round_trip
+    from bettercalltrader.ohlcv import BacktestConfig, run_backtest
 
     cfg = BacktestConfig(
         initial_sol=10.0,
@@ -1632,17 +1632,17 @@ def test_v11_cost_parity():
 
 
 def test_v11_config_fingerprint():
-    from agentictrade.defaults import COST_DEFAULTS, STRATEGY_DEFAULTS
-    from agentictrade.ohlcv import BacktestConfig
-    from agentictrade.strategies import PROFILES
-    from agentictrade.validate import validate_env
+    from bettercalltrader.defaults import COST_DEFAULTS, STRATEGY_DEFAULTS
+    from bettercalltrader.ohlcv import BacktestConfig
+    from bettercalltrader.strategies import PROFILES
+    from bettercalltrader.validate import validate_env
 
     assert PROFILES["balanced"]["STOP_LOSS_PCT"] == STRATEGY_DEFAULTS["STOP_LOSS_PCT"]
     assert PROFILES["balanced"]["TP1_PCT"] == STRATEGY_DEFAULTS["TP1_PCT"]
     assert COST_DEFAULTS["amm_fee_bps"] == 25.0
     assert BacktestConfig().fingerprint() == BacktestConfig().fingerprint()
     assert BacktestConfig().fingerprint() != BacktestConfig(fee_bps=100.0).fingerprint()
-    from agentictrade.ohlcv import BreakoutStrategy, EmaCrossStrategy
+    from bettercalltrader.ohlcv import BreakoutStrategy, EmaCrossStrategy
 
     first = BacktestConfig().fingerprint(EmaCrossStrategy(fast=3, slow=8))
     assert first == BacktestConfig().fingerprint(EmaCrossStrategy(fast=3, slow=8))
@@ -1679,7 +1679,7 @@ def test_v11_config_fingerprint():
 
 
 def test_v11_partial_tp1():
-    from agentictrade.ohlcv import BacktestConfig, run_backtest
+    from bettercalltrader.ohlcv import BacktestConfig, run_backtest
 
     cfg = BacktestConfig(
         initial_sol=10.0,
@@ -1719,8 +1719,8 @@ def test_v11_partial_tp1():
 
 
 def test_v11_depth_and_participation():
-    from agentictrade.costs import CostModel, depth_used_fraction, replay_round_trip
-    from agentictrade.ohlcv import BacktestConfig, Candle, run_backtest
+    from bettercalltrader.costs import CostModel, depth_used_fraction, replay_round_trip
+    from bettercalltrader.ohlcv import BacktestConfig, Candle, run_backtest
 
     model = CostModel(
         base_bps=0.0,
@@ -1779,7 +1779,7 @@ def test_v11_depth_and_participation():
 
 
 def test_v11_exit_policy_parity():
-    from agentictrade.exits import (
+    from bettercalltrader.exits import (
         BREAKEVEN_STOP, FAST_INVALIDATION, FLOW_EXIT, STOP_LOSS,
         TAKE_PROFIT_1, TIME_STOP, TRAILING_STOP, WHALE_EXIT, ExitPolicy,
     )
@@ -1851,7 +1851,7 @@ def test_v11_llm_layer():
 
     from aiohttp import web
 
-    from agentictrade.llm import LLMClient, LLMConfig, LLMError, extract_json_object, probe
+    from bettercalltrader.llm import LLMClient, LLMConfig, LLMError, extract_json_object, probe
 
     gemini = LLMConfig.from_env({"GEMINI_API_KEY": "g"})
     assert gemini.providers()[0].kind == "gemini"
@@ -1926,7 +1926,7 @@ def test_v11_ml_contract():
     import json
     import sqlite3
 
-    from agentictrade.ml import (
+    from bettercalltrader.ml import (
         FEATURE_SET_VERSION, MODEL_SCHEMA_VERSION, build_training_rows,
         data_fingerprint, load_model, model_status, save_model, train_if_stale,
         train_model,
@@ -2005,8 +2005,8 @@ def test_v12_walk_forward_optimizer():
     import json
     import math
 
-    from agentictrade.ohlcv import BacktestConfig, make_strategy, run_backtest
-    from agentictrade.optimizer import (
+    from bettercalltrader.ohlcv import BacktestConfig, make_strategy, run_backtest
+    from bettercalltrader.optimizer import (
         OBJECTIVES,
         default_grid,
         grid_combinations,
@@ -2127,7 +2127,7 @@ def test_v12_walk_forward_optimizer():
     assert "Uplift over baseline" in markdown
 
     # The CLI shares the same machinery; --optimize wins over --walk-forward.
-    from agentictrade import ohlcv as ohlcv_module
+    from bettercalltrader import ohlcv as ohlcv_module
 
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
         json.dump(
@@ -2186,14 +2186,14 @@ def test_v12_cost_stress():
     import json
     import math
 
-    from agentictrade.cost_stress import (
+    from bettercalltrader.cost_stress import (
         DEFAULT_MULTIPLIERS,
         parse_multipliers,
         render_report,
         scaled_config,
         stress_costs,
     )
-    from agentictrade.ohlcv import BacktestConfig, EmaCrossStrategy, run_backtest
+    from bettercalltrader.ohlcv import BacktestConfig, EmaCrossStrategy, run_backtest
 
     class _NoTradeStrategy:
         name = "no_trade"
@@ -2352,7 +2352,7 @@ def test_v12_cost_stress():
     assert "break-even" in markdown.lower()
 
     # The CLI exposes the sweep, refuses bad multipliers and incompatible flags.
-    from agentictrade import ohlcv as ohlcv_module
+    from bettercalltrader import ohlcv as ohlcv_module
 
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
         json.dump(
@@ -2410,8 +2410,8 @@ def test_v12_rolling_windows():
     import json
     import math
 
-    from agentictrade.ohlcv import BacktestConfig
-    from agentictrade.optimizer import (
+    from bettercalltrader.ohlcv import BacktestConfig
+    from bettercalltrader.optimizer import (
         WINDOW_MODES,
         default_grid,
         optimize_walk_forward,
@@ -2579,7 +2579,7 @@ def test_v12_rolling_windows():
     assert "Consistency:" in markdown
 
     # CLI: the mode flags reach the optimizer and are rejected elsewhere.
-    from agentictrade import ohlcv as ohlcv_module
+    from bettercalltrader import ohlcv as ohlcv_module
 
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
         json.dump(
@@ -2650,8 +2650,8 @@ def test_v12_strategy_comparison():
     import json
     import math
 
-    from agentictrade.compare import compare_strategies, default_strategies, render_report
-    from agentictrade.ohlcv import BacktestConfig
+    from bettercalltrader.compare import compare_strategies, default_strategies, render_report
+    from bettercalltrader.ohlcv import BacktestConfig
 
     closes = []
     price = 1.0
@@ -2753,7 +2753,7 @@ def test_v12_strategy_comparison():
         assert name in markdown
 
     # CLI: --compare builds the specs, reports JSON and rejects bad inputs.
-    from agentictrade import ohlcv as ohlcv_module
+    from bettercalltrader import ohlcv as ohlcv_module
 
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
         json.dump(
@@ -2822,8 +2822,8 @@ def test_v12_live_readiness():
     import json
     import unittest.mock
 
-    from agentictrade import doctor as doctor_module
-    from agentictrade import live_readiness as lr
+    from bettercalltrader import doctor as doctor_module
+    from bettercalltrader import live_readiness as lr
 
     # Paper defaults are unambiguous: no fails and no private key reported.
     paper = lr.check_environment({})
@@ -2971,7 +2971,7 @@ def test_v12_live_readiness():
 
 
 def main():
-    print("Running AgenticTrade v12.0 self-tests...")
+    print("Running BetterCallTrader v12.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
     original_audit_path = rb.AUDIT_LOG_PATH
     rb.AUDIT_LOG_PATH = str(run_audit_path)

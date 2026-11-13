@@ -95,7 +95,7 @@ class TelegramNotifier:
             cb = portfolio.get_circuit_breaker_state(persist=False)
             eq = portfolio.get_equity_now()
             reply = (
-                f"📊 <b>AgenticTrade v9.0 Status</b>\n"
+                f"📊 <b>BetterCallTrader v9.0 Status</b>\n"
                 f"💰 Balans: <b>{w['balance_sol']:.3f} SOL</b> | Equity: <b>{eq:.3f} SOL</b>\n"
                 f"📈 Realizirani PnL: <b>{w['realized_pnl_sol']:+.3f} SOL</b>\n"
                 f"📂 Otvorene pozicije: {w['open_positions']}/{portfolio.max_open_positions}\n"

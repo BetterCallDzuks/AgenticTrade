@@ -43,7 +43,7 @@ COST_DEFAULTS: dict[str, float] = {
 }
 
 
-# Exit-policy defaults. ``agentictrade.exits.ExitPolicy`` is the shared
+# Exit-policy defaults. ``bettercalltrader.exits.ExitPolicy`` is the shared
 # implementation; these values are the ones the balanced profile has always used.
 EXIT_DEFAULTS: dict[str, float] = {
     "tp1_fraction": 0.5,

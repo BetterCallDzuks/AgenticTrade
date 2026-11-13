@@ -68,9 +68,9 @@ async def main():
         assert '"ok": true' in ready, ready
 
         metrics = await fetch(session, "/metrics")
-        for key in ("agentictrade_info", "agentictrade_db_up", "agentictrade_http_requests_total"):
+        for key in ("bettercalltrader_info", "bettercalltrader_db_up", "bettercalltrader_http_requests_total"):
             assert key in metrics, key
-        assert "# TYPE agentictrade_http_request_duration_seconds histogram" in metrics
+        assert "# TYPE bettercalltrader_http_request_duration_seconds histogram" in metrics
 
         auth = await fetch(session, "/api/health", token=None, expect=401)
         assert "unauthorized" in auth
@@ -100,7 +100,7 @@ async def main():
 
         async with session.get(f"{BASE}/analytics") as resp:
             html = await resp.text()
-            assert resp.status == 200 and "AgenticTrade" in html
+            assert resp.status == 200 and "BetterCallTrader" in html
 
         async with session.get(f"{BASE}/") as resp:
             assert resp.status == 200

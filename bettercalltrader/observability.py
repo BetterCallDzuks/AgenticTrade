@@ -8,7 +8,7 @@ from typing import Optional
 
 
 def configure_file_logger(log_path: str = "bot_history.log") -> logging.Logger:
-    logger = logging.getLogger("AgenticTrade")
+    logger = logging.getLogger("BetterCallTrader")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
         handler = logging.FileHandler(Path(log_path), encoding="utf-8")
@@ -36,7 +36,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_json_logging(log_path: str = "bot_history.jsonl") -> logging.Logger:
-    logger = logging.getLogger("AgenticTradeJSON")
+    logger = logging.getLogger("BetterCallTraderJSON")
     logger.setLevel(logging.INFO)
     logger.propagate = False
     if not logger.handlers:

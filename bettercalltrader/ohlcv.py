@@ -1,6 +1,6 @@
 """Event-driven OHLCV backtester.
 
-This is deliberately separate from `agentictrade.backtest`, which replays the
+This is deliberately separate from `bettercalltrader.backtest`, which replays the
 trades the bot actually recorded. Here you supply historical candles (CSV,
 JSON, or GeckoTerminal) and a strategy, and the engine simulates entries and
 exits with configurable fees, slippage and signal latency.
@@ -8,7 +8,7 @@ exits with configurable fees, slippage and signal latency.
 The engine is long-only, uses one position at a time and fills signals at the
 open of a later candle, so it cannot peek at the close that generated the
 signal. Exit checks use candle high/low and the shared
-:class:`agentictrade.exits.ExitPolicy`, the same policy the paper book trades:
+:class:`bettercalltrader.exits.ExitPolicy`, the same policy the paper book trades:
 take profit is a *partial* exit (``tp1_fraction``, 50% by default), the
 remainder runs on the effective stop ladder.
 
@@ -23,16 +23,16 @@ Position size is capped by ``max_participation_pct`` of the candle volume when
 that is enabled, so a thin candle produces a smaller position instead of a
 fantasy fill. The exit also pays for the depth the entry consumed.
 
-Fees and slippage come from :class:`agentictrade.costs.CostModel`, the same
+Fees and slippage come from :class:`bettercalltrader.costs.CostModel`, the same
 model the paper book and the ML labels use, so a round trip costs the same in
 research and in the live paper ledger.
 
 Examples:
-    python -m agentictrade.ohlcv --csv candles.csv --strategy momentum
-    python -m agentictrade.ohlcv --json candles.json --walk-forward 3
-    python -m agentictrade.ohlcv --csv candles.csv --optimize --objective sharpe
-    python -m agentictrade.ohlcv --csv candles.csv --stress-costs
-    python -m agentictrade.ohlcv --pool <pool-address> --timeframe hour
+    python -m bettercalltrader.ohlcv --csv candles.csv --strategy momentum
+    python -m bettercalltrader.ohlcv --json candles.json --walk-forward 3
+    python -m bettercalltrader.ohlcv --csv candles.csv --optimize --objective sharpe
+    python -m bettercalltrader.ohlcv --csv candles.csv --stress-costs
+    python -m bettercalltrader.ohlcv --pool <pool-address> --timeframe hour
 """
 
 from __future__ import annotations
@@ -49,10 +49,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
-from agentictrade.costs import COST_MODEL_VERSION, CostModel, depth_used_fraction
-from agentictrade.defaults import COST_DEFAULTS, EXIT_DEFAULTS, STRATEGY_DEFAULTS, config_hash
-from agentictrade.exits import END_OF_DATA, SIGNAL, TIME_STOP, ExitPolicy
-from agentictrade.risk_analytics import summarize
+from bettercalltrader.costs import COST_MODEL_VERSION, CostModel, depth_used_fraction
+from bettercalltrader.defaults import COST_DEFAULTS, EXIT_DEFAULTS, STRATEGY_DEFAULTS, config_hash
+from bettercalltrader.exits import END_OF_DATA, SIGNAL, TIME_STOP, ExitPolicy
+from bettercalltrader.risk_analytics import summarize
 
 _TF_TO_SECONDS = {
     "second": 1,
@@ -801,7 +801,7 @@ def _fmt(value: Any, digits: int = 4) -> str:
 def render_markdown(result: BacktestResult, trades_to_show: int = 15) -> str:
     summary = result.summary
     lines = [
-        "# AgenticTrade OHLCV backtest",
+        "# BetterCallTrader OHLCV backtest",
         "",
         f"- Strategy: `{result.strategy}`",
         f"- Candles: `{result.candles}`",
@@ -870,8 +870,8 @@ def render_markdown(result: BacktestResult, trades_to_show: int = 15) -> str:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m agentictrade.ohlcv",
-        description="Event-driven OHLCV backtest for AgenticTrade strategies.",
+        prog="python -m bettercalltrader.ohlcv",
+        description="Event-driven OHLCV backtest for BetterCallTrader strategies.",
     )
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--csv", help="CSV file with ts,open,high,low,close,volume columns")
@@ -1077,9 +1077,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
             return 2
         # Imported lazily: the stress module imports this module.
-        from agentictrade.cost_stress import parse_multipliers as parse_cost_multipliers
-        from agentictrade.cost_stress import render_report as render_cost_report
-        from agentictrade.cost_stress import stress_costs
+        from bettercalltrader.cost_stress import parse_multipliers as parse_cost_multipliers
+        from bettercalltrader.cost_stress import render_report as render_cost_report
+        from bettercalltrader.cost_stress import stress_costs
 
         try:
             multipliers = parse_cost_multipliers(args.cost_multipliers)
@@ -1105,9 +1105,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.compare:
         # Imported lazily: the compare module imports this module.
-        from agentictrade.compare import compare_strategies, default_strategies
-        from agentictrade.compare import render_report as render_compare_report
-        from agentictrade.optimizer import parse_grid as parse_optimizer_grid
+        from bettercalltrader.compare import compare_strategies, default_strategies
+        from bettercalltrader.compare import render_report as render_compare_report
+        from bettercalltrader.optimizer import parse_grid as parse_optimizer_grid
 
         names = [chunk.strip() for chunk in args.compare_strategies.split(",") if chunk.strip()]
         if not names:
@@ -1166,7 +1166,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.optimize:
         # Imported lazily: the optimizer imports this module.
-        from agentictrade.optimizer import (
+        from bettercalltrader.optimizer import (
             default_grid,
             optimize_walk_forward,
             parse_grid,

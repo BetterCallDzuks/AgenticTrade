@@ -1,5 +1,5 @@
 param(
-    [string]$Destination = "$env:USERPROFILE\Desktop\AgenticTradeBackup"
+    [string]$Destination = "$env:USERPROFILE\Desktop\BetterCallTraderBackup"
 )
 
 $ErrorActionPreference = "Stop"

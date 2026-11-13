@@ -2,7 +2,7 @@
 
 The rules here are intentionally *advisory but explicit*: every check returns an
 `Issue` with a level instead of raising, so the bot can keep running with a
-legacy `.env` while `python -m agentictrade.doctor` explains what to fix.
+legacy `.env` while `python -m bettercalltrader.doctor` explains what to fix.
 
 Levels:
 - ``fail``: the value is unsafe or unusable (doctor exits non-zero)
@@ -13,8 +13,8 @@ Levels:
 from dataclasses import dataclass
 from typing import Dict, List, Mapping, Optional, Tuple
 
-from agentictrade.llm import OLLAMA_BASE_URL
-from agentictrade.strategies import PROFILES, normalize_profile
+from bettercalltrader.llm import OLLAMA_BASE_URL
+from bettercalltrader.strategies import PROFILES, normalize_profile
 
 
 @dataclass(frozen=True)

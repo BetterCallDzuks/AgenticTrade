@@ -21,8 +21,8 @@ import math
 from dataclasses import replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from agentictrade.costs import COST_MODEL_VERSION
-from agentictrade.ohlcv import (
+from bettercalltrader.costs import COST_MODEL_VERSION
+from bettercalltrader.ohlcv import (
     BacktestConfig,
     Candle,
     Strategy,

@@ -1,4 +1,4 @@
-"""AgenticTrade modular package.
+"""BetterCallTrader modular package.
 
 This package gradually extracts stable components from the legacy
 research_bot.py monolith. The main entry point still lives in

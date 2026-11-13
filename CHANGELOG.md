@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to AgenticTrade are documented here. The format follows
+All notable changes to BetterCallTrader are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions use
 `MAJOR.MINOR.PATCH`.
 
@@ -28,11 +28,11 @@ All notable changes to AgenticTrade are documented here. The format follows
 
 ### Added
 
-- `agentictrade/exits.py`: one shared `ExitPolicy` for the paper book
+- `bettercalltrader/exits.py`: one shared `ExitPolicy` for the paper book
   (`classify_tick`) and the OHLCV backtester (`intrabar`). It owns the effective
   stop ladder, TP1 fraction, final target and the event-driven rules, so the two
   engines can no longer drift.
-- `agentictrade/llm.py`: provider-neutral LLM client. Gemini and any
+- `bettercalltrader/llm.py`: provider-neutral LLM client. Gemini and any
   OpenAI-compatible server (Ollama, llama.cpp, LM Studio, vLLM) share one
   call path, with `LLM_PROVIDER=auto`, provider fallback and a token-free
   `probe()` used by `doctor`.
@@ -62,7 +62,7 @@ All notable changes to AgenticTrade are documented here. The format follows
   so pre-graduation tokens can pass entry confirmation and manual buys.
   `PUMPFUN_CURVE_ENABLED` (default true), `PUMPFUN_CURVE_CACHE_SEC` (5s) and
   `PUMPFUN_CURVE_MISS_CACHE_SEC` (60s) control the fallback.
-- Walk-forward parameter optimization: `agentictrade/optimizer.py` grid-searches
+- Walk-forward parameter optimization: `bettercalltrader/optimizer.py` grid-searches
   the strategy parameters on each train slice and trades only the winning set on
   the untouched test slice. The CLI exposes it as `--optimize` with
   `--objective` (`pnl`, `return_pct`, `profit_factor`, `expectancy`, `sharpe`),
@@ -77,20 +77,20 @@ All notable changes to AgenticTrade are documented here. The format follows
   report gains a `stability` block (dominant parameter-set share, profitable
   window share, per-window PnL spread and a `stable`/`mixed`/`unstable`
   label), so one lucky window cannot carry the result unnoticed.
-- Cost stress and break-even analysis: `agentictrade/cost_stress.py` replays one
+- Cost stress and break-even analysis: `bettercalltrader/cost_stress.py` replays one
   strategy across a multiplier sweep and reports the cost level at which the
   edge disappears. `--stress-costs`, `--cost-multipliers` and `--cost-baseline`
   expose it in the CLI; the report includes the gross edge (costs removed), the
   interpolated `breakEvenMultiplier`, `headroomPct` and per-point fees/costs.
-- Strategy comparison: `agentictrade/compare.py` runs several strategies through
+- Strategy comparison: `bettercalltrader/compare.py` runs several strategies through
   the same walk-forward optimizer and cost sweep and ranks them on
   out-of-sample, cost-adjusted evidence. `--compare` (with
   `--compare-strategies`, default `momentum,breakout`) emits one report with
   per-strategy aggregate, stability, break-even and uplift, plus a deterministic
   `ranking` and `winner`. The ranking key is objective score, then break-even
   multiplier, then stability, then strategy name.
-- Live-execution readiness audit: `agentictrade/live_readiness.py` and
-  `python -m agentictrade.live_readiness [--json] [--probe]`. It reports
+- Live-execution readiness audit: `bettercalltrader/live_readiness.py` and
+  `python -m bettercalltrader.live_readiness [--json] [--probe]`. It reports
   `PAPER`/`READY`/`BLOCKED` (exit 0/0/1), drives the real
   `SolanaExecutionAgent.execute_buy` against a session that refuses every
   request, and verifies paper `DRY_RUN_READY`, live-unconfirmed `BLOCKED`,
@@ -101,7 +101,7 @@ All notable changes to AgenticTrade are documented here. The format follows
 
 ### Changed
 
-- `python -m agentictrade.ohlcv --optimize` reuses the `--walk-forward` segment
+- `python -m bettercalltrader.ohlcv --optimize` reuses the `--walk-forward` segment
   count (default 3 when it is 0) and `--train-ratio`; the plain
   `--walk-forward` path still evaluates one fixed parameter set.
 - `--window-mode` (fixed/anchored/rolling) and `--train-candles`/`--test-candles`
@@ -137,11 +137,11 @@ All notable changes to AgenticTrade are documented here. The format follows
   refused on predict instead of scored quietly.
 - `doctor` now probes the configured LLM endpoint, and `validate.py` checks the
   new LLM/exit/cost keys.
-- One `CostModel` (`agentictrade/costs.py`) now prices every simulated fill:
+- One `CostModel` (`bettercalltrader/costs.py`) now prices every simulated fill:
   the paper book, the OHLCV backtester and the ML label source. It models the
   AMM fee, priority fee, expected failed-transaction cost, spread/impact and
   pool depth, and `replay_round_trip()` is the reference for parity tests.
-- `agentictrade/defaults.py` is the single source for the balanced strategy
+- `bettercalltrader/defaults.py` is the single source for the balanced strategy
   values and the shared cost defaults. The paper book logs and exposes a
   `configHash`; the OHLCV result reports the same hash plus
   `costModelVersion`.
@@ -181,21 +181,21 @@ All notable changes to AgenticTrade are documented here. The format follows
 
 ### Added
 
-- `agentictrade/prometheus.py`: dependency-free counters, gauges and
+- `bettercalltrader/prometheus.py`: dependency-free counters, gauges and
   histograms with Prometheus text 0.0.4 exposition.
 - `GET /metrics` (HTTP counters and latency, trades, win rate, net PnL, open
   positions, wallet balance, breaker state, uptime, build info) and
   `GET /ready` (database, AI, Telegram, auth and live-mode checks). Both honour
   `DASHBOARD_TOKEN` and the rate limiter.
-- `agentictrade/shutdown.py`: cross-platform `SIGINT`/`SIGTERM` controller.
+- `bettercalltrader/shutdown.py`: cross-platform `SIGINT`/`SIGTERM` controller.
   Shutdown stops new cycles, cancels monitor/confirmation tasks, closes the
   aiohttp runner and writes a `shutdown` audit event.
-- `agentictrade/ohlcv.py`: event-driven OHLCV backtester with CSV/JSON/
+- `bettercalltrader/ohlcv.py`: event-driven OHLCV backtester with CSV/JSON/
   GeckoTerminal loaders, EMA-cross and breakout strategies, fee/slippage/
   latency modelling, stop/take-profit/trailing/time exits, walk-forward splits
-  and a Markdown/JSON CLI (`python -m agentictrade.ohlcv`).
-- `agentictrade/validate.py` and `agentictrade/doctor.py`: configuration
-  validation plus a read-only pre-flight CLI (`python -m agentictrade.doctor`).
+  and a Markdown/JSON CLI (`python -m bettercalltrader.ohlcv`).
+- `bettercalltrader/validate.py` and `bettercalltrader/doctor.py`: configuration
+  validation plus a read-only pre-flight CLI (`python -m bettercalltrader.doctor`).
 - `COMMAND_CENTER_HOST`, `COMMAND_CENTER_PORT` and `PAPER_DB_PATH` environment
   variables.
 - Security headers on every response (`X-Content-Type-Options`,
@@ -226,15 +226,15 @@ All notable changes to AgenticTrade are documented here. The format follows
 
 ### Added
 
-- `schema_version` table and migration helper (`agentictrade/migrations.py`).
-- Aggregate metrics (`agentictrade/metrics.py`), risk analytics (HHI, top
+- `schema_version` table and migration helper (`bettercalltrader/migrations.py`).
+- Aggregate metrics (`bettercalltrader/metrics.py`), risk analytics (HHI, top
   weight, exposure, drawdown, VaR95, expected shortfall, profit factor,
   expectancy) and a realized-trade replay (`replay_v10.py`, `GET /api/backtest`).
 - JSONL audit trail, deduplicated Telegram alerts, optional `DASHBOARD_TOKEN`
   auth and per-IP rate limiting.
 - Strategy profiles (`STRATEGY_PROFILE`) and an advisory ML model
-  (`agentictrade/ml.py`).
-- Shared TTL price cache (`agentictrade/price_feed.py`).
+  (`bettercalltrader/ml.py`).
+- Shared TTL price cache (`bettercalltrader/price_feed.py`).
 
 ## [9.0.0] - 2026-09-30
 

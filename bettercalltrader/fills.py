@@ -7,7 +7,7 @@ liquidity. This keeps results conservative and reproducible in tests.
 
 from typing import Dict, Optional, Tuple
 
-from agentictrade.costs import CostModel
+from bettercalltrader.costs import CostModel
 
 EXIT_ICONS: Dict[str, str] = {
     "STOP_LOSS": "🛑",

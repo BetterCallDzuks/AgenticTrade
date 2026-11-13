@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from agentictrade.costs import COST_MODEL_VERSION
+from bettercalltrader.costs import COST_MODEL_VERSION
 
 FEATURE_NAMES = [
     "risk",
@@ -352,7 +352,7 @@ def model_summary(model: Optional[dict]) -> dict:
 def main() -> int:
     import argparse
 
-    parser = argparse.ArgumentParser(description="AgenticTrade v10 ML advisory model")
+    parser = argparse.ArgumentParser(description="BetterCallTrader v10 ML advisory model")
     parser.add_argument("command", choices=["train", "status"], help="train a model or show model status")
     parser.add_argument("--db", default="paper_portfolio.db")
     parser.add_argument("--model", default="ml_model.json")

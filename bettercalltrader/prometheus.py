@@ -1,6 +1,6 @@
 """Dependency-free Prometheus text exposition.
 
-Only the small subset used by AgenticTrade is implemented: counters, gauges and
+Only the small subset used by BetterCallTrader is implemented: counters, gauges and
 fixed-bucket histograms. The output follows the Prometheus text format 0.0.4,
 so a scraper can read it without any extra runtime dependency.
 """

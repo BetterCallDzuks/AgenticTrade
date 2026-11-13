@@ -46,10 +46,10 @@ def load_local_env(env_filename: str = ".env"):
 load_local_env()
 
 # Modular components (incremental migration from the monolith).
-from agentictrade.config import env_float, env_int, env_bool
-from agentictrade.costs import CostModel, depth_used_fraction
-from agentictrade.defaults import COST_DEFAULTS, EXIT_DEFAULTS, STRATEGY_DEFAULTS, config_hash
-from agentictrade.exits import (
+from bettercalltrader.config import env_float, env_int, env_bool
+from bettercalltrader.costs import CostModel, depth_used_fraction
+from bettercalltrader.defaults import COST_DEFAULTS, EXIT_DEFAULTS, STRATEGY_DEFAULTS, config_hash
+from bettercalltrader.exits import (
     BREAKEVEN_STOP,
     FAST_INVALIDATION,
     FLOW_EXIT,
@@ -62,14 +62,14 @@ from agentictrade.exits import (
     WHALE_EXIT,
     ExitPolicy,
 )
-from agentictrade.llm import LLMClient
-from agentictrade.http import fetch_json_with_retry as _fetch_json_with_retry
-from agentictrade.http import post_json_with_retry as _post_json_with_retry
-from agentictrade.models import TokenAnalysisDecision
-from agentictrade.telegram import TelegramNotifier
+from bettercalltrader.llm import LLMClient
+from bettercalltrader.http import fetch_json_with_retry as _fetch_json_with_retry
+from bettercalltrader.http import post_json_with_retry as _post_json_with_retry
+from bettercalltrader.models import TokenAnalysisDecision
+from bettercalltrader.telegram import TelegramNotifier
 
 LOG_FILE_PATH = BASE_DIR / "bot_history.log"
-file_logger = logging.getLogger("AgenticTradeFileLogger")
+file_logger = logging.getLogger("BetterCallTraderFileLogger")
 file_logger.setLevel(logging.INFO)
 if not file_logger.handlers:
     fh = logging.FileHandler(LOG_FILE_PATH, encoding="utf-8")
@@ -87,10 +87,10 @@ except ImportError:
 # 0B. v9.0 POMOĆNE FUNKCIJE (vrijeme, env, paper fill model, ikone izlaza)
 # =====================================================================
 
-# env helpers are now provided by agentictrade.config
+# env helpers are now provided by bettercalltrader.config
 
-# Time helpers are now provided by agentictrade.timeutils.
-from agentictrade.timeutils import (  # noqa: E402
+# Time helpers are now provided by bettercalltrader.timeutils.
+from bettercalltrader.timeutils import (  # noqa: E402
     BOT_TIMEZONE_NAME,
     fmt_local,
     fmt_utc,
@@ -99,8 +99,8 @@ from agentictrade.timeutils import (  # noqa: E402
     utc_now,
 )
 
-# Fill model and exit metadata are now provided by agentictrade.fills.
-from agentictrade.fills import (  # noqa: E402
+# Fill model and exit metadata are now provided by bettercalltrader.fills.
+from bettercalltrader.fills import (  # noqa: E402
     EXIT_ICONS as EXIT_ICONS,
     LOSING_EXIT_REASONS,
     exit_icon,
@@ -115,14 +115,14 @@ def record_whale_sell(mint: str, wallet: str, label: str, ts: Optional[float] = 
 
 
 # =====================================================================
-# TelegramNotifier is now provided by agentictrade.telegram.
+# TelegramNotifier is now provided by bettercalltrader.telegram.
 
 
 
 TELEGRAM = TelegramNotifier()
 
 # Optional dashboard protection (disabled when DASHBOARD_TOKEN is empty).
-from agentictrade.security import (
+from bettercalltrader.security import (
     MUTATING_METHODS,
     RateLimiter,
     client_ip,
@@ -131,9 +131,9 @@ from agentictrade.security import (
     is_origin_allowed,
     parse_allowed_origins,
 )
-from agentictrade.observability import AlertThrottle, audit_event, configure_json_logging, log_event, read_audit
-from agentictrade.prometheus import MetricsRegistry
-from agentictrade.shutdown import ShutdownController
+from bettercalltrader.observability import AlertThrottle, audit_event, configure_json_logging, log_event, read_audit
+from bettercalltrader.prometheus import MetricsRegistry
+from bettercalltrader.shutdown import ShutdownController
 
 DASHBOARD_TOKEN = (os.environ.get("DASHBOARD_TOKEN") or "").strip()
 # v11: loopback by default. A non-loopback bind requires DASHBOARD_TOKEN (or an
@@ -166,26 +166,26 @@ CONTENT_SECURITY_POLICY = (
 START_MONOTONIC = time.monotonic()
 HTTP_METRICS = MetricsRegistry()
 HTTP_METRICS.describe(
-    "agentictrade_http_requests_total",
+    "bettercalltrader_http_requests_total",
     "HTTP requests handled by the Command Center API.",
     "counter",
 )
 HTTP_METRICS.describe(
-    "agentictrade_http_request_duration_seconds",
+    "bettercalltrader_http_request_duration_seconds",
     "Command Center request latency in seconds.",
     "histogram",
 )
-HTTP_METRICS.describe("agentictrade_uptime_seconds", "Process uptime in seconds.", "gauge")
-HTTP_METRICS.describe("agentictrade_db_up", "1 when the portfolio database is readable.", "gauge")
-HTTP_METRICS.describe("agentictrade_trades_total", "Closed trades recorded in the database.", "gauge")
-HTTP_METRICS.describe("agentictrade_win_rate", "Win rate over closed trades (0-1).", "gauge")
-HTTP_METRICS.describe("agentictrade_net_pnl_sol", "Realized net PnL in SOL.", "gauge")
-HTTP_METRICS.describe("agentictrade_open_positions", "Currently open paper positions.", "gauge")
-HTTP_METRICS.describe("agentictrade_wallet_balance_sol", "Paper wallet balance in SOL.", "gauge")
-HTTP_METRICS.describe("agentictrade_circuit_breaker_active", "1 when the circuit breaker is tripped.", "gauge")
-HTTP_METRICS.describe("agentictrade_info", "Build and execution mode information.", "gauge")
+HTTP_METRICS.describe("bettercalltrader_uptime_seconds", "Process uptime in seconds.", "gauge")
+HTTP_METRICS.describe("bettercalltrader_db_up", "1 when the portfolio database is readable.", "gauge")
+HTTP_METRICS.describe("bettercalltrader_trades_total", "Closed trades recorded in the database.", "gauge")
+HTTP_METRICS.describe("bettercalltrader_win_rate", "Win rate over closed trades (0-1).", "gauge")
+HTTP_METRICS.describe("bettercalltrader_net_pnl_sol", "Realized net PnL in SOL.", "gauge")
+HTTP_METRICS.describe("bettercalltrader_open_positions", "Currently open paper positions.", "gauge")
+HTTP_METRICS.describe("bettercalltrader_wallet_balance_sol", "Paper wallet balance in SOL.", "gauge")
+HTTP_METRICS.describe("bettercalltrader_circuit_breaker_active", "1 when the circuit breaker is tripped.", "gauge")
+HTTP_METRICS.describe("bettercalltrader_info", "Build and execution mode information.", "gauge")
 
-from agentictrade.price_feed import PriceCache
+from bettercalltrader.price_feed import PriceCache
 
 PRICE_CACHE_ENABLED = env_bool("PRICE_CACHE_ENABLED", True)
 PRICE_CACHE = PriceCache(default_ttl_sec=env_float("PRICE_CACHE_TTL_SEC", 3.0))
@@ -238,7 +238,7 @@ def add_agent_log(agent: str, message: str, level: str = "info"):
 # 1. PODATKOVNI MODELI
 # =====================================================================
 
-# TokenAnalysisDecision is now provided by agentictrade.models.
+# TokenAnalysisDecision is now provided by bettercalltrader.models.
 
 # =====================================================================
 # 2. DISCOVERY AGENT ("Oči" - Skenira nove Solana tokene)
@@ -468,7 +468,7 @@ class ResearchAgent:
     PUMPFUN_COIN_URL = "https://frontend-api-v3.pump.fun/coins/{mint}"
 
     def __init__(self, gemini_api_key: Optional[str] = None, rpc_url: Optional[str] = None):
-        # Gemini or any OpenAI-compatible local server; see agentictrade.llm.
+        # Gemini or any OpenAI-compatible local server; see bettercalltrader.llm.
         self.llm = LLMClient.from_env({**os.environ, "GEMINI_API_KEY": gemini_api_key}) if gemini_api_key \
             else LLMClient.from_env()
         self.api_key = self.llm.config.gemini_api_key or None
@@ -1319,7 +1319,7 @@ class PaperTradingManager:
         self.stop_loss_cooldown_sec = env_int("STOP_LOSS_COOLDOWN_SEC", 180)
         self.fast_invalidation_pct = env_float("FAST_INVALIDATION_PCT", STRATEGY_DEFAULTS["FAST_INVALIDATION_PCT"])
         self.fast_invalidation_window_sec = env_int("FAST_INVALIDATION_WINDOW_SEC", 90)
-        # Shared exit policy knobs (see agentictrade.exits).
+        # Shared exit policy knobs (see bettercalltrader.exits).
         self.tp1_fraction = env_float("TP1_FRACTION", EXIT_DEFAULTS["tp1_fraction"])
         self.trailing_arm_gain_pct = env_float("TRAILING_ARM_GAIN_PCT", EXIT_DEFAULTS["trailing_arm_gain_pct"])
         self.final_take_profit_pct = env_float("FINAL_TAKE_PROFIT_PCT", 0.0)
@@ -1373,7 +1373,7 @@ class PaperTradingManager:
         self.step2_floor_pct = env_float("STEP2_FLOOR_PCT", 15.0)
 
         # v10.0 strategy profile: fills only env vars that are not explicitly set.
-        from agentictrade.strategies import normalize_profile, resolve_profile
+        from bettercalltrader.strategies import normalize_profile, resolve_profile
         self.strategy_profile = normalize_profile(os.environ.get("STRATEGY_PROFILE", "balanced"))
         for attr, value in resolve_profile(os.environ, self.strategy_profile).items():
             setattr(self, attr, value)
@@ -1396,7 +1396,7 @@ class PaperTradingManager:
         return self.now().replace(tzinfo=timezone.utc).timestamp()
 
     def _effective_config(self) -> dict:
-        from agentictrade.strategies import ATTRIBUTE_MAP
+        from bettercalltrader.strategies import ATTRIBUTE_MAP
 
         return {key: getattr(self, attr) for key, attr in ATTRIBUTE_MAP.items() if hasattr(self, attr)}
 
@@ -1614,7 +1614,7 @@ class PaperTradingManager:
         """)
 
         try:
-            from agentictrade.migrations import ensure_schema_version
+            from bettercalltrader.migrations import ensure_schema_version
             ensure_schema_version(conn)
         except Exception:
             pass
@@ -3096,7 +3096,7 @@ class PaperTradingManager:
         }
 
     def get_strategy_profile_info(self) -> dict:
-        from agentictrade.strategies import profile_values
+        from bettercalltrader.strategies import profile_values
         return {
             "name": self.strategy_profile,
             "values": profile_values(self.strategy_profile),
@@ -3113,7 +3113,7 @@ class PaperTradingManager:
         }
 
     def get_portfolio_risk(self) -> dict:
-        from agentictrade.risk_analytics import herfindahl_index, summarize
+        from bettercalltrader.risk_analytics import herfindahl_index, summarize
 
         conn = self._conn()
         c = conn.cursor()
@@ -3487,11 +3487,11 @@ async def metrics_middleware(request: web.Request, handler):
         elapsed = time.perf_counter() - started
         path = request.path
         HTTP_METRICS.inc(
-            "agentictrade_http_requests_total",
+            "bettercalltrader_http_requests_total",
             {"method": request.method, "path": path, "status": str(status)},
         )
         HTTP_METRICS.observe(
-            "agentictrade_http_request_duration_seconds",
+            "bettercalltrader_http_request_duration_seconds",
             elapsed,
             {"method": request.method, "path": path},
         )
@@ -3636,7 +3636,7 @@ async def start_command_center_server(
 
     async def handle_api_metrics(request: web.Request):
         try:
-            from agentictrade.metrics import collect_basic_metrics
+            from bettercalltrader.metrics import collect_basic_metrics
             metrics = collect_basic_metrics(portfolio.db_path)
         except Exception as e:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
@@ -3663,30 +3663,30 @@ async def start_command_center_server(
 
     async def handle_metrics(request: web.Request):
         try:
-            from agentictrade.metrics import collect_basic_metrics
+            from bettercalltrader.metrics import collect_basic_metrics
             db_metrics = collect_basic_metrics(portfolio.db_path)
-            HTTP_METRICS.set("agentictrade_db_up", 1)
+            HTTP_METRICS.set("bettercalltrader_db_up", 1)
         except Exception:
             db_metrics = {}
-            HTTP_METRICS.set("agentictrade_db_up", 0)
+            HTTP_METRICS.set("bettercalltrader_db_up", 0)
 
-        HTTP_METRICS.set("agentictrade_uptime_seconds", time.monotonic() - START_MONOTONIC)
-        HTTP_METRICS.set("agentictrade_trades_total", db_metrics.get("totalTrades", 0))
-        HTTP_METRICS.set("agentictrade_win_rate", db_metrics.get("winRate", 0))
-        HTTP_METRICS.set("agentictrade_net_pnl_sol", db_metrics.get("netPnlSol", 0))
-        HTTP_METRICS.set("agentictrade_open_positions", db_metrics.get("openPositions", 0))
+        HTTP_METRICS.set("bettercalltrader_uptime_seconds", time.monotonic() - START_MONOTONIC)
+        HTTP_METRICS.set("bettercalltrader_trades_total", db_metrics.get("totalTrades", 0))
+        HTTP_METRICS.set("bettercalltrader_win_rate", db_metrics.get("winRate", 0))
+        HTTP_METRICS.set("bettercalltrader_net_pnl_sol", db_metrics.get("netPnlSol", 0))
+        HTTP_METRICS.set("bettercalltrader_open_positions", db_metrics.get("openPositions", 0))
         try:
             wallet = portfolio.get_wallet_status()
-            HTTP_METRICS.set("agentictrade_wallet_balance_sol", wallet.get("balance_sol", 0))
+            HTTP_METRICS.set("bettercalltrader_wallet_balance_sol", wallet.get("balance_sol", 0))
         except Exception:
-            HTTP_METRICS.set("agentictrade_wallet_balance_sol", 0)
+            HTTP_METRICS.set("bettercalltrader_wallet_balance_sol", 0)
         try:
             breaker = portfolio.get_circuit_breaker_state()
-            HTTP_METRICS.set("agentictrade_circuit_breaker_active", 1 if breaker.get("tripped") else 0)
+            HTTP_METRICS.set("bettercalltrader_circuit_breaker_active", 1 if breaker.get("tripped") else 0)
         except Exception:
-            HTTP_METRICS.set("agentictrade_circuit_breaker_active", 0)
+            HTTP_METRICS.set("bettercalltrader_circuit_breaker_active", 0)
         HTTP_METRICS.set(
-            "agentictrade_info",
+            "bettercalltrader_info",
             1,
             {
                 "version": "12.0",
@@ -3706,11 +3706,11 @@ async def start_command_center_server(
         return web.json_response({"ok": True, "events": read_audit(AUDIT_LOG_PATH, limit)})
 
     async def handle_api_ml_status(request: web.Request):
-        from agentictrade.ml import model_status
+        from bettercalltrader.ml import model_status
         return web.json_response({"ok": True, "model": model_status(ML_MODEL_PATH)})
 
     async def handle_api_ml_predict(request: web.Request):
-        from agentictrade.ml import load_model, model_status, predict_mint
+        from bettercalltrader.ml import load_model, model_status, predict_mint
         mint = (request.query.get("mint") or "").strip()
         if not mint:
             return web.json_response({"ok": False, "error": "mint query parameter required"}, status=400)
@@ -3737,7 +3737,7 @@ async def start_command_center_server(
         })
 
     async def handle_api_ml_train(request: web.Request):
-        from agentictrade.ml import model_status, save_model, train_model
+        from bettercalltrader.ml import model_status, save_model, train_model
         model = train_model(portfolio.db_path)
         if not model.get("ok"):
             return web.json_response({"ok": False, "reason": model.get("reason")}, status=409)
@@ -3745,7 +3745,7 @@ async def start_command_center_server(
         return web.json_response({"ok": True, "model": model_status(ML_MODEL_PATH)})
 
     async def handle_api_backtest(request: web.Request):
-        from agentictrade.backtest import build_report
+        from bettercalltrader.backtest import build_report
         try:
             report = build_report(portfolio.db_path, initial_sol=portfolio.initial_sol)
         except Exception as e:
