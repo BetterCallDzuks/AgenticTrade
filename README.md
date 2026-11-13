@@ -33,6 +33,90 @@ v9.0 keeps the v8 risk engine and adds time-based and step-up protection plus Te
 
 ---
 
+## Install / run (Linux / Ubuntu)
+
+Requires **Python 3.11+** and the `venv` module:
+
+```bash
+sudo apt update && sudo apt install -y python3 python3-venv
+python3 --version   # must be 3.11 or newer
+```
+
+> Do not `pip install` into the system interpreter. Debian/Ubuntu ship an
+> externally managed Python (PEP 668) and the install will fail with
+> `error: externally-managed-environment`. Always use the project virtualenv
+> below.
+
+### One-command start
+
+```bash
+cd ~/AgenticTrade
+./run.sh
+```
+
+`run.sh` is idempotent and does the whole setup on each run:
+
+1. calls `bootstrap.sh` — checks for Python 3.11+ (override with
+   `PYTHON_BIN=python3.12 ./run.sh`), creates `.venv/` on first run
+   (`VENV_DIR=...` to change the location), installs `requirements.txt` and
+   only reinstalls when that file changes,
+2. warns if `.env` is missing,
+3. runs `python -m agentictrade.doctor` and aborts on any `FAIL`,
+4. starts the bot, printing the Command Center URL.
+
+`bootstrap.sh` is the single setup path shared with CI, so a green pipeline
+means the same install a developer gets locally (`./bootstrap.sh --dev` adds
+ruff, mypy and pip-audit).
+
+Useful flags: `./run.sh --skip-doctor`, `./run.sh --help`.
+
+### Manual start
+
+```bash
+cd ~/AgenticTrade
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt          # runtime deps
+pip install -r requirements-dev.txt      # optional: ruff, mypy, pip-audit
+
+cp .env.example .env
+$EDITOR .env                             # set GEMINI_API_KEY / DASHBOARD_TOKEN
+                                         # keep LIVE_TRADING_ENABLED=false
+
+python -m agentictrade.doctor            # must print: Result: OK
+python research_bot.py
+```
+
+Open **http://localhost:8080** — the header shows **v11.0**. To reach it from
+another machine, set `COMMAND_CENTER_HOST=0.0.0.0` **and** a `DASHBOARD_TOKEN`;
+the doctor warns when the API is exposed without authentication.
+
+Optional checks:
+
+```bash
+python test_v9.py        # prints ALL TESTS PASSED
+python smoke_v10.py      # prints SMOKE OK
+ruff check . && mypy     # lint + types
+```
+
+Optional backup and restore (the `.ps1` scripts are Windows-only):
+
+```bash
+./backup.sh                 # -> ~/AgenticTradeBackup/<timestamp>/
+./restore.sh                # newest backup, asks for confirmation
+./restore.sh -y <backup-dir>
+```
+
+`backup.sh` also captures the SQLite `-wal`/`-shm` sidecars so a snapshot taken
+while the bot runs is not torn. Pass a destination root as the first argument
+to write elsewhere: `./backup.sh /media/usb/at-backups`.
+
+Every later shell must activate the environment again
+(`source .venv/bin/activate`), or call `.venv/bin/python research_bot.py`
+directly.
+
+---
+
 ## Install / run (Windows PowerShell)
 
 1. Back up `paper_portfolio.db` and `.env` if you already have them.
@@ -100,8 +184,13 @@ AgenticTrade/
 ├── pyproject.toml        # Ruff/mypy/pytest configuration
 ├── CHANGELOG.md          # version history
 ├── SECURITY.md           # vulnerability reporting and safety posture
-├── backup.ps1            # backup helper for DB, .env and log
-├── restore.ps1           # restore helper from a backup folder
+├── backup.ps1            # backup helper for DB, .env and log (Windows)
+├── restore.ps1           # restore helper from a backup folder (Windows)
+├── backup.sh             # same backup helper for Linux/macOS (incl. WAL sidecars)
+├── restore.sh            # same restore helper for Linux/macOS
+├── bootstrap.sh          # shared setup: venv + pinned deps (used by run.sh and CI)
+├── run.sh                # Linux/macOS launcher: bootstrap + doctor + start
+├── START_BOT.bat         # Windows launcher
 ├── Dockerfile            # optional container image
 ├── docker-compose.yml    # optional container orchestration
 ├── replay_v10.py         # v10 realized-trade replay report
@@ -202,13 +291,18 @@ GitHub Actions workflow is located at:
 .github/workflows/tests.yml
 ```
 
-It runs on every push and pull request and has three jobs:
+It runs on every push and pull request and has four jobs:
 
-- **lint**: Ruff (`E4`, `E7`, `E9`, `F`) plus mypy over the `agentictrade` package
+- **lint**: `bash -n` over the shell entry points, Ruff (`E4`, `E7`, `E9`, `F`) plus mypy over the `agentictrade` package
 - **test**: Python 3.11 and 3.12 on Ubuntu and Windows; runs `python test_v9.py` and `python smoke_v10.py`
+- **launcher**: boots the app through `./run.sh` on Linux and asserts the dashboard answers on its port
 - **audit**: `pip-audit` against the pinned runtime dependencies
 
-Dependencies are fully pinned in `requirements.txt`; tooling lives in `requirements-dev.txt`. Optional local hooks are configured in `.pre-commit-config.yaml`.
+Every job installs through `bootstrap.sh`, the same script `./run.sh` uses, so
+CI exercises the identical venv + pinned-dependency path that a local checkout
+does. Dependencies are fully pinned in `requirements.txt`; tooling lives in
+`requirements-dev.txt`. Optional local hooks are configured in
+`.pre-commit-config.yaml`.
 
 ## Docker (optional)
 
@@ -234,16 +328,28 @@ Create a timestamped backup:
 .\backup.ps1
 ```
 
+```bash
+./backup.sh            # Linux/macOS, also grabs SQLite -wal/-shm sidecars
+```
+
 Restore from the latest backup:
 
 ```powershell
 .\restore.ps1
 ```
 
+```bash
+./restore.sh           # add -y to skip the confirmation prompt
+```
+
 Or restore from a specific folder:
 
 ```powershell
 .\restore.ps1 -BackupPath "C:\Users\LiveTony\Desktop\AgenticTradeBackup\20260101_120000"
+```
+
+```bash
+./restore.sh ~/AgenticTradeBackup/20260101_120000
 ```
 
 The restore script asks for confirmation before overwriting local files.
