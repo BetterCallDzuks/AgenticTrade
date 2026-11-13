@@ -310,8 +310,10 @@ async def _run_guards() -> Dict[str, Any]:
     # Its loader prints a banner to stdout; keep that out of --json output.
     import io
 
+    from ._imports import import_research_bot
+
     with contextlib.redirect_stdout(io.StringIO()):
-        import research_bot
+        research_bot = import_research_bot()
 
     results: List[Dict[str, Any]] = []
     with _isolated_audit_log(research_bot):

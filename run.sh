@@ -6,7 +6,7 @@
 #   ./run.sh --skip-doctor
 #   ./run.sh --help
 #
-# Setup (virtualenv + pinned dependencies) is delegated to ./bootstrap.sh, the
+# Setup (virtualenv + pinned dependencies) is delegated to ./scripts/bootstrap.sh, the
 # same script CI uses, so there is only one install path to maintain.
 # Overrides: PYTHON_BIN=python3.12 VENV_DIR=.venv ./run.sh
 #
@@ -33,7 +33,7 @@ for arg in "$@"; do
 done
 
 # --- 1. Environment + dependencies ---------------------------------------
-VENV_DIR="$VENV_DIR" ./bootstrap.sh
+VENV_DIR="$VENV_DIR" ./scripts/bootstrap.sh
 
 if [ -x "$VENV_DIR/bin/python" ]; then
     PY="$VENV_DIR/bin/python"
@@ -64,4 +64,4 @@ fi
 
 # --- 4. Start ------------------------------------------------------------
 log "Starting BetterCallTrader - Command Center at http://localhost:${COMMAND_CENTER_PORT:-8080}"
-exec "$PY" research_bot.py
+exec "$PY" py/research_bot.py

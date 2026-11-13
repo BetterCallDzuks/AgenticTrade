@@ -70,10 +70,10 @@ py -3.11 -m venv .venv
 Copy-Item .env.example .env
 notepad .env
 .\.venv\Scripts\python.exe -m bettercalltrader.doctor
-.\.venv\Scripts\python.exe research_bot.py
+.\.venv\Scripts\python.exe py\research_bot.py
 ```
 
-Both paths install the same pins. Re-running `./run.sh` (or `bootstrap.sh`) is
+Both paths install the same pins. Re-running `./run.sh` (or `scripts/bootstrap.sh`) is
 safe and only reinstalls when `requirements.txt` changes.
 
 ### 3. Configure
@@ -106,8 +106,8 @@ python -m bettercalltrader.live_readiness  # must print: Status: PAPER
 Optional but quick:
 
 ```bash
-python test_v9.py     # prints ALL TESTS PASSED
-python smoke_v10.py   # starts the real API on an ephemeral port, prints SMOKE OK
+python py/test_v9.py     # prints ALL TESTS PASSED
+python py/smoke_v10.py   # starts the real API on an ephemeral port, prints SMOKE OK
 ```
 
 ### 5. Run it
@@ -115,7 +115,7 @@ python smoke_v10.py   # starts the real API on an ephemeral port, prints SMOKE O
 ```bash
 ./run.sh
 # or, with the venv active:
-python research_bot.py
+python py/research_bot.py
 ```
 
 Open **http://127.0.0.1:8080** — the bot also tries to open a browser. Once started
@@ -199,8 +199,8 @@ reasons) stay in the language it emitted them in.
 
 The pages are plain static HTML served by the bot (`risk.html`, `wallets.html`,
 `backtest.html`, `ml.html`, `system.html`, `settings.html`); the shared header,
-polling, token handling and formatters live in `webui/console.js`, and the
-console styling in `webui/theme.css`. Only `/api/*`, `/metrics` and `/ready`
+polling, token handling and formatters live in `html/webui/console.js`, and the
+console styling in `html/webui/theme.css`. Only `/api/*`, `/metrics` and `/ready`
 require the dashboard token — pages themselves are static and safe to refresh.
 
 When `DASHBOARD_TOKEN` is set, open the page once as `/?token=…`. Every page
@@ -283,7 +283,7 @@ The most useful knobs to tune after a few paper sessions are `TRADE_SIZE_SOL`,
 | `bot_audit.jsonl` | JSONL events: `dry_run_buy`, `live_buy_blocked`, `live_tx_sent`, `live_tx_rpc_error`, `shutdown`, WS failures |
 | `paper_portfolio.db` | SQLite paper book (schema `10.1.0`): positions, trades, journal, equity, pending confirmations |
 | `GET /api/journal`, `/api/equity`, `/api/portfolio_risk`, `/api/backtest` | decision and performance views |
-| `python replay_v10.py` | realized-trade replay report |
+| `python py/replay_v10.py` | realized-trade replay report |
 
 `JSON_LOGS=true` switches the file logger to structured JSON. `/api/audit`
 returns the tail of the audit trail.
@@ -325,7 +325,7 @@ Live trading is a deliberate, separate step:
 5. Re-run the readiness audit. It must print `READY` with zero failed guard
    scenarios and a matching RPC. `READY` means the guards are armed, not that a
    trade is safe.
-6. Read [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and start with the smallest
+6. Read [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) and start with the smallest
    size you can afford to lose.
 
 ### Operating checklists
@@ -339,7 +339,7 @@ Live trading is a deliberate, separate step:
 
 **Weekly**
 
-- Run `./backup.sh` (or `.\backup.ps1`).
+- Run `./scripts/backup.sh` (or `.\scripts\backup.ps1`).
 - `chmod 600 .env` and rotate `DASHBOARD_TOKEN` if it was ever shared.
 - Review closed trades and exit reasons in `/analytics`.
 - Re-run the research commands after changing strategy parameters.
@@ -347,7 +347,7 @@ Live trading is a deliberate, separate step:
 **After pulling changes**
 
 - Re-run `./run.sh` (it reinstalls only when pins change) and the full gates:
-  `ruff check .`, `mypy`, `python test_v9.py`, `python smoke_v10.py`.
+  `ruff check .`, `mypy`, `python py/test_v9.py`, `python py/smoke_v10.py`.
 
 ---
 
@@ -401,7 +401,7 @@ cd ~/BetterCallTrader
 
 `run.sh` is idempotent and does the whole setup on each run:
 
-1. calls `bootstrap.sh` — checks for Python 3.11+ (override with
+1. calls `scripts/bootstrap.sh` — checks for Python 3.11+ (override with
    `PYTHON_BIN=python3.12 ./run.sh`), creates `.venv/` on first run
    (`VENV_DIR=...` to change the location), installs `requirements.txt` and
    only reinstalls when that file changes,
@@ -409,8 +409,8 @@ cd ~/BetterCallTrader
 3. runs `python -m bettercalltrader.doctor` and aborts on any `FAIL`,
 4. starts the bot, printing the Command Center URL.
 
-`bootstrap.sh` is the single setup path shared with CI, so a green pipeline
-means the same install a developer gets locally (`./bootstrap.sh --dev` adds
+`scripts/bootstrap.sh` is the single setup path shared with CI, so a green pipeline
+means the same install a developer gets locally (`./scripts/bootstrap.sh --dev` adds
 ruff, mypy and pip-audit).
 
 Useful flags: `./run.sh --skip-doctor`, `./run.sh --help`.
@@ -429,7 +429,7 @@ $EDITOR .env                             # set GEMINI_API_KEY / DASHBOARD_TOKEN
                                          # keep LIVE_TRADING_ENABLED=false
 
 python -m bettercalltrader.doctor            # must print: Result: OK
-python research_bot.py
+python py/research_bot.py
 ```
 
 Open **http://localhost:8080** — the header shows **v12.0**. The dashboard binds
@@ -441,25 +441,25 @@ start on a non-loopback bind without a token (override with
 Optional checks:
 
 ```bash
-python test_v9.py        # prints ALL TESTS PASSED
-python smoke_v10.py      # prints SMOKE OK
+python py/test_v9.py        # prints ALL TESTS PASSED
+python py/smoke_v10.py      # prints SMOKE OK
 ruff check . && mypy     # lint + types
 ```
 
 Optional backup and restore (the `.ps1` scripts are Windows-only):
 
 ```bash
-./backup.sh                 # -> ~/BetterCallTraderBackup/<timestamp>/
-./restore.sh                # newest backup, asks for confirmation
-./restore.sh -y <backup-dir>
+./scripts/backup.sh                 # -> ~/BetterCallTraderBackup/<timestamp>/
+./scripts/restore.sh                # newest backup, asks for confirmation
+./scripts/restore.sh -y <backup-dir>
 ```
 
-`backup.sh` also captures the SQLite `-wal`/`-shm` sidecars so a snapshot taken
+`scripts/backup.sh` also captures the SQLite `-wal`/`-shm` sidecars so a snapshot taken
 while the bot runs is not torn. Pass a destination root as the first argument
-to write elsewhere: `./backup.sh /media/usb/at-backups`.
+to write elsewhere: `./scripts/backup.sh /media/usb/at-backups`.
 
 Every later shell must activate the environment again
-(`source .venv/bin/activate`), or call `.venv/bin/python research_bot.py`
+(`source .venv/bin/activate`), or call `.venv/bin/python py/research_bot.py`
 directly.
 
 ---
@@ -518,18 +518,18 @@ places an order and never prints the private key.
 3. Run the bot and open the dashboard:
 
 ```powershell
-python research_bot.py
+python py/research_bot.py
 ```
 
 Open **http://127.0.0.1:8080** — the header shows **v12.0**. `START_BOT.bat` is
-a convenience wrapper that runs `research_bot.py` from its own folder, using
+a convenience wrapper that runs `py/research_bot.py` from its own folder, using
 `.venv\Scripts\python.exe` when the virtualenv exists and `python` otherwise.
 
 4. Optional checks:
 
 ```powershell
-python test_v9.py
-python smoke_v10.py
+python py/test_v9.py
+python py/smoke_v10.py
 ```
 
 The first runs local self-tests and prints `ALL TESTS PASSED`; the second starts
@@ -538,8 +538,8 @@ the real API on an ephemeral port and prints `SMOKE OK`.
 5. Optional backup and restore:
 
 ```powershell
-.\backup.ps1
-.\restore.ps1
+.\scripts\backup.ps1
+.\scripts\restore.ps1
 ```
 
 ---
@@ -548,41 +548,45 @@ the real API on an ephemeral port and prints `SMOKE OK`.
 
 ```
 BetterCallTrader/
-├── research_bot.py       # Python multi-agent bot + local web/API server (http://localhost:8080)
-├── command_center.html   # / : Web Command Center, live-synced with the bot
-├── analytics.html        # /analytics : equity, risk, exits, ML
-├── risk.html             # /risk : circuit breaker, entry gate, sizing, concentration
-├── wallets.html          # /wallets : tracked whales, wallet quality, open positions
-├── backtest.html         # /backtest : realized-trade replay, equity curve, breakdowns
-├── ml.html               # /ml : advisory model status, training, per-mint prediction
-├── system.html           # /system : readiness, metrics, Prometheus text, audit trail
-├── settings.html         # /settings : runtime knob editor + strategy profile
-├── webui/
-│   ├── console.js        # shared console runtime: header/nav, i18n, token, api(), formatters
-│   └── theme.css         # shared console theme and components
-├── test_v9.py            # local self-tests (v9 – v12)
-├── smoke_v10.py          # end-to-end API smoke test (real aiohttp app, temp DB)
+├── py/
+│   ├── research_bot.py   # Python multi-agent bot + local web/API server (http://localhost:8080)
+│   ├── replay_v10.py     # v10 realized-trade replay report
+│   ├── test_v9.py        # local self-tests (v9 – v12)
+│   └── smoke_v10.py      # end-to-end API smoke test (real aiohttp app, temp DB)
+├── html/
+│   ├── command_center.html  # / : Web Command Center, live-synced with the bot
+│   ├── analytics.html       # /analytics : equity, risk, exits, ML
+│   ├── risk.html            # /risk : circuit breaker, entry gate, sizing, concentration
+│   ├── wallets.html         # /wallets : tracked whales, wallet quality, open positions
+│   ├── backtest.html        # /backtest : realized-trade replay, equity curve, breakdowns
+│   ├── ml.html              # /ml : advisory model status, training, per-mint prediction
+│   ├── system.html          # /system : readiness, metrics, Prometheus text, audit trail
+│   ├── settings.html        # /settings : runtime knob editor + strategy profile
+│   └── webui/
+│       ├── console.js       # shared console runtime: header/nav, i18n, token, api(), formatters
+│       └── theme.css        # shared console theme and components
+├── scripts/
+│   ├── bootstrap.sh      # shared setup: venv + pinned deps (used by run.sh and CI)
+│   ├── backup.sh         # backup helper for DB, .env and log (Linux/macOS, incl. WAL sidecars)
+│   ├── restore.sh        # restore helper from a backup folder (Linux/macOS)
+│   ├── backup.ps1        # backup helper (Windows)
+│   └── restore.ps1       # restore helper (Windows)
+├── docs/
+│   ├── CHANGELOG.md      # version history
+│   ├── SECURITY.md       # vulnerability reporting and safety posture
+│   └── RELEASE_CHECKLIST.md  # pre-release/live-trading checklist
+├── run.sh                # Linux/macOS launcher: bootstrap + doctor + start
+├── START_BOT.bat         # Windows launcher
 ├── requirements.txt      # pinned runtime dependencies
 ├── requirements-dev.txt  # Ruff, mypy, pip-audit
 ├── pyproject.toml        # Ruff/mypy/pytest configuration
-├── CHANGELOG.md          # version history
-├── SECURITY.md           # vulnerability reporting and safety posture
-├── backup.ps1            # backup helper for DB, .env and log (Windows)
-├── restore.ps1           # restore helper from a backup folder (Windows)
-├── backup.sh             # same backup helper for Linux/macOS (incl. WAL sidecars)
-├── restore.sh            # same restore helper for Linux/macOS
-├── bootstrap.sh          # shared setup: venv + pinned deps (used by run.sh and CI)
-├── run.sh                # Linux/macOS launcher: bootstrap + doctor + start
-├── START_BOT.bat         # Windows launcher
 ├── Dockerfile            # optional container image
 ├── docker-compose.yml    # optional container orchestration
-├── replay_v10.py         # v10 realized-trade replay report
-├── RELEASE_CHECKLIST.md  # pre-release/live-trading checklist
 ├── examples/             # sample candle data for the OHLCV backtester
 ├── .github/workflows/tests.yml
 ├── .github/workflows/codeql.yml
 ├── .github/dependabot.yml
-├── bettercalltrader/     # modular package imported by research_bot.py
+├── bettercalltrader/     # modular package imported by py/research_bot.py
 │   ├── config.py         # env helpers (env_bool, env_float, ...)
 │   ├── http.py           # retry/backoff helpers
 │   ├── models.py         # Pydantic models
@@ -705,7 +709,7 @@ The project is being migrated incrementally from the original monolith into a sm
 - `bettercalltrader/compare.py` — optimize, cost-stress and rank several strategies in one report (v12)
 - `bettercalltrader/live_readiness.py` — read-only live-execution readiness audit with a no-network guard harness (v12)
 
-`research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
+`py/research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
 
 ## Continuous integration
 
@@ -718,11 +722,11 @@ GitHub Actions workflow is located at:
 It runs on every push and pull request and has four jobs:
 
 - **lint**: `bash -n` over the shell entry points, Ruff (`E4`, `E7`, `E9`, `F`) plus mypy over the `bettercalltrader` package
-- **test**: Python 3.11 and 3.12 on Ubuntu and Windows; runs `python test_v9.py` and `python smoke_v10.py`
+- **test**: Python 3.11 and 3.12 on Ubuntu and Windows; runs `python py/test_v9.py` and `python py/smoke_v10.py`
 - **launcher**: boots the app through `./run.sh` on Linux and asserts the dashboard answers on its port
 - **audit**: `pip-audit` against the pinned runtime dependencies
 
-Every job installs through `bootstrap.sh`, the same script `./run.sh` uses, so
+Every job installs through `scripts/bootstrap.sh`, the same script `./run.sh` uses, so
 CI exercises the identical venv + pinned-dependency path that a local checkout
 does. Dependencies are fully pinned in `requirements.txt`; tooling lives in
 `requirements-dev.txt`. Optional local hooks are configured in
@@ -755,7 +759,7 @@ pre-creating files):
 - `data/ml_model.json` — advisory ML model
 
 `.env` is optional for the container (the exported token is enough); use it
-for `GEMINI_API_KEY` or other overrides. `./backup.sh` and `./backup.ps1`
+for `GEMINI_API_KEY` or other overrides. `./scripts/backup.sh` and `.\scripts\backup.ps1`
 include `./data` automatically. Live trading remains disabled unless
 explicitly configured in `.env`.
 
@@ -764,37 +768,37 @@ explicitly configured in `.env`.
 Create a timestamped backup:
 
 ```powershell
-.\backup.ps1
+.\scripts\backup.ps1
 ```
 
 ```bash
-./backup.sh            # Linux/macOS, also grabs SQLite -wal/-shm sidecars
+./scripts/backup.sh            # Linux/macOS, also grabs SQLite -wal/-shm sidecars
 ```
 
 Restore from the latest backup:
 
 ```powershell
-.\restore.ps1
+.\scripts\restore.ps1
 ```
 
 ```bash
-./restore.sh           # add -y to skip the confirmation prompt
+./scripts/restore.sh           # add -y to skip the confirmation prompt
 ```
 
 Or restore from a specific folder:
 
 ```powershell
-.\restore.ps1 -BackupPath "C:\Users\LiveTony\Desktop\BetterCallTraderBackup\20260101_120000"
+.\scripts\restore.ps1 -BackupPath "C:\Users\LiveTony\Desktop\BetterCallTraderBackup\20260101_120000"
 ```
 
 ```bash
-./restore.sh ~/BetterCallTraderBackup/20260101_120000
+./scripts/restore.sh ~/BetterCallTraderBackup/20260101_120000
 ```
 
 The restore script asks for confirmation before overwriting local files.
 
 Both helpers cover the two supported layouts: files in the project root (a
-local `python research_bot.py` run) and the Docker Compose `data/` directory.
+local `python py/research_bot.py` run) and the Docker Compose `data/` directory.
 Backups store the container state as `data/` inside the timestamped folder.
 
 ## Telegram bot (buttons)
@@ -815,7 +819,7 @@ The repository now includes the full v10 layer:
 - `schema_version` table and migration helper (`bettercalltrader/migrations.py`), current schema `10.1.0`
 - aggregate metrics (`bettercalltrader/metrics.py`) and a shared risk-analytics library
 - portfolio risk now reports HHI concentration, top position weight, open exposure %, max drawdown, VaR95, expected shortfall, profit factor, expectancy and average win/loss
-- realized-trade backtest report (`bettercalltrader/backtest.py`, `replay_v10.py`, `GET /api/backtest`)
+- realized-trade backtest report (`bettercalltrader/backtest.py`, `py/replay_v10.py`, `GET /api/backtest`)
 
 **Execution safety**
 - `LIVE_TRADING_CONFIRMED` and `MAX_LIVE_TRADE_SOL` guards in `SolanaExecutionAgent.execute_buy`
@@ -844,8 +848,8 @@ These additions are intentionally non-breaking: v9 behavior remains the default.
 - **Dependency auditing**: `pip-audit` runs in CI on every push.
 - **Config validation**: `bettercalltrader/validate.py` checks numeric ranges, live-trading guards, token strength, profiles and timezones; `python -m bettercalltrader.doctor` adds package, database-schema, audit-path and port checks and exits non-zero on any `FAIL`.
 - **Bind control**: `COMMAND_CENTER_HOST` (default `127.0.0.1`) and `COMMAND_CENTER_PORT` (default `8080`) keep the dashboard loopback-only out of the box. A non-loopback bind without `DASHBOARD_TOKEN` is refused at startup (doctor exits non-zero); `ALLOW_INSECURE_DASHBOARD=true` is the explicit escape hatch. `X-Forwarded-For` is only honoured when `TRUST_PROXY_HEADERS=true`. `PAPER_DB_PATH` selects the portfolio database.
-- **Supply chain**: Dependabot (pip + Actions), CodeQL (`security-and-quality`) and a `SECURITY.md` policy.
-- **Incremental extraction**: time helpers and the paper fill/exit model now live in `bettercalltrader/timeutils.py` and `bettercalltrader/fills.py`, re-exported by `research_bot.py` so existing imports keep working.
+- **Supply chain**: Dependabot (pip + Actions), CodeQL (`security-and-quality`) and a `docs/SECURITY.md` policy.
+- **Incremental extraction**: time helpers and the paper fill/exit model now live in `bettercalltrader/timeutils.py` and `bettercalltrader/fills.py`, re-exported by `py/research_bot.py` so existing imports keep working.
 - **Crash-safe confirmations**: pending entries are written to the `pending_confirmations` table (schema `10.1.0`) and restored on startup. Entries older than `ENTRY_CONFIRM_RECOVERY_MAX_SEC` (default 900s) are dropped as `CONFIRM_EXPIRED` instead of being resumed with a stale signal.
 - **Pump.fun curve pricing**: with `PUMPFUN_CURVE_ENABLED=true`, a token that has no DexScreener pair yet is quoted from the Pump.fun bonding curve (`frontend-api-v3.pump.fun/coins/<mint>`), so it can pass entry confirmation and manual buys. Quotes are cached for `PUMPFUN_CURVE_CACHE_SEC` (5s) and misses for `PUMPFUN_CURVE_MISS_CACHE_SEC` (60s).
 
@@ -864,9 +868,9 @@ python -m bettercalltrader.doctor
 
 ```powershell
 $env:PYTHONIOENCODING='utf-8'
-python test_v9.py      # unit + integration self-tests
-python smoke_v10.py    # starts the real API on port 18080 and checks every endpoint
-python replay_v10.py   # realized-trade replay report
+python py/test_v9.py      # unit + integration self-tests
+python py/smoke_v10.py    # starts the real API on port 18080 and checks every endpoint
+python py/replay_v10.py   # realized-trade replay report
 python -m bettercalltrader.ml status
 python -m bettercalltrader.ohlcv --help   # candle backtester CLI
 ```
@@ -1034,9 +1038,9 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 |---|---|---|
 | `error: externally-managed-environment` on `pip install` | You are installing into the distro Python (PEP 668) | Use the project venv: `./run.sh` or `.venv/bin/python -m pip install -r requirements.txt`. Never `pip install` as root. |
 | `ModuleNotFoundError: aiohttp` / `pydantic` / `dotenv` | The venv is not active, or dependencies are missing | `source .venv/bin/activate` (Windows: `.\.venv\Scripts\Activate.ps1`), then `pip install -r requirements.txt`. Re-run `./run.sh` if unsure. |
-| `./run.sh: Permission denied` | The script is not executable | `chmod +x run.sh bootstrap.sh backup.sh restore.sh` |
+| `./run.sh: Permission denied` | The script is not executable | `chmod +x run.sh scripts/*.sh` |
 | `Activate.ps1 cannot be loaded` (Windows) | PowerShell execution policy | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or call `.\.venv\Scripts\python.exe` directly. |
-| Doctor prints `FAIL` for `live_trading_confirmed` / `SOLANA_PRIVATE_KEY` | `LIVE_TRADING_ENABLED=true` without a complete live configuration | Set `LIVE_TRADING_ENABLED=false` for paper mode, or finish the live checklist in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and re-run `python -m bettercalltrader.live_readiness`. |
+| Doctor prints `FAIL` for `live_trading_confirmed` / `SOLANA_PRIVATE_KEY` | `LIVE_TRADING_ENABLED=true` without a complete live configuration | Set `LIVE_TRADING_ENABLED=false` for paper mode, or finish the live checklist in [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) and re-run `python -m bettercalltrader.live_readiness`. |
 | `python -m bettercalltrader.live_readiness` prints `BLOCKED` | A configuration key is missing or a guard failed | The report lists each failing key. Fix it, then re-run. A `blocked` guard is a bug, not a warning — do not arm live trading. |
 | Doctor warns the dashboard token is empty on a non-loopback bind | The bot refuses to expose an unauthenticated trading API | Bind `127.0.0.1` (default), or set `DASHBOARD_TOKEN` (and open `/?token=...` once). `ALLOW_INSECURE_DASHBOARD=true` is the explicit, unsafe opt-out. |
 | Dashboard returns `401` / `403` | `DASHBOARD_TOKEN` is set and the browser has no token cookie | Open `http://127.0.0.1:8080/?token=<value>` once; the cookie is then reused. |

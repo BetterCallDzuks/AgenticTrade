@@ -4,6 +4,7 @@ import os
 import json
 import base64
 import sqlite3
+import sys
 import time
 import logging
 import webbrowser
@@ -13,7 +14,15 @@ from typing import List, Optional
 import aiohttp
 from aiohttp import web
 
-BASE_DIR = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+# The entry point lives in py/; the package, html/ and .env stay at the repo
+# root, so make that root importable before the package imports below.
+BASE_DIR = SCRIPT_DIR.parent if SCRIPT_DIR.name == "py" else SCRIPT_DIR
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+HTML_DIR = BASE_DIR / "html"
+WEBUI_DIR = HTML_DIR / "webui"
 
 
 # =====================================================================
@@ -70,7 +79,7 @@ from bettercalltrader.models import TokenAnalysisDecision
 from bettercalltrader.telegram import TelegramNotifier
 
 # Relative LOG_FILE_PATH values resolve against the project directory, not the
-# caller's cwd, so `./run.sh` and a bare `python research_bot.py` agree.
+# caller's cwd, so `./run.sh` and a bare `python py/research_bot.py` agree.
 LOG_FILE_PATH = Path(os.environ.get("LOG_FILE_PATH") or "bot_history.log")
 if not LOG_FILE_PATH.is_absolute():
     LOG_FILE_PATH = BASE_DIR / LOG_FILE_PATH
@@ -3679,22 +3688,22 @@ async def start_command_center_server(
         return web.FileResponse(path, headers={"Content-Type": "text/html; charset=utf-8"})
 
     async def handle_index(request: web.Request):
-        html_path = BASE_DIR / "command_center.html"
+        html_path = HTML_DIR / "command_center.html"
         if not html_path.exists():
-            html_path = Path.cwd() / "command_center.html"
+            html_path = Path.cwd() / "html" / "command_center.html"
         if html_path.exists():
             return page_response(html_path)
-        return web.Response(text="Datoteka command_center.html nije pronađena!", status=404)
+        return web.Response(text="Datoteka html/command_center.html nije pronađena!", status=404)
 
     def make_page_handler(filename: str):
-        """Serve a top-level console page from the app or the current directory."""
+        """Serve a console page from html/ (or ./html under the cwd)."""
         async def _handle_page(request: web.Request):
-            html_path = BASE_DIR / filename
+            html_path = HTML_DIR / filename
             if not html_path.exists():
-                html_path = Path.cwd() / filename
+                html_path = Path.cwd() / "html" / filename
             if html_path.exists():
                 return page_response(html_path)
-            return web.Response(text=f"{filename} not found", status=404)
+            return web.Response(text=f"html/{filename} not found", status=404)
         return _handle_page
 
     async def handle_api_state(request: web.Request):
@@ -3862,12 +3871,12 @@ async def start_command_center_server(
         return web.json_response({"ok": True, "report": report})
 
     async def handle_analytics(request: web.Request):
-        html_path = BASE_DIR / "analytics.html"
+        html_path = HTML_DIR / "analytics.html"
         if not html_path.exists():
-            html_path = Path.cwd() / "analytics.html"
+            html_path = Path.cwd() / "html" / "analytics.html"
         if html_path.exists():
             return page_response(html_path)
-        return web.Response(text="analytics.html not found", status=404)
+        return web.Response(text="html/analytics.html not found", status=404)
 
     async def handle_api_wallet_quality(request: web.Request):
         return web.json_response({"ok": True, "walletQuality": portfolio.list_wallet_quality()})
@@ -4034,9 +4043,9 @@ async def start_command_center_server(
     app.router.add_get("/", handle_index)
     for console_page in ("risk", "wallets", "backtest", "ml", "system", "settings"):
         app.router.add_get(f"/{console_page}", make_page_handler(f"{console_page}.html"))
-    webui_dir = BASE_DIR / "webui"
+    webui_dir = WEBUI_DIR
     if not webui_dir.exists():
-        webui_dir = Path.cwd() / "webui"
+        webui_dir = Path.cwd() / "html" / "webui"
     if webui_dir.exists():
         app.router.add_static("/webui/", webui_dir)
     app.router.add_get("/api/health", handle_api_health)

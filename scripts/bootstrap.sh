@@ -4,8 +4,8 @@
 #
 # Shared by ./run.sh and CI so local and CI use exactly one setup path.
 #
-#   ./bootstrap.sh          # runtime deps from requirements.txt
-#   ./bootstrap.sh --dev    # runtime + requirements-dev.txt (ruff, mypy, pip-audit)
+#   ./scripts/bootstrap.sh          # runtime deps from requirements.txt
+#   ./scripts/bootstrap.sh --dev    # runtime + requirements-dev.txt (ruff, mypy, pip-audit)
 #
 # Environment overrides:
 #   PYTHON_BIN=python3.12    interpreter used to create the venv
@@ -16,7 +16,9 @@
 #
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"
+# The scripts/ directory holds this helper; the project root (venv, source and
+# .env) is its parent.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 VENV_DIR="${VENV_DIR:-.venv}"
 WITH_DEV=0

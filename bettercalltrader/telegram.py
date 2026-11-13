@@ -183,8 +183,11 @@ class TelegramNotifier:
             result = portfolio.request_entry(market, None, None, conviction="manual", source="TELEGRAM", skip_confirm=True)
             if result["status"] == "OPENED" and executor is not None:
                 try:
-                    from research_bot import _dry_run_after_open
-                    await _dry_run_after_open(session, executor, portfolio, mint, market)
+                    from ._imports import import_research_bot
+
+                    await import_research_bot()._dry_run_after_open(
+                        session, executor, portfolio, mint, market
+                    )
                 except Exception:
                     pass
             await self.send_now(session, f"📱 Manual buy rezultat: {result.get('status')} ({result.get('rule')})", MAIN_BUTTONS)

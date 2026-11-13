@@ -7,8 +7,15 @@ and the analytics page.
 
 import asyncio
 import os
+import sys
 import tempfile
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = ROOT.parent
+for _path in (ROOT, PROJECT_ROOT):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 os.environ.setdefault("DASHBOARD_TOKEN", "smoke-token")
 os.environ["LIVE_TRADING_ENABLED"] = "false"

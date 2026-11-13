@@ -2,10 +2,17 @@ import argparse
 import json
 import shutil
 import sqlite3
+import sys
 import tempfile
 from pathlib import Path
 
-from bettercalltrader.backtest import build_report, to_markdown
+ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = ROOT.parent
+for _path in (ROOT, PROJECT_ROOT):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
+
+from bettercalltrader.backtest import build_report, to_markdown  # noqa: E402
 
 
 def snapshot_database(src: Path, target: Path) -> None:

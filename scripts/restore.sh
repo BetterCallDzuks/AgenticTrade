@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Restore BetterCallTrader state from a backup created by ./backup.sh.
+# Restore BetterCallTrader state from a backup created by ./scripts/backup.sh.
 #
-#   ./restore.sh                 # newest backup under ~/BetterCallTraderBackup
-#   ./restore.sh <backup-dir>    # explicit backup directory
-#   ./restore.sh -y <backup-dir> # skip the confirmation prompt
+#   ./scripts/restore.sh                 # newest backup under ~/BetterCallTraderBackup
+#   ./scripts/restore.sh <backup-dir>    # explicit backup directory
+#   ./scripts/restore.sh -y <backup-dir> # skip the confirmation prompt
 #
 # Mirrors restore.ps1: overwrites .env, the DB, logs, audit trail and ML model
 # in the project directory, plus the Docker Compose `data/` directory when the
@@ -12,7 +12,8 @@
 #
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"
+# The scripts/ directory holds this helper; the project root is its parent.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 BACKUP_ROOT="$HOME/BetterCallTraderBackup"
 ASSUME_YES=0

@@ -3,14 +3,14 @@
 Use this checklist before any change that could enable real on-chain trading.
 
 ## Code and tests
-- [ ] `python test_v9.py` passes (`ALL TESTS PASSED`)
-- [ ] `python smoke_v10.py` prints `SMOKE OK`
-- [ ] `python -m py_compile research_bot.py test_v9.py` passes
+- [ ] `python py/test_v9.py` passes (`ALL TESTS PASSED`)
+- [ ] `python py/smoke_v10.py` prints `SMOKE OK`
+- [ ] `python -m py_compile py/research_bot.py py/test_v9.py` passes
 - [ ] No secrets are committed (`.env` ignored)
 - [ ] `LIVE_TRADING_ENABLED=false` in `.env`
 
 ## v10 specifics
-- [ ] `python replay_v10.py` produces a sensible report (or an empty book report)
+- [ ] `python py/replay_v10.py` produces a sensible report (or an empty book report)
 - [ ] `DASHBOARD_TOKEN` set if the dashboard is reachable beyond localhost
 - [ ] `API_RATE_LIMIT_PER_MIN` reviewed for your usage
 - [ ] `STRATEGY_PROFILE` matches your intent; explicit env values still override it
@@ -57,6 +57,6 @@ Use this checklist before any change that could enable real on-chain trading.
 - [ ] Have an emergency `/sell_all` or kill-switch plan
 
 ## Backup
-- [ ] Run `backup.ps1`
+- [ ] Run `scripts/backup.ps1`
 - [ ] Verify backup contains `.env`, DB and log
-- [ ] Test `restore.ps1` in a separate folder before relying on it
+- [ ] Test `scripts/restore.ps1` in a separate folder before relying on it

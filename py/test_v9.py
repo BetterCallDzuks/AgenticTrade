@@ -5,7 +5,10 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
+PROJECT_ROOT = ROOT.parent
+for _path in (ROOT, PROJECT_ROOT):
+    if str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 import research_bot as rb
 

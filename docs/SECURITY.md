@@ -48,7 +48,7 @@ This repository never ships credentials. `.env` is gitignored; only
   live mode without confirmation, broken limits, unrecognised boolean values)
   before the bot starts.
 - Keep `.env` mode `0600`; `doctor` warns on POSIX when it is readable by
-  group or others, and `backup.sh --no-secrets` excludes it from archives.
+  group or others, and `scripts/backup.sh --no-secrets` excludes it from archives.
 
 ## Scope
 

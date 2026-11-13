@@ -4,8 +4,8 @@ title BetterCallTrader v12.0
 cd /d "%~dp0"
 echo Starting BetterCallTrader v12.0...
 if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" research_bot.py
+    ".venv\Scripts\python.exe" py\research_bot.py
 ) else (
-    python research_bot.py
+    python py\research_bot.py
 )
 pause

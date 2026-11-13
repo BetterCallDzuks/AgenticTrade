@@ -30,14 +30,14 @@ All notable changes to BetterCallTrader are documented here. The format follows
     execution), the strategy-profile selector, dirty-state save/discard, and a
     read-only panel for live trading, Telegram, timezone, cost/exit models and
     the LLM.
-- **Shared console asset layer.** `webui/console.js` injects the header and
+- **Shared console asset layer.** `html/webui/console.js` injects the header and
   eight-item nav into every page, owns the HR/EN switch, dashboard-token
   storage, the `api()` helper (with 401/error handling), formatters, toasts and
   the polling runtime, which pauses while the tab is hidden. Settings opts out
   of polling and warns on `beforeunload` while it has unsaved edits.
-  `webui/theme.css` holds the console theme and components. New pages only
+  `html/webui/theme.css` holds the console theme and components. New pages only
   define their own panels and `I18N` dictionaries.
-- The two existing pages (`command_center.html`, `analytics.html`) now render
+- The two existing pages (`html/command_center.html`, `html/analytics.html`) now render
   the full nav and gained `nav.*` translations for all eight windows; the
   `file://` nav fallback maps every page to its local `.html` file.
 
@@ -87,9 +87,22 @@ All notable changes to BetterCallTrader are documented here. The format follows
 - Documentation refreshed for the rename: README intro/project layout, the
   dashboard section (language switch, dashboard token storage, metric prefix),
   and the known-limitations note about Croatian backend messages.
+- **Repository layout cleaned up.** The eight console pages moved to `html/`
+  (with their `html/webui/` assets), the Python entry points and tests
+  (`research_bot.py`, `replay_v10.py`, `test_v9.py`, `smoke_v10.py`) to `py/`,
+  the bootstrap/backup/restore helpers to `scripts/`, and the standalone docs
+  (CHANGELOG, SECURITY, RELEASE_CHECKLIST) to `docs/`. `run.sh`, `START_BOT.bat`,
+  `README.md`, `LICENSE`, the packaging files and the container files stay at the
+  root. The launchers and `scripts/*` resolve the project root themselves, so
+  `./run.sh`, `./scripts/backup.sh` and `python py/test_v9.py` behave as before
+  from any working directory.
 
 ### Fixed
 
+- **Container image now ships every console window.** The Dockerfile copied only
+  `command_center.html` and `analytics.html`, so `/risk`, `/wallets`, `/backtest`,
+  `/ml`, `/system`, `/settings` and the `/webui/` assets 404'd inside the image.
+  It now copies `html/` and `py/` wholesale, and starts `py/research_bot.py`.
 - **HTML pages now actually send `Content-Security-Policy`.** The middleware
   only attached the policy when a response already had `Content-Type:
   text/html`, but aiohttp's `FileResponse` guesses the type during

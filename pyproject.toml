@@ -17,9 +17,10 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 # The legacy entry point loads .env before importing package modules.
-"research_bot.py" = ["E402"]
-"test_v9.py" = ["E402", "F401"]
-"smoke_v10.py" = ["E402", "F401"]
+"py/research_bot.py" = ["E402"]
+"py/replay_v10.py" = ["E402"]
+"py/test_v9.py" = ["E402", "F401"]
+"py/smoke_v10.py" = ["E402", "F401"]
 
 [tool.mypy]
 python_version = "3.11"

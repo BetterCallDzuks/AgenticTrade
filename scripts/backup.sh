@@ -2,9 +2,9 @@
 #
 # Back up the mutable BetterCallTrader state (DB, secrets, logs, audit, ML model).
 #
-#   ./backup.sh                          # -> ~/BetterCallTraderBackup/<timestamp>/
-#   ./backup.sh /media/usb/at-backups    # custom destination root
-#   ./backup.sh --no-secrets             # omit .env (recommended when sharing)
+#   ./scripts/backup.sh                          # -> ~/BetterCallTraderBackup/<timestamp>/
+#   ./scripts/backup.sh /media/usb/at-backups    # custom destination root
+#   ./scripts/backup.sh --no-secrets             # omit .env (recommended when sharing)
 #
 # Handles both layouts: files in the project root (local runs) and the Docker
 # Compose `data/` directory, which is copied as `data/` inside the backup.
@@ -13,7 +13,9 @@
 #
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")"
+# The scripts/ directory holds this helper; the project root (state files and
+# data/) is its parent.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 SRC_DIR="$PWD"
 DEST_ROOT=""

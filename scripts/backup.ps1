@@ -3,7 +3,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$source = Split-Path -Parent $MyInvocation.MyCommand.Path
+# The scripts/ directory holds this helper; the project root is its parent.
+$source = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $target = Join-Path $Destination $timestamp
 New-Item -ItemType Directory -Force -Path $target | Out-Null
