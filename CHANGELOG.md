@@ -4,6 +4,30 @@ All notable changes to BetterCallTrader are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions use
 `MAJOR.MINOR.PATCH`.
 
+## [Unreleased]
+
+### Changed
+
+- **Project renamed** from AgenticTrade to BetterCallTrader. The Python package is
+  now `bettercalltrader` (was `agentictrade`), so module entry points are
+  `python -m bettercalltrader.doctor`, `bettercalltrader.ohlcv`, and so on.
+  Prometheus metrics use the `bettercalltrader_*` prefix
+  (`bettercalltrader_info`, `bettercalltrader_db_up`,
+  `bettercalltrader_http_requests_total`, `bettercalltrader_http_request_duration_seconds`).
+  Dashboard storage keys are `bettercalltrader_token` and `bettercalltrader_lang`;
+  a previously saved token and language preference must be set once more.
+  The Docker service, CI workflow/job names, backup directory
+  (`~/BetterCallTraderBackup`) and repository URL follow the new name; old clone
+  URLs redirect.
+- Both dashboards now share one dark console design (same header, nav, KPI cards,
+  stat tiles and data tables) and a persistent **HR / EN** switch in the header.
+  Croatian stays the default. `analytics.html` was rewritten; `command_center.html`
+  was rethemed in place with every element id, endpoint and behaviour preserved.
+  Dashboard version badges and runtime labels now report v12.
+- Documentation refreshed for the rename: README intro/project layout, the
+  dashboard section (language switch, dashboard token storage, metric prefix),
+  and the known-limitations note about Croatian backend messages.
+
 ## [12.0.0] - 2026-11-13
 
 ### Security

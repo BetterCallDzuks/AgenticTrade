@@ -7,7 +7,12 @@
 
 A multi-agent system for discovering, checking and **paper-trading** Solana memecoins. It combines the Pump.fun WebSocket, the DexScreener API, RugCheck security checks, an optional AI analyst (Google Gemini or any local OpenAI-compatible model), a SQLite paper portfolio and a Jupiter/Jito dry-run executor, all behind a local web Command Center and an analytics dashboard.
 
-> **Paper trading only by default.** `LIVE_TRADING_ENABLED=false` stays off, and nothing in v10 turns it on (the dashboard cannot either). This software does not promise or predict profit. Memecoins are extremely risky. Replay and paper results are a way to test rules, not a forecast.
+> **Formerly AgenticTrade.** The project was renamed in v12; the Python package,
+> Prometheus metric prefix and dashboard storage keys are now `bettercalltrader`.
+> Old clone URLs redirect, but a saved dashboard token (`?token=`) and the HR/EN
+> preference have to be set once more.
+
+> **Paper trading only by default.** `LIVE_TRADING_ENABLED=false` stays off, and nothing in v12 turns it on (the dashboard cannot either). This software does not promise or predict profit. Memecoins are extremely risky. Replay and paper results are a way to test rules, not a forecast.
 
 ---
 
@@ -167,8 +172,18 @@ Open **http://127.0.0.1:8080**:
 - **`/ready`** — dependency readiness (database, AI, Telegram, auth, live mode).
 - **`/api/state`** — everything the dashboard polls, as JSON.
 
-Some legacy UI labels are still Croatian; the underlying data and API are
-English.
+Both dashboards share one dark console layout and a language switch in the
+header (**HR / EN**, Croatian by default). The choice is stored in
+`localStorage` (`bettercalltrader_lang`) and carries across `/` and
+`/analytics`; every dashboard label, table header and empty state is
+translated, while messages produced by the Python bot (log lines, AI
+summaries, exit reasons) stay in the language it emitted them in.
+
+When `DASHBOARD_TOKEN` is set, open the page once as `/?token=…`. Both
+dashboards store it as `bettercalltrader_token` and send it as `X-Auth-Token`
+on every request; the **Token** button in the header replaces or clears it.
+Prometheus metrics use the `bettercalltrader_*` prefix (`bettercalltrader_info`,
+`bettercalltrader_db_up`, `bettercalltrader_http_requests_total`).
 
 ### Manual controls
 
@@ -476,9 +491,9 @@ the real API on an ephemeral port and prints `SMOKE OK`.
 BetterCallTrader/
 ├── research_bot.py       # Python multi-agent bot + local web/API server (http://localhost:8080)
 ├── command_center.html   # Web Command Center, live-synced with the bot
-├── analytics.html        # v10 analytics dashboard (/analytics)
-├── test_v9.py            # local self-tests (v9 + v10 + v11)
-├── smoke_v10.py          # end-to-end API smoke test
+├── analytics.html        # analytics dashboard: equity, risk, exits, ML (/analytics)
+├── test_v9.py            # local self-tests (v9 – v12)
+├── smoke_v10.py          # end-to-end API smoke test (real aiohttp app, temp DB)
 ├── requirements.txt      # pinned runtime dependencies
 ├── requirements-dev.txt  # Ruff, mypy, pip-audit
 ├── pyproject.toml        # Ruff/mypy/pytest configuration
@@ -499,11 +514,12 @@ BetterCallTrader/
 ├── .github/workflows/tests.yml
 ├── .github/workflows/codeql.yml
 ├── .github/dependabot.yml
-├── bettercalltrader/         # incremental modular package
-│   ├── config.py         # env helpers
+├── bettercalltrader/     # modular package imported by research_bot.py
+│   ├── config.py         # env helpers (env_bool, env_float, ...)
 │   ├── http.py           # retry/backoff helpers
 │   ├── models.py         # Pydantic models
 │   ├── telegram.py       # Telegram notifier + inline buttons
+│   ├── defaults.py       # risk/cost/exit defaults and their validation (v11)
 │   ├── migrations.py     # schema_version / migrations (v10)
 │   ├── metrics.py        # metrics collection (v10)
 │   ├── observability.py  # JSON/audit logging + alert throttle (v10)
@@ -516,14 +532,17 @@ BetterCallTrader/
 │   ├── prometheus.py     # metrics registry and text exposition (v11)
 │   ├── shutdown.py       # SIGINT/SIGTERM controller (v11)
 │   ├── ohlcv.py          # candle backtester + strategies + CLI (v11)
+│   ├── validate.py       # environment validation rules (v11)
+│   ├── doctor.py         # read-only pre-flight CLI (v11)
+│   ├── timeutils.py      # UTC/local day helpers (v11)
+│   ├── fills.py          # paper fill model + exit metadata (v11)
+│   ├── costs.py          # shared cost model: fees, slippage, depth impact (v11/v12)
+│   ├── exits.py          # one ExitPolicy for the paper book and the backtester (v12)
+│   ├── llm.py            # provider-neutral LLM client (Gemini / OpenAI-compatible) (v12)
 │   ├── optimizer.py      # walk-forward param search + rolling stability (v12)
 │   ├── cost_stress.py    # cost multiplier sweep + break-even (v12)
 │   ├── compare.py        # out-of-sample strategy ranking (v12)
-│   ├── live_readiness.py # read-only live-execution guard audit (v12)
-│   ├── validate.py       # environment validation rules (v11)
-│   ├── doctor.py         # read-only pre-flight CLI (v11)
-│   ├── timeutils.py      # UTC/local day helpers, extracted from the monolith (v11)
-│   └── fills.py          # paper fill model + exit metadata (v11)
+│   └── live_readiness.py # read-only live-execution guard audit (v12)
 ├── .env                  # your local config and keys (never share it)
 ├── .env.example          # template with every setting
 ├── paper_portfolio.db    # SQLite paper book (created automatically)
@@ -962,7 +981,7 @@ answer most questions.
 - Pending confirmations are restored from SQLite after a restart, but only within `ENTRY_CONFIRM_RECOVERY_MAX_SEC` (default 900s). Older entries are dropped as expired.
 - Pump.fun curve quotes come from a public HTTP endpoint and can lag a fast-moving curve; a quote older than `STALE_PRICE_SEC` still fails closed.
 - Wallet quality starts neutral and only becomes meaningful after a few closed trades per wallet.
-- Some older log and hard-filter messages are still in Croatian. The newer risk-engine messages are in English.
+- Some older log and hard-filter messages are still in Croatian. The newer risk-engine messages are in English; the dashboard chrome itself is bilingual (HR/EN switch).
 - The web API is intended for local use and now binds `127.0.0.1` by default. A non-loopback bind requires `DASHBOARD_TOKEN` or startup is refused; `ALLOW_INSECURE_DASHBOARD=true` is an explicit opt-out. Keep the rate limit enabled and do not expose it to the internet.
 - The ML model is advisory only and never opens, blocks or resizes trades. The realized replay and the OHLCV backtester are research tools, not forecasts.
 - The OHLCV backtester uses close-based signals and gap-aware high/low exit checks; it cannot model order-book depth, MEV or partial fills. When a candle contains both a stop and take profit, the stop is used and the trade is marked `ambiguousBar`.

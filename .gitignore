@@ -23,6 +23,25 @@ __pycache__/
 .venv/
 venv/
 
+# Tool caches and coverage
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
 # OS
 Thumbs.db
 .DS_Store
