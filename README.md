@@ -85,7 +85,7 @@ behaviour on day one:
 |---|---|---|
 | `LIVE_TRADING_ENABLED` | `false` | **Leave it `false`.** Paper mode cannot send an on-chain order. |
 | `GEMINI_API_KEY` | empty | Optional. Enables the Gemini analyst. |
-| `LLM_BASE_URL` + `LLM_MODEL` | empty | Optional alternative: Ollama, llama.cpp, LM Studio, vLLM. |
+| `LLM_BASE_URL` + `LLM_MODEL` / `LLM_MODELS` | empty | Optional local alternative: Ollama, llama.cpp, LM Studio, vLLM; `LLM_MODELS` adds ordered fallbacks. |
 | `INITIAL_PAPER_SOL` | `10.0` | Paper bankroll. |
 | `TRADE_SIZE_SOL` | `0.5` | Paper size per entry. |
 | `STRATEGY_PROFILE` | `balanced` | `conservative`, `balanced`, `aggressive` or `high_risk` (high-risk/high-reward mode). |
@@ -641,9 +641,19 @@ ollama serve
 ollama pull llama3.1:8b
 LLM_PROVIDER=ollama LLM_BASE_URL=http://127.0.0.1:11434/v1 LLM_MODEL=llama3.1:8b ./run.sh
 
-# llama.cpp server, LM Studio, vLLM or any OpenAI-compatible gateway
+# LM Studio (start the server in the app or with `lms server start`)
+LLM_PROVIDER=openai LLM_BASE_URL=http://127.0.0.1:1234/v1 \
+  LLM_MODEL=qwen2.5-coder-7b-instruct \
+  LLM_MODELS=qwen2.5-coder-14b-instruct-uncensored,qwen3.5-0.8b-uncensored ./run.sh
+
+# llama.cpp server, vLLM or any OpenAI-compatible gateway
 LLM_PROVIDER=openai LLM_BASE_URL=http://127.0.0.1:8081/v1 LLM_MODEL=local-model ./run.sh
 ```
+
+`LLM_MODELS` is an optional comma-separated list of local model IDs tried in
+order after `LLM_MODEL`, so the bot keeps working when the primary model is not
+loaded. Model IDs are exactly what `GET /v1/models` advertises (for LM Studio:
+`qwen2.5-coder-7b-instruct`, `qwen2.5-coder-14b-instruct-uncensored`, …).
 
 `LLM_TIMEOUT_SEC`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS` and
 `LLM_FALLBACK_TO_HEURISTIC` tune the call. `doctor` probes the configured
@@ -1046,7 +1056,7 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 | Dashboard returns `401` / `403` | `DASHBOARD_TOKEN` is set and the browser has no token cookie | Open `http://127.0.0.1:8080/?token=<value>` once; the cookie is then reused. |
 | Port `8080` already in use | Another process (often a previous bot) holds the port | Stop it, or set `COMMAND_CENTER_PORT=8081` in `.env` and restart. The bot falls back to terminal-only mode when the port is busy. |
 | The bot appears to stop on its own | The process was killed, or it received `Ctrl+C` / `SIGTERM` | Check `bot_history.log` and the `shutdown` entry in `bot_audit.jsonl`. The bot has no cycle cap and runs until stopped; open paper positions persist in `paper_portfolio.db`. |
-| No automatic buys, only `SKIP`/`WATCH` | No LLM configured; the strict heuristic stays below the auto-BUY threshold | Set `GEMINI_API_KEY`, or `LLM_BASE_URL` + `LLM_MODEL` for a local server. This is fail-closed by design. |
+| No automatic buys, only `SKIP`/`WATCH` | No LLM configured; the strict heuristic stays below the auto-BUY threshold | Set `GEMINI_API_KEY`, or `LLM_BASE_URL` + `LLM_MODEL`/`LLM_MODELS` for a local server. This is fail-closed by design. |
 | Manual buy returns `400` and journals `BLOCK`/`STALE_PRICE` | DexScreener has no fresh quote for that mint | Wait for a DexScreener pair (or enable `PUMPFUN_CURVE_ENABLED=true` for bonding-curve tokens) and retry. The bot never guesses a price. |
 | Journal/audit shows `NO_ROUTE` | No Jupiter route or no Pump.fun route for the amount | The token is too new, too illiquid or the amount is too small. Try later or a different mint. |
 | `live_buy_blocked` in `bot_audit.jsonl` | A live guard refused the order (unconfirmed, over `MAX_LIVE_TRADE_SOL`, missing key) | This is the guard working. Check the `reason` field and fix the configuration; do not bypass the guard. |

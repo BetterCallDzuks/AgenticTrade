@@ -40,6 +40,11 @@ All notable changes to BetterCallTrader are documented here. The format follows
 - The two existing pages (`html/command_center.html`, `html/analytics.html`) now render
   the full nav and gained `nav.*` translations for all eight windows; the
   `file://` nav fallback maps every page to its local `.html` file.
+- **Local model fallback chain.** `LLM_MODELS` is a comma-separated list of
+  additional local model IDs tried in order after `LLM_MODEL`, so a local
+  OpenAI-compatible server (LM Studio, Ollama, llama.cpp, vLLM) keeps answering
+  when the primary model is not loaded. `doctor` and `probe` now report the
+  model IDs the server actually advertises when a configured one is missing.
 
 ### Changed
 

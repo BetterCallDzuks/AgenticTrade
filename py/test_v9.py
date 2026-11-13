@@ -1961,6 +1961,20 @@ def test_v11_llm_layer():
     ).providers()
     assert [spec.kind for spec in chain] == ["openai", "gemini"]
 
+    # LLM_MODELS adds ordered local fallbacks; LLM_MODEL stays first.
+    multi = LLMConfig.from_env(
+        {
+            "LLM_PROVIDER": "openai",
+            "LLM_BASE_URL": "http://127.0.0.1:9/v1",
+            "LLM_MODEL": "primary",
+            "LLM_MODELS": " fallback-a , fallback-b, primary ",
+        }
+    )
+    assert multi.local_models == ("primary", "fallback-a", "fallback-b")
+    assert [spec.model for spec in multi.providers()] == ["primary", "fallback-a", "fallback-b"]
+    list_only = LLMConfig.from_env({"LLM_BASE_URL": "http://127.0.0.1:9/v1", "LLM_MODELS": "x,y"})
+    assert [spec.model for spec in list_only.providers()] == ["x", "y"]
+
     assert extract_json_object('```json\n{"a": 1}\n```') == {"a": 1}
     assert extract_json_object('Here you go: {"b": 2} — done') == {"b": 2}
     try:

@@ -7,7 +7,8 @@ provider interface, so a locally hosted model is a first-class option:
 - **Gemini** — ``GEMINI_API_KEY`` (the historical path, unchanged behaviour).
 - **Any OpenAI-compatible server** — Ollama (``http://127.0.0.1:11434/v1``),
   llama.cpp ``server``, LM Studio, vLLM, text-generation-webui, or a remote
-  OpenAI-compatible gateway. Set ``LLM_BASE_URL`` and ``LLM_MODEL``.
+  OpenAI-compatible gateway. Set ``LLM_BASE_URL`` and ``LLM_MODEL``;
+  ``LLM_MODELS`` adds a comma-separated fallback list tried in order.
 
 Selection is explicit but forgiving:
 
@@ -71,6 +72,17 @@ def _env_bool(env: Optional[Mapping[str, str]], key: str, default: bool) -> bool
     return raw.lower() in ("1", "true", "yes", "on")
 
 
+def _split_models(*values: str) -> tuple[str, ...]:
+    """Merge comma/space separated model names, keeping order and dropping duplicates."""
+    names: List[str] = []
+    for value in values:
+        for part in re.split(r"[,\s]+", value or ""):
+            part = part.strip()
+            if part and part not in names:
+                names.append(part)
+    return tuple(names)
+
+
 @dataclass(frozen=True)
 class LLMConfig:
     """Resolved provider settings."""
@@ -79,6 +91,8 @@ class LLMConfig:
     model: str = ""
     # Per-backend names, because a Gemini name never exists on a local server.
     local_model: str = ""
+    # Optional ordered fallback list for the local server (LLM_MODELS).
+    local_models: tuple[str, ...] = ()
     gemini_model: str = DEFAULT_GEMINI_MODEL
     base_url: str = ""
     api_key: str = ""
@@ -97,13 +111,15 @@ class LLMConfig:
             provider = "auto"
         base_url = _env(env, "LLM_BASE_URL", str(LLM_DEFAULTS["base_url"]))
         gemini_key = _env(env, "GEMINI_API_KEY")
-        local_model = _env(env, "LLM_MODEL")
+        local_models = _split_models(_env(env, "LLM_MODEL"), _env(env, "LLM_MODELS"))
+        local_model = local_models[0] if local_models else ""
         gemini_model = _env(env, "GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
         model = local_model or gemini_model
         return cls(
             provider=provider,
             model=model,
             local_model=local_model,
+            local_models=local_models,
             gemini_model=gemini_model,
             base_url=base_url,
             api_key=_env(env, "LLM_API_KEY"),
@@ -114,19 +130,26 @@ class LLMConfig:
             fallback_to_heuristic=_env_bool(env, "LLM_FALLBACK_TO_HEURISTIC", True),
         )
 
+    def _local_specs(self) -> List["ProviderSpec"]:
+        """One spec per local model, primary first (``LLM_MODEL`` then ``LLM_MODELS``)."""
+        base_url = (self.base_url or OLLAMA_BASE_URL).rstrip("/")
+        names = list(self.local_models) or ([self.local_model] if self.local_model else [])
+        if not names:
+            names = [self.model or DEFAULT_GEMINI_MODEL]
+        return [
+            ProviderSpec(kind="openai", model=name, base_url=base_url, api_key=self.api_key)
+            for name in names
+        ]
+
     def providers(self) -> List["ProviderSpec"]:
         """Return the providers to try, primary first.
 
         ``auto`` never returns more than one provider implicitly, but an
         explicit Gemini choice still falls back to a configured local server
         (and vice versa) so a dead API does not disable research entirely.
+        Every local model in ``LLM_MODELS`` is appended as its own fallback.
         """
-        local = ProviderSpec(
-            kind="openai",
-            model=self.local_model or self.model or DEFAULT_GEMINI_MODEL,
-            base_url=(self.base_url or OLLAMA_BASE_URL).rstrip("/"),
-            api_key=self.api_key,
-        )
+        local_chain = self._local_specs()
         gemini = ProviderSpec(
             kind="gemini", model=self.gemini_model or self.model or DEFAULT_GEMINI_MODEL,
             gemini_api_key=self.gemini_api_key,
@@ -137,10 +160,10 @@ class LLMConfig:
         if self.provider == "gemini":
             chain = [gemini]
             if self.base_url:
-                chain.append(local)
+                chain.extend(local_chain)
             return chain
         if self.provider in ("openai", "ollama"):
-            chain = [local]
+            chain = list(local_chain)
             if self.gemini_api_key:
                 chain.append(gemini)
             return chain
@@ -148,10 +171,10 @@ class LLMConfig:
         if self.gemini_api_key:
             chain = [gemini]
             if self.base_url:
-                chain.append(local)
+                chain.extend(local_chain)
             return chain
         if self.base_url:
-            return [local]
+            return local_chain
         return []
 
 
@@ -408,7 +431,11 @@ def probe(config: Optional[LLMConfig] = None, timeout: float = 2.0) -> Dict[str,
                 body = response.read(4096).decode("utf-8", "replace")
             models = _model_ids(body)
             state = "ok" if (not models or spec.model in models) else "model-missing"
-            detail = f"{url} reachable" + ("" if state == "ok" else f"; {spec.model!r} not advertised")
+            if state == "ok":
+                detail = f"{url} reachable"
+            else:
+                advertised = ", ".join(list(models)[:5])
+                detail = f"{url} reachable; {spec.model!r} not advertised (have: {advertised})"
             results.append({"provider": spec.label, "state": state, "detail": detail})
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
             results.append({"provider": spec.label, "state": "unreachable", "detail": f"{url}: {exc}"})
