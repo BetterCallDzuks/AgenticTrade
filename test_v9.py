@@ -432,7 +432,9 @@ def test_whale_exit():
         print("  whale exit ignores stale events: OK")
 
         # Only the whale this position followed, selling after entry, triggers it.
-        rb.record_whale_sell(mint, wallet, "SmartWhale")
+        # Use the portfolio clock for the event timestamp so the comparison does
+        # not depend on the host clock source (time.time vs datetime).
+        rb.record_whale_sell(mint, wallet, "SmartWhale", ts=portfolio.now_ts())
         tick_market = dict(tick_market, fetched_at=portfolio.now_ts())
         action = portfolio.process_position_tick(mint, tick_market)
         assert action == "WHALE_EXIT", action
