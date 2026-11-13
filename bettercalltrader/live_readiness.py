@@ -411,9 +411,10 @@ def run_readiness(
     env: Optional[Mapping[str, str]] = None,
     *,
     probe: bool = False,
+    solders_available: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Combine the environment audit, the guard harness and optional probes."""
-    environment = check_environment(env)
+    environment = check_environment(env, solders_available=solders_available)
     guards = audit_guards()
     if not guards["ok"] or environment["fails"]:
         status = STATUS_BLOCKED

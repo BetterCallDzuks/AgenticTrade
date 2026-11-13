@@ -2907,8 +2907,9 @@ def test_v12_live_readiness():
         )["status"]
         == lr.STATUS_BLOCKED
     )
-    ready = lr.run_readiness(dict(live_env))
+    ready = lr.run_readiness(dict(live_env), solders_available=True)
     assert ready["status"] == lr.STATUS_READY
+    assert lr.run_readiness(dict(live_env), solders_available=False)["status"] == lr.STATUS_BLOCKED
     assert ready["probes"] is None and ready["networkUsed"] is False
     assert ready["guards"]["networkCalls"] == 0
 
