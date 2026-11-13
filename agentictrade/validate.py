@@ -44,6 +44,7 @@ _BOOLEAN_KEYS = (
     "TRUST_PROXY_HEADERS",
     "ALLOW_INSECURE_DASHBOARD",
     "LLM_FALLBACK_TO_HEURISTIC",
+    "PUMPFUN_CURVE_ENABLED",
 )
 
 
@@ -213,6 +214,9 @@ def validate_env(env: Mapping[str, str]) -> List[Issue]:
     # ---- entry gates --------------------------------------------------
     c.numeric(env, "ENTRY_CONFIRM_SEC", minimum=0, maximum=3_600, integer=True)
     c.numeric(env, "ENTRY_CONFIRM_MAX_DROP_PCT", minimum=0.0, maximum=100.0, allow_zero=True)
+    c.numeric(env, "ENTRY_CONFIRM_RECOVERY_MAX_SEC", minimum=0, maximum=86_400, integer=True)
+    c.numeric(env, "PUMPFUN_CURVE_CACHE_SEC", minimum=0.0, maximum=3_600.0, allow_zero=True)
+    c.numeric(env, "PUMPFUN_CURVE_MISS_CACHE_SEC", minimum=0.0, maximum=86_400.0, allow_zero=True)
     c.numeric(env, "MIN_LIQUIDITY_USD", minimum=0.0, maximum=1e12, allow_zero=True)
     c.numeric(env, "MIN_VOLUME_H1_USD", minimum=0.0, maximum=1e12, allow_zero=True)
     c.numeric(env, "MAX_TOP10_HOLDER_PCT", minimum=1.0, maximum=100.0)

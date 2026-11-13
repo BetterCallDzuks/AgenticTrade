@@ -411,7 +411,7 @@ Slash commands are still supported for compatibility.
 The repository now includes the full v10 layer:
 
 **Data & risk**
-- `schema_version` table and migration helper (`agentictrade/migrations.py`), current schema `10.0.0`
+- `schema_version` table and migration helper (`agentictrade/migrations.py`), current schema `10.1.0`
 - aggregate metrics (`agentictrade/metrics.py`) and a shared risk-analytics library
 - portfolio risk now reports HHI concentration, top position weight, open exposure %, max drawdown, VaR95, expected shortfall, profit factor, expectancy and average win/loss
 - realized-trade backtest report (`agentictrade/backtest.py`, `replay_v10.py`, `GET /api/backtest`)
@@ -445,6 +445,8 @@ These additions are intentionally non-breaking: v9 behavior remains the default.
 - **Bind control**: `COMMAND_CENTER_HOST` (default `127.0.0.1`) and `COMMAND_CENTER_PORT` (default `8080`) keep the dashboard loopback-only out of the box. A non-loopback bind without `DASHBOARD_TOKEN` is refused at startup (doctor exits non-zero); `ALLOW_INSECURE_DASHBOARD=true` is the explicit escape hatch. `X-Forwarded-For` is only honoured when `TRUST_PROXY_HEADERS=true`. `PAPER_DB_PATH` selects the portfolio database.
 - **Supply chain**: Dependabot (pip + Actions), CodeQL (`security-and-quality`) and a `SECURITY.md` policy.
 - **Incremental extraction**: time helpers and the paper fill/exit model now live in `agentictrade/timeutils.py` and `agentictrade/fills.py`, re-exported by `research_bot.py` so existing imports keep working.
+- **Crash-safe confirmations**: pending entries are written to the `pending_confirmations` table (schema `10.1.0`) and restored on startup. Entries older than `ENTRY_CONFIRM_RECOVERY_MAX_SEC` (default 900s) are dropped as `CONFIRM_EXPIRED` instead of being resumed with a stale signal.
+- **Pump.fun curve pricing**: with `PUMPFUN_CURVE_ENABLED=true`, a token that has no DexScreener pair yet is quoted from the Pump.fun bonding curve (`frontend-api-v3.pump.fun/coins/<mint>`), so it can pass entry confirmation and manual buys. Quotes are cached for `PUMPFUN_CURVE_CACHE_SEC` (5s) and misses for `PUMPFUN_CURVE_MISS_CACHE_SEC` (60s).
 
 ```powershell
 # scrape metrics locally
@@ -508,8 +510,8 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 - Without an LLM provider (no Gemini key and no `LLM_BASE_URL`), the strict heuristic tops out below the auto-BUY threshold, so heuristic mode effectively never auto-buys. This is by design: fail-closed.
 - A local model needs enough context for the JSON prompt and a server that supports `POST /v1/chat/completions`; small models can return malformed JSON, which falls back to heuristics (or the next configured provider).
 - An ML model is refused when its schema, feature set, label source or `COST_MODEL_VERSION` no longer matches; retrain it (`POST /api/ml/train`) instead of trusting a stale probability.
-- Pending confirmations live in memory. Restarting the bot drops them.
-- Tokens that exist only on the Pump.fun curve (no DexScreener quote yet) cannot pass confirmation or a manual buy, because no fresh price is available.
+- Pending confirmations are restored from SQLite after a restart, but only within `ENTRY_CONFIRM_RECOVERY_MAX_SEC` (default 900s). Older entries are dropped as expired.
+- Pump.fun curve quotes come from a public HTTP endpoint and can lag a fast-moving curve; a quote older than `STALE_PRICE_SEC` still fails closed.
 - Wallet quality starts neutral and only becomes meaningful after a few closed trades per wallet.
 - Some older log and hard-filter messages are still in Croatian. The newer risk-engine messages are in English.
 - The web API is intended for local use and now binds `127.0.0.1` by default. A non-loopback bind requires `DASHBOARD_TOKEN` or startup is refused; `ALLOW_INSECURE_DASHBOARD=true` is an explicit opt-out. Keep the rate limit enabled and do not expose it to the internet.

@@ -148,6 +148,158 @@ def test_confirmation_cancel():
         cleanup_db(db_path)
 
 
+def test_v12_pending_persistence():
+    """Pending entries survive a restart, expire when stale, and still confirm."""
+    from datetime import timedelta
+
+    db_path = make_temp_db()
+    try:
+        portfolio = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
+        portfolio.entry_confirm_sec = 20.0
+        mint = "PersistMint1111111111111111111111111111111"
+        market = {
+            "mint": mint,
+            "symbol": "PERSIST",
+            "name": "Persist Token",
+            "price_usd": "1.0",
+            "liquidity_usd": 100000.0,
+            "dex_id": "raydium",
+            "fetched_at": portfolio.now_ts(),
+        }
+        assert portfolio.request_entry(market, conviction="manual", source="TEST")["status"] == "PENDING"
+
+        conn = portfolio._conn()
+        stored = conn.execute("SELECT COUNT(*) FROM pending_confirmations").fetchone()[0]
+        conn.close()
+        assert stored == 1, "pending entry should be written to SQLite"
+
+        restored = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
+        assert mint in restored.pending_confirmations, "pending entry should survive a restart"
+        pending = restored.get_pending_confirmations()
+        assert len(pending) == 1 and pending[0]["mint"] == mint
+        assert abs(pending[0]["signalPriceUsd"] - 1.0) < 1e-12
+
+        # A restored but due entry can still be confirmed with a fresh quote.
+        restored.cluster_cooldown_sec = 0
+        restored.stop_loss_cooldown_sec = 0
+        restored.min_seconds_between_entries = 0
+        restored.max_daily_stop_losses = 100
+        restored.max_daily_trades = 100
+        restored.cluster_unproven_sec = 0
+        entry = restored.pending_confirmations[mint]
+        entry["due_at"] = restored.now() - timedelta(seconds=1)
+        restored._persist_pending(entry)
+        fresh = dict(market, price_usd="1.01", fetched_at=restored.now_ts())
+        result = restored.process_confirmation(mint, fresh, None)
+        assert result["status"] == "OPENED", result
+        assert (restored.now() - entry["due_at"]).total_seconds() >= 0
+
+        conn = restored._conn()
+        left = conn.execute("SELECT COUNT(*) FROM pending_confirmations").fetchone()[0]
+        conn.close()
+        assert left == 0, "confirmed entries must be removed from disk"
+
+        # An entry that aged past the recovery window is dropped, not resumed.
+        stale_mint = "PersistOld111111111111111111111111111111111"
+        stale_market = dict(market, mint=stale_mint, price_usd="2.0", fetched_at=restored.now_ts())
+        restored.entry_confirm_sec = 20.0
+        restored.entry_confirm_max_drop_pct = 100.0
+        assert restored.request_entry(stale_market, conviction="manual", source="TEST")["status"] == "PENDING"
+        stale_entry = restored.pending_confirmations[stale_mint]
+        stale_entry["created_at"] = restored.now() - timedelta(seconds=1_000)
+        restored._persist_pending(stale_entry)
+
+        recovered = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
+        assert stale_mint not in recovered.pending_confirmations
+        assert any(row["rule"] == "CONFIRM_EXPIRED" for row in recovered.get_journal(20))
+        print("  v12 pending confirmation persistence/expiry: OK")
+    finally:
+        cleanup_db(db_path)
+
+
+def test_v12_pumpfun_curve_quote():
+    """A curve-only token gets a quote for confirmation and manual buys."""
+    import asyncio
+
+    import aiohttp
+    from aiohttp import web
+
+    async def run():
+        async def dex(request):
+            return web.json_response({"pairs": None})
+
+        async def coin(request):
+            return web.json_response({
+                "mint": request.match_info["mint"] if "mint" in request.match_info else "CurveMint",
+                "name": "Curve Token",
+                "symbol": "CURVE",
+                "decimals": 6,
+                "total_supply": 1_000_000_000_000_000,
+                "virtual_sol_reserves": 45_000_000_000,
+                "virtual_token_reserves": 800_000_000_000_000,
+                "usd_market_cap": 9_000.0,
+                "complete": False,
+                "twitter": "https://x.com/curve",
+            })
+
+        app = web.Application()
+        app.router.add_get("/dex/{mint}", dex)
+        app.router.add_get("/coins/{mint}", coin)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        port = runner.addresses[0][1]
+        mint = "CurveMint111111111111111111111111111111111"
+        try:
+            researcher = rb.ResearchAgent()
+            researcher.DEXSCREENER_TOKEN_URL = f"http://127.0.0.1:{port}/dex/{{mint}}"
+            researcher.PUMPFUN_COIN_URL = f"http://127.0.0.1:{port}/coins/{{mint}}"
+            researcher.curve_cache_sec = 0.0
+            researcher.curve_miss_cache_sec = 0.0
+            rb.PRICE_CACHE.invalidate(mint)
+            async with aiohttp.ClientSession() as session:
+                market = await researcher.get_market_data(session, mint)
+                assert market is not None, "curve quote should replace the missing DexScreener pair"
+                assert market["dex_id"] == "PUMPFUN_CURVE"
+                assert market["curve"] is True
+                assert abs(float(market["price_usd"]) - 9_000.0 / 1_000_000_000) < 1e-15
+                expected_liq = 45.0 * researcher.curve_sol_price_usd
+                assert abs(market["liquidity_usd"] - expected_liq) < 1e-9
+                assert market["bonding_curve_pct"] > 0
+                assert market["socials"] and market["socials"][0]["type"] == "twitter"
+
+                # WS fallback quotes are remembered for the next recheck.
+                event_mint = "CurveEvent11111111111111111111111111111111"
+                rb.PRICE_CACHE.invalidate(event_mint)
+                event = {
+                    "mint": event_mint, "source": "PUMPFUN_LIVE", "name": "Event", "symbol": "EV",
+                    "v_sol_in_curve": 45.0, "real_sol_in_curve": 15.0, "bonding_curve_pct": 17.6,
+                    "mcap_sol": 30.0,
+                }
+                fallback = await researcher.build_pumpfun_fallback_market_data(session, event, 185.0)
+                assert event_mint in researcher._curve_quotes
+                assert researcher._curve_quotes[event_mint][1]["mint"] == event_mint
+                assert fallback["curve"] is True
+        finally:
+            await runner.cleanup()
+
+        # The curve quote is fresh enough for the paper entry flow.
+        db_path = make_temp_db()
+        try:
+            portfolio = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
+            portfolio.entry_confirm_sec = 20.0
+            portfolio.stale_price_sec = 300
+            result = portfolio.request_entry(market, conviction="manual", source="TEST")
+            assert result["status"] == "PENDING", result
+            portfolio.cancel_pending(mint, "MANUAL_CANCEL", "test done")
+        finally:
+            cleanup_db(db_path)
+
+    asyncio.run(run())
+    print("  v12 Pump.fun curve quote: OK")
+
+
 def test_exit_rules():
     db_path = make_temp_db()
     try:
@@ -1124,6 +1276,14 @@ def test_v11_config_validation():
     unknown_flag = dict(safe, LIVE_TRADING_ENABLED="maybe")
     fails, _, _ = summarize(validate_env(unknown_flag))
     assert fails == 1
+
+    curve_bad = dict(safe, PUMPFUN_CURVE_ENABLED="maybe")
+    fails, _, _ = summarize(validate_env(curve_bad))
+    assert fails == 1
+
+    recovery_bad = dict(safe, ENTRY_CONFIRM_RECOVERY_MAX_SEC="-1", PUMPFUN_CURVE_CACHE_SEC="-1")
+    fails, _, _ = summarize(validate_env(recovery_bad))
+    assert fails >= 2
     print("  v11 config validation: OK")
 
 
@@ -1853,6 +2013,8 @@ def main():
         test_portfolio_basic()
         test_risk_snapshot_and_health_shape()
         test_confirmation_cancel()
+        test_v12_pending_persistence()
+        test_v12_pumpfun_curve_quote()
         test_exit_rules()
         test_flow_exit()
         test_whale_exit()

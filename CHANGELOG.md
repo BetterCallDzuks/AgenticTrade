@@ -53,9 +53,21 @@ All notable changes to AgenticTrade are documented here. The format follows
   `TRAILING_ARM_GAIN_PCT`, `PAPER_IMPACT_EXPONENT`, `LLM_PROVIDER`,
   `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_TIMEOUT_SEC`,
   `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_FALLBACK_TO_HEURISTIC`.
+- Pending entry confirmations are persisted in SQLite (`pending_confirmations`)
+  and restored after a restart. `ENTRY_CONFIRM_RECOVERY_MAX_SEC` (default 900)
+  bounds how old a restored signal may be; older rows are cancelled as
+  `CONFIRM_EXPIRED`. Schema version is now `10.1.0`.
+- Pump.fun curve pricing: `ResearchAgent.fetch_pumpfun_curve_quote()` reads
+  `frontend-api-v3.pump.fun/coins/<mint>` when DexScreener has no Solana pair,
+  so pre-graduation tokens can pass entry confirmation and manual buys.
+  `PUMPFUN_CURVE_ENABLED` (default true), `PUMPFUN_CURVE_CACHE_SEC` (5s) and
+  `PUMPFUN_CURVE_MISS_CACHE_SEC` (60s) control the fallback.
 
 ### Changed
 
+- `ResearchAgent.get_market_data()` now falls back to a Pump.fun bonding-curve
+  quote when DexScreener has no pair, instead of returning `None`. Freshness,
+  hard filters and the fail-closed `STALE_PRICE` path are unchanged.
 - Take profit is now a *partial* exit by default (`tp1_fraction=0.5`); the
   remainder runs on the same stop ladder as the paper book. Set
   `tp1_fraction=1.0` for the old full-exit behaviour.

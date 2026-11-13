@@ -465,6 +465,7 @@ class ResearchAgent:
     RUGCHECK_SUMMARY_URL = "https://api.rugcheck.xyz/v1/tokens/{mint}/report/summary"
     RUGCHECK_FULL_URL = "https://api.rugcheck.xyz/v1/tokens/{mint}/report"
     DEXSCREENER_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens/{mint}"
+    PUMPFUN_COIN_URL = "https://frontend-api-v3.pump.fun/coins/{mint}"
 
     def __init__(self, gemini_api_key: Optional[str] = None, rpc_url: Optional[str] = None):
         # Gemini or any OpenAI-compatible local server; see agentictrade.llm.
@@ -484,6 +485,15 @@ class ResearchAgent:
         self.min_liq_fdv_ratio = float(os.environ.get("MIN_LIQ_FDV_RATIO", "0.05"))
         self.min_liq_fdv_apply_fdv = float(os.environ.get("MIN_LIQ_FDV_APPLY_FDV", "50000.0"))
         self.last_eval_mode = "HEURISTIC"
+        # Pump.fun tokens that have not graduated yet have no DexScreener pair
+        # for a while. A bonding-curve quote keeps confirmation/manual buys
+        # working instead of failing closed with "no quote".
+        self.curve_enabled = env_bool("PUMPFUN_CURVE_ENABLED", True)
+        self.curve_cache_sec = env_float("PUMPFUN_CURVE_CACHE_SEC", 5.0)
+        self.curve_miss_cache_sec = env_float("PUMPFUN_CURVE_MISS_CACHE_SEC", 60.0)
+        self.curve_sol_price_usd = env_float("PAPER_SOL_PRICE_USD", COST_DEFAULTS["sol_price_usd"])
+        self._curve_quotes: dict = {}
+        self._curve_misses: dict = {}
 
     async def get_market_data(self, session: aiohttp.ClientSession, mint: str) -> Optional[dict]:
         if PRICE_CACHE_ENABLED:
@@ -494,14 +504,14 @@ class ResearchAgent:
         try:
             data = await _fetch_json_with_retry(session, url, timeout=8, retries=3)
             if not data:
-                return None
+                return await self.fetch_pumpfun_curve_quote(session, mint)
             pairs = data.get("pairs")
             if not pairs:
-                return None
+                return await self.fetch_pumpfun_curve_quote(session, mint)
 
             solana_pairs = [p for p in pairs if p.get("chainId") == "solana"]
             if not solana_pairs:
-                return None
+                return await self.fetch_pumpfun_curve_quote(session, mint)
 
             best_pair = max(
                 solana_pairs,
@@ -547,7 +557,117 @@ class ResearchAgent:
             return market
         except Exception as e:
             print(f"⚠️ Greška pri dohvatu DexScreener podataka za {mint}: {e}")
+            return await self.fetch_pumpfun_curve_quote(session, mint)
+
+    def _curve_market_from_payload(self, mint: str, payload: dict) -> Optional[dict]:
+        """Build a market quote from a Pump.fun bonding-curve payload."""
+        if not isinstance(payload, dict):
             return None
+        try:
+            decimals = int(payload.get("decimals") or 6)
+        except (TypeError, ValueError):
+            decimals = 6
+        divisor = 10 ** max(0, decimals)
+
+        total_supply_raw = _safe_float(payload.get("total_supply")) or 0.0
+        token_supply = total_supply_raw / divisor if total_supply_raw > 0 else 0.0
+
+        v_sol_raw = _safe_float(payload.get("virtual_sol_reserves")) or 0.0
+        # Reserves are lamports in the HTTP payload but plain SOL in the WS event.
+        v_sol = v_sol_raw / 1e9 if v_sol_raw > 1_000_000 else v_sol_raw
+        v_tokens_raw = _safe_float(payload.get("virtual_token_reserves")) or 0.0
+        v_tokens = v_tokens_raw / divisor if v_tokens_raw > 0 else 0.0
+
+        usd_mcap = _safe_float(payload.get("usd_market_cap")) or 0.0
+        if usd_mcap <= 0:
+            mcap_sol = _safe_float(payload.get("market_cap")) or 0.0
+            if mcap_sol > 0:
+                usd_mcap = mcap_sol * self.curve_sol_price_usd
+
+        if usd_mcap > 0 and token_supply > 0:
+            price_usd = usd_mcap / token_supply
+        elif v_sol > 0 and v_tokens > 0:
+            price_usd = (v_sol * self.curve_sol_price_usd) / v_tokens
+            if token_supply > 0:
+                usd_mcap = price_usd * token_supply
+        else:
+            return None
+        if price_usd <= 0:
+            return None
+
+        liquidity_usd = v_sol * self.curve_sol_price_usd if v_sol > 0 else 0.0
+        bonding_pct = min(100.0, max(0.0, ((v_sol - 30.0) / 85.0) * 100.0)) if v_sol > 0 else 0.0
+        socials = []
+        if payload.get("twitter"):
+            socials.append({"type": "twitter", "url": payload["twitter"]})
+        if payload.get("telegram"):
+            socials.append({"type": "telegram", "url": payload["telegram"]})
+        websites = [payload["website"]] if payload.get("website") else []
+
+        return {
+            "mint": mint,
+            "name": payload.get("name") or "Unknown",
+            "symbol": payload.get("symbol") or "PUMP",
+            "dex_id": "PUMPFUN_CURVE",
+            "price_usd": f"{price_usd:.10f}",
+            "fdv_usd": usd_mcap,
+            "liquidity_usd": liquidity_usd,
+            "volume_m5": 0.0,
+            "volume_h1": 0.0,
+            "buys_m5": 0,
+            "sells_m5": 0,
+            "buys_h1": 0,
+            "sells_h1": 0,
+            "price_change_m5": 0.0,
+            "price_change_h1": 0.0,
+            "bonding_curve_pct": bonding_pct,
+            "websites": websites,
+            "socials": socials,
+            "fetched_at": time.time(),
+            "flow_ok": False,
+            "curve": True,
+            "curve_complete": bool(payload.get("complete")),
+        }
+
+    async def fetch_pumpfun_curve_quote(self, session: aiohttp.ClientSession, mint: str) -> Optional[dict]:
+        """Fetch a live bonding-curve quote for a token with no DexScreener pair.
+
+        Results are cached briefly and misses are negatively cached so a
+        non-Pump token does not pay a request on every monitor tick.
+        """
+        if not self.curve_enabled or not mint:
+            return None
+        now = time.time()
+        cached = self._curve_quotes.get(mint)
+        if cached and now - cached[0] <= self.curve_cache_sec:
+            return dict(cached[1])
+        missed_at = self._curve_misses.get(mint)
+        if missed_at is not None and now - missed_at <= self.curve_miss_cache_sec:
+            return None
+        try:
+            payload = await _fetch_json_with_retry(
+                session, self.PUMPFUN_COIN_URL.format(mint=mint), timeout=6, retries=2
+            )
+        except Exception:
+            payload = None
+        market = self._curve_market_from_payload(mint, payload or {})
+        if not market:
+            self._curve_misses[mint] = now
+            return None
+        self._curve_misses.pop(mint, None)
+        self._curve_quotes[mint] = (now, market)
+        if PRICE_CACHE_ENABLED:
+            PRICE_CACHE.update(mint, market)
+        return dict(market)
+
+    def _remember_curve_event(self, market: dict) -> None:
+        """Cache a WS/fallback quote so the next confirmation recheck can use it."""
+        mint = market.get("mint")
+        if not mint:
+            return
+        self._curve_quotes[mint] = (time.time(), dict(market))
+        if PRICE_CACHE_ENABLED:
+            PRICE_CACHE.update(mint, market)
 
     async def build_pumpfun_fallback_market_data(
         self,
@@ -577,7 +697,7 @@ class ResearchAgent:
         price_usd = fdv_usd / 1_000_000_000.0
         virtual_liq_usd = pf_event.get("v_sol_in_curve", 30.0) * sol_price_usd
 
-        return {
+        market = {
             "mint": pf_event["mint"],
             "name": pf_event.get("name", "Unknown"),
             "symbol": pf_event.get("symbol", "PUMP"),
@@ -600,7 +720,10 @@ class ResearchAgent:
             "socials": socials,
             "fetched_at": time.time(),
             "flow_ok": False,
+            "curve": True,
         }
+        self._remember_curve_event(market)
+        return market
 
     async def get_rpc_top_holders(self, session: aiohttp.ClientSession, mint: str) -> dict:
         supply_payload = {"jsonrpc": "2.0", "id": 1, "method": "getTokenSupply", "params": [mint]}
@@ -1138,6 +1261,8 @@ class PaperTradingManager:
         ("5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1", "Raydium Whale Watcher"),
     ]
 
+    PENDING_STATE_VERSION = 1
+
     POSITION_EXTRA_COLUMNS = [
         ("signal_price_usd", "REAL"),
         ("entry_slippage_bps", "REAL"),
@@ -1246,6 +1371,7 @@ class PaperTradingManager:
         self._stale_logged: set = set()
         self._journal_inserts = 0
         self._init_db()
+        self.restore_pending_confirmations()
 
     def now(self) -> datetime:
         return self.clock()
@@ -1450,6 +1576,16 @@ class PaperTradingManager:
         """)
 
         c.execute("""
+            CREATE TABLE IF NOT EXISTS pending_confirmations (
+                mint TEXT PRIMARY KEY,
+                payload TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                due_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )
+        """)
+
+        c.execute("""
             INSERT OR IGNORE INTO trade_history
             (mint, symbol, opened_at, closed_at, invested_sol, returned_sol, net_pnl_sol, exit_reason, tp1_hit,
              signal_price_usd, entry_fill_usd, exit_fill_usd, slippage_sol, size_reason, conviction,
@@ -1491,6 +1627,140 @@ class PaperTradingManager:
         conn.execute("INSERT OR REPLACE INTO bot_state (key, value) VALUES (?, ?)", (key, payload))
         conn.commit()
         conn.close()
+
+    # ---- pending entry confirmations: persistence --------------------
+    def _pending_row(self, pending: dict) -> tuple:
+        verdict = pending.get("verdict")
+        if verdict is None:
+            verdict_payload = None
+        elif hasattr(verdict, "model_dump"):
+            verdict_payload = verdict.model_dump()
+        else:
+            verdict_payload = dict(verdict)
+        payload = {
+            "version": self.PENDING_STATE_VERSION,
+            "mint": pending["mint"],
+            "symbol": pending.get("symbol"),
+            "name": pending.get("name"),
+            "signal_price": float(pending["signal_price"]),
+            "created_at": pending["created_at"].replace(tzinfo=timezone.utc).timestamp(),
+            "due_at": pending["due_at"].replace(tzinfo=timezone.utc).timestamp(),
+            "market": pending.get("market") or {},
+            "security": pending.get("security"),
+            "verdict": verdict_payload,
+            "conviction": pending.get("conviction"),
+            "source": pending.get("source"),
+            "size_preview": pending.get("size_preview"),
+            "size_reasons": pending.get("size_reasons"),
+        }
+        return (
+            pending["mint"],
+            json.dumps(payload, sort_keys=True, default=str),
+            payload["created_at"],
+            payload["due_at"],
+            self.now_ts(),
+        )
+
+    def _persist_pending(self, pending: dict, cur=None) -> None:
+        sql = """
+            INSERT OR REPLACE INTO pending_confirmations
+            (mint, payload, created_at, due_at, updated_at) VALUES (?, ?, ?, ?, ?)
+        """
+        row = self._pending_row(pending)
+        if cur is not None:
+            cur.execute(sql, row)
+            return
+        conn = self._conn()
+        try:
+            conn.execute(sql, row)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _delete_pending_row(self, mint: str, cur=None) -> None:
+        sql = "DELETE FROM pending_confirmations WHERE mint = ?"
+        if cur is not None:
+            cur.execute(sql, (mint,))
+            return
+        conn = self._conn()
+        try:
+            conn.execute(sql, (mint,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def restore_pending_confirmations(self, max_age_sec: Optional[float] = None) -> List[str]:
+        """Reload pending entries written before a restart.
+
+        An entry older than ``ENTRY_CONFIRM_RECOVERY_MAX_SEC`` is dropped: the
+        price signal behind it is no longer meaningful, and resuming it would
+        turn a crash into a stale entry. Entries that are merely due are
+        restored and evaluated by the normal confirmation loop.
+        """
+        if max_age_sec is None:
+            max_age_sec = env_float("ENTRY_CONFIRM_RECOVERY_MAX_SEC", 900.0)
+        max_age_sec = max(0.0, float(max_age_sec))
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT mint, payload, created_at, due_at FROM pending_confirmations ORDER BY due_at"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        restored: List[str] = []
+        now_ts = self.now_ts()
+        for mint, payload_text, created_ts, _due_ts in rows:
+            try:
+                data = json.loads(payload_text)
+            except Exception:
+                self._delete_pending_row(mint)
+                continue
+            symbol = data.get("symbol") or "?"
+            if data.get("version") != self.PENDING_STATE_VERSION:
+                self._delete_pending_row(mint)
+                self.journal("CONFIRM_CANCEL", mint=mint, symbol=symbol, rule="RESTORE_VERSION",
+                             reasons="Dropped pending entry with an unknown state version")
+                continue
+            age = now_ts - float(created_ts or 0.0)
+            signal_price = _safe_float(data.get("signal_price")) or 0.0
+            if signal_price <= 0:
+                self._delete_pending_row(mint)
+                continue
+            if age > max_age_sec:
+                self._delete_pending_row(mint)
+                self.journal(
+                    "CONFIRM_CANCEL", mint=mint, symbol=symbol, rule="CONFIRM_EXPIRED",
+                    reasons=f"Pending entry expired while the bot was offline ({age:.0f}s > {max_age_sec:.0f}s)",
+                )
+                add_agent_log("RISK MGR", f"⌛ Dropped stale pending ${symbol} after restart.", "warn")
+                continue
+
+            verdict_payload = data.get("verdict")
+            verdict = TokenAnalysisDecision(**verdict_payload) if verdict_payload else None
+            self.pending_confirmations[mint] = {
+                "mint": data.get("mint") or mint,
+                "symbol": symbol,
+                "name": data.get("name") or symbol,
+                "signal_price": signal_price,
+                "created_at": datetime.fromtimestamp(float(created_ts), tz=timezone.utc).replace(tzinfo=None),
+                "due_at": datetime.fromtimestamp(float(_due_ts), tz=timezone.utc).replace(tzinfo=None),
+                "market": data.get("market") or {},
+                "security": data.get("security"),
+                "verdict": verdict,
+                "conviction": data.get("conviction") or "manual",
+                "source": data.get("source"),
+                "size_preview": data.get("size_preview"),
+                "size_reasons": data.get("size_reasons"),
+            }
+            restored.append(mint)
+            self.journal(
+                "CONFIRM", mint=mint, symbol=symbol, rule="ENTRY_CONFIRM_RESTORED",
+                reasons="Pending entry restored from disk after restart", signal_price=signal_price,
+            )
+        if restored:
+            add_agent_log("RISK MGR", f"♻️ Restored {len(restored)} pending confirmation(s) from disk.", "info")
+        return restored
 
     def journal(
         self, action: str, mint: Optional[str] = None, symbol: Optional[str] = None, rule: Optional[str] = None,
@@ -2231,6 +2501,7 @@ class PaperTradingManager:
             "size_preview": size,
             "size_reasons": size_reasons,
         }
+        self._persist_pending(self.pending_confirmations[mint])
         self.journal(
             "CONFIRM", mint=mint, symbol=symbol, rule="ENTRY_CONFIRM_PENDING",
             reasons=f"Waiting {self.entry_confirm_sec:g}s; cancel if price drops > {self.entry_confirm_max_drop_pct:g}% from signal",
@@ -2245,6 +2516,7 @@ class PaperTradingManager:
         p = self.pending_confirmations.pop(mint, None)
         if not p:
             return
+        self._delete_pending_row(mint)
         self.last_entry_block = {"rule": rule, "reason": reason, "symbol": p["symbol"], "mint": mint, "at": fmt_utc(self.now())}
         self.journal("CONFIRM_CANCEL", mint=mint, symbol=p["symbol"], rule=rule, reasons=reason,
                      suggested_size=p.get("size_preview"), signal_price=p["signal_price"], mid_price=mid_price)
@@ -2314,7 +2586,9 @@ class PaperTradingManager:
             signal_price=p["signal_price"], gates_checked=True,
         )
         if opened:
+            self._delete_pending_row(mint)
             return {"status": "OPENED", "changePct": change_pct}
+        self._delete_pending_row(mint)
         blk = self.last_entry_block or {}
         self.journal("CONFIRM_CANCEL", mint=mint, symbol=p["symbol"], rule=blk.get("rule", "OPEN_FAILED"),
                      reasons=blk.get("reason", "open failed"), signal_price=p["signal_price"], mid_price=mid)
@@ -2455,6 +2729,7 @@ class PaperTradingManager:
         c.execute("DELETE FROM trade_history")
         c.execute("DELETE FROM equity_snapshots")
         c.execute("DELETE FROM bot_state WHERE key IN ('breaker_trip', 'breaker_reset_at')")
+        c.execute("DELETE FROM pending_confirmations")
         conn.commit()
         conn.close()
         self.pending_confirmations.clear()
