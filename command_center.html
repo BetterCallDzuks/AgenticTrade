@@ -285,12 +285,30 @@
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-sol-border/60">
-                <nav class="flex items-center gap-1" aria-label="Main">
+                <nav class="flex flex-wrap items-center gap-1" aria-label="Main">
                     <a href="/" class="nav-tab active" data-nav="command" aria-current="page">
                         <i class="fa-solid fa-gauge-high"></i><span data-i18n="nav.command">Command Center</span>
                     </a>
                     <a href="/analytics" class="nav-tab" data-nav="analytics">
                         <i class="fa-solid fa-chart-line"></i><span data-i18n="nav.analytics">Analitika</span>
+                    </a>
+                    <a href="/risk" class="nav-tab" data-nav="risk">
+                        <i class="fa-solid fa-shield-halved"></i><span data-i18n="nav.risk">Risk desk</span>
+                    </a>
+                    <a href="/wallets" class="nav-tab" data-nav="wallets">
+                        <i class="fa-solid fa-wallet"></i><span data-i18n="nav.wallets">Novčanici</span>
+                    </a>
+                    <a href="/backtest" class="nav-tab" data-nav="backtest">
+                        <i class="fa-solid fa-flask-vial"></i><span data-i18n="nav.backtest">Backtest lab</span>
+                    </a>
+                    <a href="/ml" class="nav-tab" data-nav="ml">
+                        <i class="fa-solid fa-brain"></i><span data-i18n="nav.ml">ML / AI lab</span>
+                    </a>
+                    <a href="/system" class="nav-tab" data-nav="system">
+                        <i class="fa-solid fa-server"></i><span data-i18n="nav.system">Sustav / ops</span>
+                    </a>
+                    <a href="/settings" class="nav-tab" data-nav="settings">
+                        <i class="fa-solid fa-sliders"></i><span data-i18n="nav.settings">Postavke</span>
                     </a>
                 </nav>
 
@@ -576,6 +594,20 @@
                         <span class="text-[10px] font-mono text-sol-green">v12.0</span>
                     </div>
 
+                    <div class="rounded-lg border border-sol-border bg-sol-dark/50 p-2">
+                        <div class="flex items-center justify-between mb-1">
+                            <label for="cfgStrategyProfile" class="text-[10px] text-slate-400" data-i18n="settings.strategyProfile">Strategy profile</label>
+                            <span id="cfgRiskBadge" class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-sol-green/40 text-sol-green bg-sol-green/10">STANDARD</span>
+                        </div>
+                        <select id="cfgStrategyProfile" onchange="updateRiskConfig()" class="field text-xs">
+                            <option value="conservative" data-i18n="profile.conservative">Conservative</option>
+                            <option value="balanced" data-i18n="profile.balanced">Balanced</option>
+                            <option value="aggressive" data-i18n="profile.aggressive">Aggressive</option>
+                            <option value="high_risk" data-i18n="profile.high_risk">High risk / high reward</option>
+                        </select>
+                        <p class="text-[9px] text-slate-500 mt-1" data-i18n="settings.strategyProfileHint">The choice sets the values below and is saved across restarts. high_risk overrides .env; entry filters stay the same.</p>
+                    </div>
+
                     <div class="grid grid-cols-2 gap-2 text-xs">
                         <div>
                             <label class="text-[10px] text-slate-400 block mb-0.5" data-i18n="settings.tradeSize">Size per trade (SOL)</label>
@@ -724,6 +756,12 @@
                 "action.refresh": "Osvježi",
                 "nav.command": "Command Center",
                 "nav.analytics": "Analitika",
+                "nav.risk": "Risk desk",
+                "nav.wallets": "Novčanici",
+                "nav.backtest": "Backtest lab",
+                "nav.ml": "ML / AI lab",
+                "nav.system": "Sustav / ops",
+                "nav.settings": "Postavke",
                 "sync.on": "Sync: ON",
                 "sync.off": "Sync: PAUZA",
                 "cmd.whaleGuard": "🐋 Whale + Bundle guard",
@@ -833,6 +871,14 @@
                 "settings.jitoTip": "Jito MEV tip (SOL)",
                 "settings.maxOpen": "Max otvorenih pozicija",
                 "settings.fastInv": "Brza invalidacija (%)",
+                "settings.strategyProfile": "Profil strategije (rizik)",
+                "settings.strategyProfileHint": "Odabir postavlja vrijednosti ispod i pamti se nakon restarta. high_risk nadjačava .env; ulazni filteri ostaju isti.",
+                "profile.conservative": "Konzervativan",
+                "profile.balanced": "Balansiran",
+                "profile.aggressive": "Agresivan",
+                "profile.high_risk": "Visok rizik / visoka nagrada",
+                "risk.high": "HIGH RISK",
+                "risk.standard": "STANDARD",
                 "settings.agent3Task": "Max {max} poz. | TP1: +{tp1}% | Time-stop {min}m",
 
                 "terminal.clear": "Očisti",
@@ -930,6 +976,12 @@
                 "action.refresh": "Refresh",
                 "nav.command": "Command Center",
                 "nav.analytics": "Analytics",
+                "nav.risk": "Risk desk",
+                "nav.wallets": "Wallets",
+                "nav.backtest": "Backtest lab",
+                "nav.ml": "ML / AI lab",
+                "nav.system": "System / ops",
+                "nav.settings": "Settings",
                 "sync.on": "Sync: ON",
                 "sync.off": "Sync: PAUSED",
                 "cmd.whaleGuard": "🐋 Whale + bundle guard",
@@ -1039,6 +1091,14 @@
                 "settings.jitoTip": "Jito MEV tip (SOL)",
                 "settings.maxOpen": "Max open positions",
                 "settings.fastInv": "Fast invalidation (%)",
+                "settings.strategyProfile": "Strategy profile (risk)",
+                "settings.strategyProfileHint": "The choice sets the values below and is saved across restarts. high_risk overrides .env; entry filters stay the same.",
+                "profile.conservative": "Conservative",
+                "profile.balanced": "Balanced",
+                "profile.aggressive": "Aggressive",
+                "profile.high_risk": "High risk / high reward",
+                "risk.high": "HIGH RISK",
+                "risk.standard": "STANDARD",
                 "settings.agent3Task": "Max {max} pos. | TP1: +{tp1}% | Time-stop {min}m",
 
                 "terminal.clear": "Clear",
@@ -1171,6 +1231,7 @@
             renderTrackedWallets();
             renderBreaker();
             renderPendingConfirmations();
+            renderRiskBadge(appState.config.riskMode);
             renderSizingAndGate();
             renderSourceAnalytics();
             renderTokenFeed();
@@ -1186,9 +1247,10 @@
 
         // Keep the shared nav working when the file is opened directly (file://).
         if (window.location.protocol === "file:") {
+            const filePages = { command: "command_center.html", analytics: "analytics.html" };
             document.querySelectorAll("[data-nav]").forEach((link) => {
                 const page = link.dataset.nav;
-                link.href = page === "analytics" ? "analytics.html" : "command_center.html";
+                link.href = filePages[page] || `${page}.html`;
             });
         }
 
@@ -1410,6 +1472,9 @@
                     setVal("cfgJitoTip", data.config.jitoTipSol);
                     setVal("cfgMaxOpen", data.config.maxOpenPositions);
                     setVal("cfgFastInv", data.config.fastInvalidationPct);
+                    const profileSel = document.getElementById("cfgStrategyProfile");
+                    if (profileSel && data.config.strategyProfile) profileSel.value = data.config.strategyProfile;
+                    renderRiskBadge(data.config.riskMode);
                     const a3 = document.getElementById("agent3Task");
                     if (a3) a3.innerText = t("settings.agent3Task", {
                         max: appState.config.maxOpenPositions || 2,
@@ -2479,6 +2544,17 @@
             if (tokenObj) executePaperOrDryRunBuy(tokenObj);
         }
 
+        function renderRiskBadge(mode) {
+            const badge = document.getElementById("cfgRiskBadge");
+            if (!badge) return;
+            const high = String(mode || "").toLowerCase() === "high";
+            badge.textContent = high ? t("risk.high") : t("risk.standard");
+            badge.className = high
+                ? "text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-rose-500/50 text-rose-300 bg-rose-500/15"
+                : "text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-sol-green/40 text-sol-green bg-sol-green/10";
+            badge.title = t("settings.strategyProfileHint");
+        }
+
         async function updateRiskConfig() {
             appState.config.tradeSizeSol = parseFloat(document.getElementById("cfgTradeSize").value) || 0.5;
             appState.config.maxTop10Pct = parseFloat(document.getElementById("cfgMaxTop10").value) || 35;
@@ -2490,6 +2566,9 @@
             appState.config.fastInvalidationPct = parseFloat(document.getElementById("cfgFastInv").value) || -12;
 
             Object.assign(appState.config, readV8SettingsInputs());
+
+            const profileSel = document.getElementById("cfgStrategyProfile");
+            if (profileSel) appState.config.strategyProfile = profileSel.value;
 
             if (appState.pythonConnected) {
                 const payload = { ...appState.config };

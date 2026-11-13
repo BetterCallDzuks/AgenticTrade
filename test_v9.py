@@ -9,6 +9,11 @@ sys.path.insert(0, str(ROOT))
 
 import research_bot as rb
 
+# The self-tests assert the historical balanced numbers. Pin the profile so a
+# local .env (or a Command Center choice) cannot change what they measure; the
+# profile tests override and restore this value themselves.
+os.environ["STRATEGY_PROFILE"] = "balanced"
+
 
 def make_temp_db():
     fd, path = tempfile.mkstemp(suffix=".db")
@@ -847,13 +852,31 @@ def test_v10_observability():
 
 
 def test_v10_strategy_profiles():
-    from bettercalltrader.strategies import normalize_profile, profile_values, resolve_profile
+    from bettercalltrader.strategies import (
+        is_known_profile,
+        is_override_profile,
+        normalize_profile,
+        profile_values,
+        resolve_profile,
+    )
 
     assert normalize_profile("AGGRESSIVE") == "aggressive"
     assert normalize_profile("nonsense") == "balanced"
     assert profile_values("conservative")["STOP_LOSS_PCT"] == -18.0
     assert resolve_profile({}, "aggressive")["stop_loss_pct"] == -35.0
     assert "stop_loss_pct" not in resolve_profile({"STOP_LOSS_PCT": "-10"}, "aggressive")
+    assert is_known_profile("high-risk") and not is_known_profile("yolo")
+
+    # high_risk is an override profile: it wins over explicit env values, while
+    # the standard profiles keep the "env always wins" contract.
+    assert normalize_profile("HIGH-RISK") == "high_risk"
+    assert normalize_profile("degen") == "high_risk"
+    assert normalize_profile("highrisk") == "high_risk"
+    assert is_override_profile("high_risk") and not is_override_profile("aggressive")
+    assert profile_values("high_risk")["TRADE_SIZE_SOL"] == 1.5
+    assert "trade_size_sol" not in resolve_profile({"TRADE_SIZE_SOL": "0.5"}, "high_risk")
+    assert resolve_profile({"TRADE_SIZE_SOL": "0.5"}, "high_risk", force=True)["trade_size_sol"] == 1.5
+    assert resolve_profile({"TRADE_SIZE_SOL": "0.5"}, "high_risk", force=True)["tp1_fraction"] == 0.35
 
     keys = [
         "STRATEGY_PROFILE", "STOP_LOSS_PCT", "TRADE_SIZE_SOL", "MAX_POSITION_SOL",
@@ -879,6 +902,58 @@ def test_v10_strategy_profiles():
         os.environ["STOP_LOSS_PCT"] = "-12"
         explicit = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0)
         assert explicit.stop_loss_pct == -12.0
+
+        # high_risk forces its own sizing/exits over the pinned env values.
+        os.environ["STRATEGY_PROFILE"] = "high_risk"
+        os.environ["TRADE_SIZE_SOL"] = "0.5"
+        os.environ["STOP_LOSS_PCT"] = "-12"
+        high = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0)
+        assert high.high_risk_mode
+        assert high.trade_size_sol == 1.5
+        assert high.stop_loss_pct == -45.0
+        assert high.max_position_sol == 1.5
+        assert high.max_open_positions == 4
+        assert high.tp1_fraction == 0.35
+        info = high.get_strategy_profile_info()
+        assert info["name"] == "high_risk"
+        assert info["riskMode"] == "high"
+        assert info["overridesEnvironment"] is True
+        # An explicit constructor argument still beats the profile.
+        pinned = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.2)
+        assert pinned.trade_size_sol == 0.2
+
+        # Runtime switch from the Command Center: switching back restores the
+        # pre-profile baseline instead of leaving the forced 1.5 SOL behind.
+        os.environ.pop("TRADE_SIZE_SOL", None)
+        os.environ.pop("STOP_LOSS_PCT", None)
+        back = high.apply_strategy_profile("balanced")
+        assert back["name"] == "balanced" and back["riskMode"] == "standard"
+        assert high.trade_size_sol == 0.5
+        assert high.stop_loss_pct == -25.0
+        assert high.max_position_sol == 0.5
+        assert high.tp1_fraction == 0.5
+
+        # The /api/config payload path uses the same switch.
+        changed = rb.apply_config_payload({"strategyProfile": "high_risk"}, high, None, None)
+        assert "strategyProfile" in changed
+        assert high.high_risk_mode and high.trade_size_sol == 1.5
+        changed = rb.apply_config_payload({"strategyProfile": "degen"}, high, None, None)
+        assert "strategyProfile" not in changed  # alias resolves to the active profile
+
+        # A Command Center switch is explicit: it applies the profile numbers
+        # even when .env pins those keys.
+        os.environ["TRADE_SIZE_SOL"] = "0.5"
+        os.environ["STOP_LOSS_PCT"] = "-25"
+        rb.apply_config_payload({"strategyProfile": "aggressive"}, high, None, None)
+        assert high.trade_size_sol == 0.75 and high.stop_loss_pct == -35.0
+        rb.apply_config_payload({"strategyProfile": "high_risk"}, high, None, None)
+        assert high._get_state("strategy_profile") == "high_risk"
+
+        # The stored Command Center choice wins over .env on the next start.
+        os.environ["STRATEGY_PROFILE"] = "balanced"
+        restored = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0)
+        assert restored.strategy_profile == "high_risk"
+        assert restored.trade_size_sol == 1.5
     finally:
         for key, value in saved.items():
             if value is None:
@@ -1274,6 +1349,15 @@ def test_v11_config_validation():
     optional_warnings = dict(safe, DASHBOARD_TOKEN="", CORS_ALLOW_ALL="true", STRATEGY_PROFILE="yolo")
     fails, warns, _ = summarize(validate_env(optional_warnings))
     assert fails == 0 and warns >= 3
+
+    high_risk = dict(safe, STRATEGY_PROFILE="high_risk")
+    high_risk_issues = validate_env(high_risk)
+    fails, warns, _ = summarize(high_risk_issues)
+    assert fails == 0
+    assert any("high_risk mode" in issue.message for issue in high_risk_issues if issue.level == "warn")
+    # A recognised alias must not be reported as an unknown profile.
+    alias_issues = validate_env(dict(safe, STRATEGY_PROFILE="degen"))
+    assert not any("unknown profile" in issue.message for issue in alias_issues)
 
     unknown_flag = dict(safe, LIVE_TRADING_ENABLED="maybe")
     fails, _, _ = summarize(validate_env(unknown_flag))

@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="hr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetterCallTrader — Risk desk</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: { sol: { purple: '#9945FF', green: '#14F195', dark: '#0B0E14', card: '#131822', border: '#1E2638' } }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="webui/theme.css">
+    <script src="webui/console.js"></script>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-sol-purple selection:text-white">
+
+    <header id="bctHeader" class="glass-panel sticky top-0 z-40 sol-gradient-border"></header>
+
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 space-y-5">
+
+        <!-- KPI STRIP -->
+        <section class="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="riskdesk.kpiExposure"></span>
+                <div id="kpiExposure" class="kpi-value">—</div>
+                <div id="kpiExposureSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="riskdesk.kpiHhi"></span>
+                <div id="kpiHhi" class="kpi-value">—</div>
+                <div id="kpiHhiSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="riskdesk.kpiVar"></span>
+                <div id="kpiVar" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="riskdesk.varSub"></div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="riskdesk.kpiEs"></span>
+                <div id="kpiEs" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="riskdesk.esSub"></div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="riskdesk.kpiDrawdown"></span>
+                <div id="kpiDrawdown" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="riskdesk.drawdownSub"></div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="riskdesk.kpiWinRate"></span>
+                <div id="kpiWinRate" class="kpi-value">—</div>
+                <div id="kpiWinRateSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="riskdesk.kpiProfitFactor"></span>
+                <div id="kpiProfitFactor" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="riskdesk.pfSub"></div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="riskdesk.kpiExpectancy"></span>
+                <div id="kpiExpectancy" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="riskdesk.expSub"></div>
+            </div>
+        </section>
+
+        <!-- BREAKER + GATE + SIZING -->
+        <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+            <div class="xl:col-span-5 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-hand text-rose-400"></i><span data-i18n="riskdesk.breakerTitle"></span></h2>
+                    <span id="breakerBadge" class="pill">—</span>
+                </div>
+                <div id="breakerReasons" class="text-[11px] font-mono text-rose-200/90 space-y-1 mb-3"></div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="stat-tile"><div class="k" data-i18n="riskdesk.losingStops"></div><div id="breakerStops" class="v">—</div></div>
+                    <div class="stat-tile"><div class="k" data-i18n="riskdesk.tradesToday"></div><div id="breakerTrades" class="v">—</div></div>
+                    <div class="stat-tile"><div class="k" data-i18n="riskdesk.pnlToday"></div><div id="breakerPnl" class="v">—</div></div>
+                    <div class="stat-tile"><div class="k" data-i18n="riskdesk.drawdownToday"></div><div id="breakerDd" class="v">—</div></div>
+                </div>
+                <div class="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-sol-border">
+                    <span id="breakerResets" class="tiny-mono"></span>
+                    <button type="button" id="resetBreakerBtn" class="btn btn-danger">
+                        <i class="fa-solid fa-rotate-left"></i><span data-i18n="riskdesk.resetBreaker"></span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="xl:col-span-3 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-door-open text-amber-300"></i><span data-i18n="riskdesk.gateTitle"></span></h2>
+                    <span id="gateBadge" class="pill">—</span>
+                </div>
+                <div class="row-line"><span class="label" data-i18n="riskdesk.gateRule"></span><span id="gateRule" class="val">—</span></div>
+                <div class="text-[11px] font-mono text-slate-400 mt-2" id="gateReason">—</div>
+                <div class="mt-3 pt-2 border-t border-sol-border">
+                    <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" data-i18n="riskdesk.lastBlock"></div>
+                    <div id="lastBlock" class="text-[11px] font-mono text-slate-400">—</div>
+                </div>
+                <div class="mt-3 pt-2 border-t border-sol-border row-line">
+                    <span class="label" data-i18n="riskdesk.pending"></span>
+                    <span id="pendingCount" class="val">0</span>
+                </div>
+            </div>
+
+            <div class="xl:col-span-4 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-scale-balanced text-sol-green"></i><span data-i18n="riskdesk.sizingTitle"></span></h2>
+                    <span id="sizingBadge" class="pill">—</span>
+                </div>
+                <div id="sizingRows" class="space-y-1"></div>
+                <div class="mt-3 pt-2 border-t border-sol-border">
+                    <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" data-i18n="riskdesk.nextSize"></div>
+                    <div class="flex items-center justify-between gap-2">
+                        <span id="nextSize" class="text-lg font-mono text-white">—</span>
+                        <span id="nextSizeReasons" class="text-[10px] font-mono text-slate-400 text-right"></span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CONCENTRATION + PROFILE -->
+        <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+            <div class="xl:col-span-7 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-chart-pie text-sol-purple"></i><span data-i18n="riskdesk.concTitle"></span></h2>
+                    <span id="concMeta" class="panel-note">—</span>
+                </div>
+                <div id="concRows"><div class="empty-state" data-i18n="riskdesk.concEmpty"></div></div>
+            </div>
+
+            <div class="xl:col-span-5 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-sliders text-sol-green"></i><span data-i18n="riskdesk.profileTitle"></span></h2>
+                    <span id="profileBadge" class="pill">—</span>
+                </div>
+                <div id="profileRows" class="space-y-1"></div>
+            </div>
+        </section>
+
+        <!-- WALLET QUALITY + SOURCE ANALYTICS -->
+        <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+            <div class="xl:col-span-7 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-user-shield text-cyan-300"></i><span data-i18n="riskdesk.walletQualityTitle"></span></h2>
+                    <span class="panel-note" data-i18n="riskdesk.walletQualitySub"></span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="riskdesk.colWallet"></th>
+                                <th class="text-right" data-i18n="riskdesk.colSamples"></th>
+                                <th class="text-right" data-i18n="riskdesk.colRecentWr"></th>
+                                <th class="text-right" data-i18n="riskdesk.colNet"></th>
+                                <th data-i18n="riskdesk.colState"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="walletQualityBody">
+                            <tr><td colspan="5" class="muted text-center" data-i18n="common.loading"></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="xl:col-span-5 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-tags text-amber-300"></i><span data-i18n="riskdesk.sourcesTitle"></span></h2>
+                    <span class="panel-note" data-i18n="riskdesk.sourcesSub"></span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="riskdesk.colSource"></th>
+                                <th class="text-right" data-i18n="riskdesk.colTrades"></th>
+                                <th class="text-right" data-i18n="riskdesk.colWinRate"></th>
+                                <th class="text-right" data-i18n="riskdesk.colNet"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="sourceBody">
+                            <tr><td colspan="4" class="muted text-center" data-i18n="common.loading"></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <footer class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-sol-border/70 text-[10px] font-mono uppercase tracking-wider text-slate-500">
+            <span data-i18n="footer.paper"></span>
+            <span><span data-i18n="footer.auth"></span>: <span id="authLabel">off</span> · <span data-i18n="footer.sync"></span>: <span id="footerSync">—</span></span>
+        </footer>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+    (function () {
+        "use strict";
+
+        const I18N = {
+            hr: {
+                "riskdesk.kpiExposure": "Otvorena izloženost",
+                "riskdesk.kpiHhi": "HHI koncentracija",
+                "riskdesk.kpiVar": "VaR 95",
+                "riskdesk.kpiEs": "Očekivani manjak 95",
+                "riskdesk.kpiDrawdown": "Maks. drawdown",
+                "riskdesk.kpiWinRate": "Win rate",
+                "riskdesk.kpiProfitFactor": "Profit faktor",
+                "riskdesk.kpiExpectancy": "Očekivanje / trejd",
+                "riskdesk.varSub": "povijesni gubitak",
+                "riskdesk.esSub": "prosjek repa",
+                "riskdesk.drawdownSub": "realizirani trejdovi",
+                "riskdesk.pfSub": "bruto win / loss",
+                "riskdesk.expSub": "po zatvorenom trejdu",
+                "riskdesk.breakerTitle": "Circuit breaker",
+                "riskdesk.losingStops": "Gubitnički stopovi",
+                "riskdesk.tradesToday": "Trejdovi danas",
+                "riskdesk.pnlToday": "Dnevni PnL",
+                "riskdesk.drawdownToday": "Dnevni drawdown",
+                "riskdesk.resetBreaker": "Resetiraj breaker",
+                "riskdesk.tripped": "TRIPPED",
+                "riskdesk.armed": "ARMED",
+                "riskdesk.noReasons": "Nema aktivnih razloga.",
+                "riskdesk.gateTitle": "Entry gate",
+                "riskdesk.gateRule": "Pravilo",
+                "riskdesk.lastBlock": "Zadnji blokirani ulaz",
+                "riskdesk.pending": "Čeka potvrdu",
+                "riskdesk.sizingTitle": "Sizing po uvjerenju",
+                "riskdesk.nextSize": "Sljedeća veličina (high)",
+                "riskdesk.concTitle": "Koncentracija po simbolu",
+                "riskdesk.concEmpty": "Nema otvorenih pozicija",
+                "riskdesk.profileTitle": "Profil strategije",
+                "riskdesk.walletQualityTitle": "Kvaliteta novčanika",
+                "riskdesk.walletQualitySub": "uzorci · zadnji prozor",
+                "riskdesk.sourcesTitle": "Analitika izvora",
+                "riskdesk.sourcesSub": "realizirani trejdovi",
+                "riskdesk.colWallet": "Novčanik",
+                "riskdesk.colSamples": "Uzorci",
+                "riskdesk.colRecentWr": "Zadnji WR",
+                "riskdesk.colNet": "Neto",
+                "riskdesk.colState": "Stanje",
+                "riskdesk.colSource": "Izvor",
+                "riskdesk.colTrades": "Trejdovi",
+                "riskdesk.colWinRate": "Win rate",
+                "riskdesk.trusted": "trusted",
+                "riskdesk.downweighted": "down-weighted",
+                "riskdesk.neutral": "neutral",
+                "riskdesk.profileName": "Ime",
+                "riskdesk.profileMode": "Risk mode",
+                "riskdesk.profileSize": "Veličina / trejd",
+                "riskdesk.profileMaxOpen": "Max pozicija",
+                "riskdesk.profileStop": "Stop-loss",
+                "riskdesk.profileTp1": "TP1",
+                "riskdesk.profileTrail": "Trailing",
+                "riskdesk.profileOverrides": "Nadjačava .env",
+                "riskdesk.overridesYes": "da",
+                "riskdesk.overridesNo": "ne",
+                "riskdesk.footer": "Risk desk · read-only osim reset breaker i otkazivanja potvrda",
+                "riskdesk.toastBreakerReset": "Circuit breaker resetiran",
+                "riskdesk.toastFail": "Radnja nije uspjela",
+                "riskdesk.blockAt": "{time} · {symbol} · {rule}",
+                "riskdesk.reason": "{reason}",
+                "riskdesk.sizingLine": "{name}: {size} SOL"
+            },
+            en: {
+                "riskdesk.kpiExposure": "Open exposure",
+                "riskdesk.kpiHhi": "HHI concentration",
+                "riskdesk.kpiVar": "VaR 95",
+                "riskdesk.kpiEs": "Expected shortfall 95",
+                "riskdesk.kpiDrawdown": "Max drawdown",
+                "riskdesk.kpiWinRate": "Win rate",
+                "riskdesk.kpiProfitFactor": "Profit factor",
+                "riskdesk.kpiExpectancy": "Expectancy / trade",
+                "riskdesk.varSub": "historical loss",
+                "riskdesk.esSub": "tail average",
+                "riskdesk.drawdownSub": "realized trades",
+                "riskdesk.pfSub": "gross win / loss",
+                "riskdesk.expSub": "per closed trade",
+                "riskdesk.breakerTitle": "Circuit breaker",
+                "riskdesk.losingStops": "Losing stops",
+                "riskdesk.tradesToday": "Trades today",
+                "riskdesk.pnlToday": "Daily PnL",
+                "riskdesk.drawdownToday": "Daily drawdown",
+                "riskdesk.resetBreaker": "Reset breaker",
+                "riskdesk.tripped": "TRIPPED",
+                "riskdesk.armed": "ARMED",
+                "riskdesk.noReasons": "No active reasons.",
+                "riskdesk.gateTitle": "Entry gate",
+                "riskdesk.gateRule": "Rule",
+                "riskdesk.lastBlock": "Last blocked entry",
+                "riskdesk.pending": "Pending confirmations",
+                "riskdesk.sizingTitle": "Sizing by conviction",
+                "riskdesk.nextSize": "Next size (high)",
+                "riskdesk.concTitle": "Concentration by symbol",
+                "riskdesk.concEmpty": "No open positions",
+                "riskdesk.profileTitle": "Strategy profile",
+                "riskdesk.walletQualityTitle": "Wallet quality",
+                "riskdesk.walletQualitySub": "samples · recent window",
+                "riskdesk.sourcesTitle": "Source analytics",
+                "riskdesk.sourcesSub": "realized trades",
+                "riskdesk.colWallet": "Wallet",
+                "riskdesk.colSamples": "Samples",
+                "riskdesk.colRecentWr": "Recent WR",
+                "riskdesk.colNet": "Net",
+                "riskdesk.colState": "State",
+                "riskdesk.colSource": "Source",
+                "riskdesk.colTrades": "Trades",
+                "riskdesk.colWinRate": "Win rate",
+                "riskdesk.trusted": "trusted",
+                "riskdesk.downweighted": "down-weighted",
+                "riskdesk.neutral": "neutral",
+                "riskdesk.profileName": "Name",
+                "riskdesk.profileMode": "Risk mode",
+                "riskdesk.profileSize": "Size / trade",
+                "riskdesk.profileMaxOpen": "Max positions",
+                "riskdesk.profileStop": "Stop-loss",
+                "riskdesk.profileTp1": "TP1",
+                "riskdesk.profileTrail": "Trailing",
+                "riskdesk.profileOverrides": "Overrides .env",
+                "riskdesk.overridesYes": "yes",
+                "riskdesk.overridesNo": "no",
+                "riskdesk.footer": "Risk desk · read-only except breaker reset and confirmation cancel",
+                "riskdesk.toastBreakerReset": "Circuit breaker reset",
+                "riskdesk.toastFail": "Action failed",
+                "riskdesk.blockAt": "{time} · {symbol} · {rule}",
+                "riskdesk.reason": "{reason}",
+                "riskdesk.sizingLine": "{name}: {size} SOL"
+            }
+        };
+
+        const $ = (id) => document.getElementById(id);
+        const esc = (value) => BCT.escapeHtml(value);
+
+        function setText(id, value, className) {
+            const node = $(id);
+            if (!node) return;
+            node.textContent = value;
+            if (className !== undefined) node.className = className;
+        }
+
+        function renderKpis(risk) {
+            setText("kpiExposure", BCT.fmtPct(risk.openExposurePct, 1));
+            setText("kpiExposureSub", `${BCT.fmtSol(risk.openValueSol, 3)} SOL`);
+            setText("kpiHhi", Number(risk.concentrationHhi || 0).toFixed(3));
+            const top = risk.topPosition;
+            setText("kpiHhiSub", top ? `${top.symbol} · ${BCT.fmtPct(top.weight * 100, 1)}` : "—");
+            setText("kpiVar", `${BCT.fmtSol(risk.var95Sol, 3)}`);
+            setText("kpiEs", `${BCT.fmtSol(risk.expectedShortfall95Sol, 3)}`);
+            setText("kpiDrawdown", BCT.fmtPct(risk.maxHistoricalDrawdownPct, 1), "kpi-value neg");
+            setText("kpiWinRate", BCT.fmtPct(Number(risk.winRate || 0) * 100, 1));
+            setText("kpiWinRateSub", `${BCT.fmtInt(risk.realizedTrades)} ${BCT.t("riskdesk.colTrades").toLowerCase()}`);
+            const pf = Number(risk.profitFactor);
+            setText("kpiProfitFactor", Number.isFinite(pf) ? (pf === Infinity ? "∞" : pf.toFixed(2)) : "—");
+            setText("kpiExpectancy", BCT.fmtSol(risk.expectancySol, 4, true), `kpi-value ${BCT.signedClass(risk.expectancySol)}`);
+        }
+
+        function renderBreaker(breaker) {
+            const tripped = Boolean(breaker && breaker.tripped);
+            const badge = $("breakerBadge");
+            badge.textContent = tripped ? BCT.t("riskdesk.tripped") : BCT.t("riskdesk.armed");
+            badge.className = tripped ? "pill offline" : "pill live";
+            const reasons = (breaker && breaker.reasons) || [];
+            $("breakerReasons").innerHTML = reasons.length
+                ? reasons.map((r) => `<div>⛔ ${esc(r)}</div>`).join("")
+                : `<div class="text-slate-500">${esc(BCT.t("riskdesk.noReasons"))}</div>`;
+            setText("breakerStops", `${breaker.losingStopsToday ?? 0} / ${breaker.maxDailyStopLosses ?? "—"}`);
+            setText("breakerTrades", `${breaker.tradesToday ?? 0} / ${breaker.maxDailyTrades ?? "—"}`);
+            setText("breakerPnl", `${BCT.fmtSol(breaker.dailyPnlSol, 4, true)} SOL`, `v ${BCT.signedClass(breaker.dailyPnlSol)}`);
+            setText("breakerDd", BCT.fmtPct(breaker.dailyPnlPct, 2, true), `v ${BCT.signedClass(breaker.dailyPnlPct)}`);
+            setText("breakerResets", breaker.resetsAt ? `⟲ ${breaker.resetsAt}` : "—");
+        }
+
+        function renderGate(state) {
+            const gate = state.entryGate || {};
+            const badge = $("gateBadge");
+            badge.textContent = gate.ok ? "OPEN" : "BLOCKED";
+            badge.className = gate.ok ? "pill live" : "pill offline";
+            setText("gateRule", gate.rule || "—");
+            setText("gateReason", gate.reason || "—");
+            const block = state.lastEntryBlock;
+            $("lastBlock").innerHTML = block
+                ? esc(BCT.t("riskdesk.blockAt", { time: block.at || "—", symbol: block.symbol || "?", rule: block.rule || "—" })) +
+                  `<div class="text-slate-500 mt-0.5">${esc(block.reason || "")}</div>`
+                : `<span class="text-slate-500">${esc(BCT.t("riskdesk.noReasons"))}</span>`;
+            setText("pendingCount", String((state.pendingConfirmations || []).length));
+        }
+
+        function renderSizing(state) {
+            const sizing = state.sizing || {};
+            const by = sizing.byConviction || {};
+            const rows = ["high", "ai", "heuristic", "manual"].map((key) => {
+                const entry = by[key] || {};
+                const reason = (entry.reasons || []).join(" · ");
+                return `<div class="row-line"><span class="label">${esc(key)}</span>` +
+                    `<span class="val">${esc(BCT.fmtSol(entry.sizeSol, 3))} SOL</span></div>` +
+                    (reason ? `<div class="text-[9px] font-mono text-slate-500 -mt-1 mb-1">${esc(reason)}</div>` : "");
+            }).join("");
+            $("sizingRows").innerHTML = rows || `<div class="empty-state">${esc(BCT.t("common.empty"))}</div>`;
+            setText("nextSize", `${BCT.fmtSol(sizing.nextSizeSol, 3)} SOL`);
+            setText("nextSizeReasons", (sizing.nextSizeReasons || []).slice(0, 3).join(" · ") || "—");
+
+            const profile = state.strategyProfile || {};
+            const badge = $("sizingBadge");
+            const high = profile.riskMode === "high";
+            badge.textContent = high ? BCT.t("risk.high") : BCT.t("risk.standard");
+            badge.className = high ? "pill offline" : "pill live";
+        }
+
+        function renderProfile(profile) {
+            profile = profile || {};
+            const mode = profile.riskMode === "high";
+            const badge = $("profileBadge");
+            badge.textContent = mode ? BCT.t("risk.high") : BCT.t("risk.standard");
+            badge.className = mode ? "pill offline" : "pill live";
+            const e = profile.effective || {};
+            const rows = [
+                ["riskdesk.profileName", profile.name || "—", ""],
+                ["riskdesk.profileMode", profile.riskMode || "—", mode ? "neg" : "pos"],
+                ["riskdesk.profileSize", `${BCT.fmtSol(e.tradeSizeSol, 2)} SOL`, ""],
+                ["riskdesk.profileMaxOpen", String(e.maxOpenPositions ?? "—"), ""],
+                ["riskdesk.profileStop", BCT.fmtPct(e.stopLossPct, 0), "neg"],
+                ["riskdesk.profileTp1", BCT.fmtPct(e.tp1Pct, 0), "pos"],
+                ["riskdesk.profileTrail", BCT.fmtPct(e.trailingStopPct, 0), ""],
+                ["riskdesk.profileOverrides", profile.overridesEnvironment ? BCT.t("riskdesk.overridesYes") : BCT.t("riskdesk.overridesNo"), ""]
+            ];
+            $("profileRows").innerHTML = rows.map(([key, value, cls]) =>
+                `<div class="row-line"><span class="label">${esc(BCT.t(key))}</span><span class="val ${cls}">${esc(value)}</span></div>`
+            ).join("");
+        }
+
+        function renderConcentration(risk) {
+            const map = risk.concentrationBySymbol || {};
+            const entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
+            setText("concMeta", `${entries.length} · HHI ${Number(risk.concentrationHhi || 0).toFixed(3)}`);
+            if (!entries.length) {
+                $("concRows").innerHTML = `<div class="empty-state">${esc(BCT.t("riskdesk.concEmpty"))}</div>`;
+                return;
+            }
+            $("concRows").innerHTML = entries.map(([symbol, weight]) => {
+                const pct = Number(weight) * 100;
+                return `<div class="bar-row">` +
+                    `<div class="bar-top"><span class="sym">${esc(symbol)}</span><span>${BCT.fmtPct(pct, 1)}</span></div>` +
+                    `<div class="bar-track"><div class="bar-fill${pct >= 50 ? " rose" : ""}" style="width:${Math.min(100, Math.max(1, pct)).toFixed(1)}%"></div></div>` +
+                    `</div>`;
+            }).join("");
+        }
+
+        function renderWalletQuality(list) {
+            const body = $("walletQualityBody");
+            if (!list || !list.length) {
+                body.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center">${esc(BCT.t("common.empty"))}</td></tr>`;
+                return;
+            }
+            body.innerHTML = list.map((w) => {
+                const wr = w.recentWinRate == null ? "—" : BCT.fmtPct(w.recentWinRate * 100, 0);
+                const neutral = w.trusted && String(w.reason || "").toLowerCase().indexOf("neutral") === 0;
+                const state = neutral
+                    ? BCT.t("riskdesk.neutral")
+                    : (w.trusted ? BCT.t("riskdesk.trusted") : BCT.t("riskdesk.downweighted"));
+                const cls = neutral ? "muted" : (w.trusted ? "pos" : "neg");
+                const label = w.label ? `${esc(w.label)} <span class="muted">${esc(String(w.address || "").slice(0, 6))}…</span>` : esc(w.address);
+                return `<tr>` +
+                    `<td>${label}</td>` +
+                    `<td class="num">${BCT.fmtInt(w.samples)}</td>` +
+                    `<td class="num">${wr}<div class="muted text-[9px]">${BCT.fmtInt(w.recentWins)}/${BCT.fmtInt(w.recentSamples)}</div></td>` +
+                    `<td class="num ${BCT.signedClass(w.netPnlSol)}">${BCT.fmtSol(w.netPnlSol, 3, true)}</td>` +
+                    `<td class="${cls}">${esc(state)}</td>` +
+                    `</tr>`;
+            }).join("");
+        }
+
+        function renderSources(list) {
+            const body = $("sourceBody");
+            if (!list || !list.length) {
+                body.innerHTML = `<tr><td colspan="4" class="muted" style="text-align:center">${esc(BCT.t("common.empty"))}</td></tr>`;
+                return;
+            }
+            body.innerHTML = list.map((s) => `<tr>` +
+                `<td>${esc(s.source || "—")}</td>` +
+                `<td class="num">${BCT.fmtInt(s.trades)}</td>` +
+                `<td class="num">${BCT.fmtPct(s.winRatePct, 1)}</td>` +
+                `<td class="num ${BCT.signedClass(s.netPnlSol)}">${BCT.fmtSol(s.netPnlSol, 3, true)}</td>` +
+                `</tr>`).join("");
+        }
+
+        async function refresh() {
+            const [state, riskPayload] = await Promise.all([
+                BCT.api("/api/state"),
+                BCT.api("/api/portfolio_risk")
+            ]);
+            const risk = (riskPayload && riskPayload.portfolioRisk) || {};
+            renderKpis(risk);
+            renderBreaker(state.circuitBreaker);
+            renderGate(state);
+            renderSizing(state);
+            renderProfile(state.strategyProfile);
+            renderConcentration(risk);
+            renderWalletQuality(state.walletQuality);
+            renderSources(state.sourceAnalytics);
+            setText("authLabel", BCT.token() ? "token" : "off");
+            BCT.setConnection(true);
+        }
+
+        $("resetBreakerBtn").addEventListener("click", async () => {
+            const btn = $("resetBreakerBtn");
+            btn.disabled = true;
+            try {
+                await BCT.api("/api/breaker/reset", { method: "POST" });
+                BCT.toast(BCT.t("riskdesk.toastBreakerReset"));
+                await refresh();
+            } catch (err) {
+                BCT.toast(err.message || BCT.t("riskdesk.toastFail"));
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        BCT.init({ page: "risk", i18n: I18N, onRefresh: refresh, poll: 8000 });
+    })();
+    </script>
+</body>
+</html>

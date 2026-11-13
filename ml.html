@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="hr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetterCallTrader — ML / AI lab</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: { sol: { purple: '#9945FF', green: '#14F195', dark: '#0B0E14', card: '#131822', border: '#1E2638' } }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="webui/theme.css">
+    <script src="webui/console.js"></script>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-sol-purple selection:text-white">
+
+    <header id="bctHeader" class="glass-panel sticky top-0 z-40 sol-gradient-border"></header>
+
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 space-y-5">
+
+        <!-- 1 · STATUS HERO -->
+        <section class="glass-panel rounded-xl p-4 lg:p-5 fade-in">
+            <div class="flex flex-wrap items-start justify-between gap-3 border-b border-sol-border pb-3 mb-3">
+                <div class="flex items-start gap-3 min-w-0">
+                    <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-sol-purple to-sol-green p-[1px] flex items-center justify-center shrink-0">
+                        <div class="w-full h-full bg-sol-dark rounded-[10px] flex items-center justify-center">
+                            <i class="fa-solid fa-brain text-lg sol-gradient-text"></i>
+                        </div>
+                    </div>
+                    <div class="min-w-0">
+                        <h2 class="section-title"><i class="fa-solid fa-chart-simple text-sol-purple"></i><span data-i18n="ml.heroTitle"></span></h2>
+                        <div id="mlPath" class="section-sub mt-0.5 break-all">—</div>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <span id="mlStateBadge" class="pill text-xs px-3 py-1.5">—</span>
+                    <button type="button" id="trainBtn" class="btn btn-primary">
+                        <i class="fa-solid fa-graduation-cap"></i><span data-i18n="ml.train"></span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
+                <div class="stat-tile">
+                    <div class="k" data-i18n="ml.trainedAt"></div>
+                    <div id="mlTrainedAt" class="v" style="font-size:12px">—</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="k" data-i18n="ml.samples"></div>
+                    <div id="mlSamples" class="v">—</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="k" data-i18n="ml.positives"></div>
+                    <div id="mlPositives" class="v">—</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="k" data-i18n="ml.accuracy"></div>
+                    <div id="mlAccuracy" class="v">—</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="k" data-i18n="ml.logLoss"></div>
+                    <div id="mlLogLoss" class="v">—</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2 · ADVISORY DISCLAIMER -->
+        <section class="glass-panel rounded-xl p-3 px-4 fade-in flex flex-col sm:flex-row sm:items-center gap-3" style="border-left:2px solid #38bdf8">
+            <span class="pill" style="color:#67e8f9;border-color:rgba(56,189,248,0.4);background:rgba(56,189,248,0.10)">
+                <i class="fa-solid fa-circle-info"></i><span data-i18n="ml.disclaimerTitle"></span>
+            </span>
+            <p class="text-[11px] font-mono text-slate-400 leading-relaxed" data-i18n="ml.disclaimer"></p>
+        </section>
+
+        <!-- 3 · FEATURE WEIGHTS + 4 · MODEL CONTRACT -->
+        <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+            <div class="xl:col-span-7 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-scale-unbalanced text-sol-green"></i><span data-i18n="ml.weightsTitle"></span></h2>
+                    <span class="panel-note" data-i18n="ml.weightsSub"></span>
+                </div>
+                <div id="mlWeights"><div class="empty-state" data-i18n="ml.weightsEmpty"></div></div>
+            </div>
+
+            <div class="xl:col-span-5 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-file-contract text-amber-300"></i><span data-i18n="ml.contractTitle"></span></h2>
+                    <span class="panel-note" data-i18n="ml.contractSub"></span>
+                </div>
+                <div id="mlContract" class="space-y-1">
+                    <div class="empty-state" data-i18n="common.loading"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5 · PREDICTION -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                <h2 class="section-title"><i class="fa-solid fa-wand-magic-sparkles text-sol-purple"></i><span data-i18n="ml.predictTitle"></span></h2>
+                <span class="panel-note" data-i18n="ml.predictSub"></span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+                <label class="md:col-span-9 block min-w-0" for="mintInput">
+                    <span class="text-[10px] font-mono uppercase tracking-wider text-slate-500" data-i18n="ml.mint"></span>
+                    <input id="mintInput" type="text" class="field mt-1" spellcheck="false" autocomplete="off"
+                           data-i18n-placeholder="ml.mintPlaceholder">
+                </label>
+                <button type="button" id="predictBtn" class="btn btn-primary md:col-span-3">
+                    <i class="fa-solid fa-bolt"></i><span data-i18n="ml.predict"></span>
+                </button>
+            </div>
+            <div id="predictResult" class="mt-3">
+                <div class="empty-state" data-i18n="ml.predictEmpty"></div>
+            </div>
+        </section>
+
+        <!-- 6 · LLM PROVIDER -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                <h2 class="section-title"><i class="fa-solid fa-microchip text-cyan-300"></i><span data-i18n="ml.llmTitle"></span></h2>
+                <div class="flex items-center gap-2 min-w-0">
+                    <span id="llmModelName" class="panel-note">—</span>
+                    <span id="llmActiveBadge" class="pill">—</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <div class="lg:col-span-6">
+                    <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" data-i18n="ml.llmSub"></div>
+                    <div id="llmRows" class="space-y-1">
+                        <div class="empty-state" data-i18n="common.loading"></div>
+                    </div>
+                </div>
+                <div class="lg:col-span-6 min-w-0">
+                    <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" data-i18n="ml.llmRaw"></div>
+                    <pre id="llmRaw" class="glass-inset rounded-lg p-2.5 text-[10px] leading-relaxed text-slate-300 overflow-auto max-h-48 whitespace-pre-wrap break-all font-mono">—</pre>
+                </div>
+            </div>
+        </section>
+
+        <footer class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-sol-border/70 text-[10px] font-mono uppercase tracking-wider text-slate-500">
+            <span data-i18n="ml.footer"></span>
+            <span><span data-i18n="footer.auth"></span>: <span id="authLabel">off</span> · <span data-i18n="footer.sync"></span>: <span id="footerSync">—</span></span>
+        </footer>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+    (function () {
+        "use strict";
+
+        const I18N = {
+            hr: {
+                "ml.heroTitle": "ML model · status",
+                "ml.train": "Treniraj model",
+                "ml.training": "Treniram…",
+                "ml.trainOk": "{samples} uzoraka · {accuracy} točnost",
+                "ml.trainFail": "Trening nije uspio",
+                "ml.trainedAt": "Treniran",
+                "ml.samples": "Uzorci",
+                "ml.positives": "Pozitivni",
+                "ml.accuracy": "Točnost",
+                "ml.logLoss": "Log loss",
+                "ml.notTrained": "Model još nije treniran",
+                "ml.state": "Stanje",
+                "ml.stateOk": "Model spreman",
+                "ml.stateStale": "Model zastario",
+                "ml.stateMissing": "Model nedostaje",
+
+                "ml.disclaimerTitle": "Samo savjetodavno",
+                "ml.disclaimer": "ML je isključivo savjetodavan: nikad ne određuje veličinu pozicije i nikad ne blokira trejdove. Odluku i rizik i dalje nosi risk engine.",
+
+                "ml.weightsTitle": "Težine značajki",
+                "ml.weightsSub": "top 5 po apsolutnoj težini",
+                "ml.weightsEmpty": "Nema istreniranih težina",
+
+                "ml.contractTitle": "Ugovor modela",
+                "ml.contractSub": "kompatibilnost i fingerprint",
+                "ml.schema": "Schema verzija",
+                "ml.featureSet": "Verzija feature seta",
+                "ml.labelSource": "Izvor labela",
+                "ml.costModel": "Verzija cost modela",
+                "ml.fingerprint": "Data fingerprint",
+                "ml.reasons": "Razlozi",
+
+                "ml.predictTitle": "Predikcija po mintu",
+                "ml.predictSub": "savjetodavna vjerojatnost",
+                "ml.mint": "Mint adresa",
+                "ml.mintPlaceholder": "Zalijepi mint adresu…",
+                "ml.predict": "Predvidi",
+                "ml.predicting": "Računam predikciju…",
+                "ml.predictEmpty": "Unesi mint i pokreni predikciju",
+                "ml.probability": "Vjerojatnost",
+                "ml.advisory": "Savjet",
+                "ml.advisoryNote": "Savjetodavno samo — bot ne mijenja veličinu pozicije niti blokira trejd na temelju ovoga.",
+                "ml.buyBias": "BUY_BIAS",
+                "ml.neutral": "NEUTRAL",
+                "ml.skipBias": "SKIP_BIAS",
+                "ml.mintRequired": "Unesi mint adresu",
+                "ml.predictMissing": "Model nedostaje ili je zastario",
+                "ml.predictNoEntry": "Nema ocijenjenog journal unosa za ovaj mint",
+                "ml.predictError": "Predikcija nije uspjela",
+
+                "ml.llmTitle": "LLM provider",
+                "ml.llmSub": "opis iz config.llm",
+                "ml.llmRaw": "Sirovi config",
+                "ml.llmEmpty": "LLM nije konfiguriran",
+                "ml.llmLabel": "Oznaka",
+                "ml.llmModel": "Model",
+                "ml.llmAvailable": "Dostupan",
+                "ml.llmLocal": "Lokalni",
+                "ml.llmChain": "Lanac fallbacka",
+                "ml.llmHeuristic": "Heuristički fallback",
+
+                "ml.footer": "ML / AI lab · savjetodavni model, trening i predikcija"
+            },
+            en: {
+                "ml.heroTitle": "ML model · status",
+                "ml.train": "Train model",
+                "ml.training": "Training…",
+                "ml.trainOk": "{samples} samples · {accuracy} accuracy",
+                "ml.trainFail": "Training failed",
+                "ml.trainedAt": "Trained",
+                "ml.samples": "Samples",
+                "ml.positives": "Positives",
+                "ml.accuracy": "Accuracy",
+                "ml.logLoss": "Log loss",
+                "ml.notTrained": "Model not trained yet",
+                "ml.state": "State",
+                "ml.stateOk": "Model ready",
+                "ml.stateStale": "Model stale",
+                "ml.stateMissing": "Model missing",
+
+                "ml.disclaimerTitle": "Advisory only",
+                "ml.disclaimer": "ML is strictly advisory: it never sizes positions and never blocks trades. Decision-making and risk stay with the risk engine.",
+
+                "ml.weightsTitle": "Feature weights",
+                "ml.weightsSub": "top 5 by absolute weight",
+                "ml.weightsEmpty": "No trained weights",
+
+                "ml.contractTitle": "Model contract",
+                "ml.contractSub": "compatibility and fingerprint",
+                "ml.schema": "Schema version",
+                "ml.featureSet": "Feature set version",
+                "ml.labelSource": "Label source",
+                "ml.costModel": "Cost model version",
+                "ml.fingerprint": "Data fingerprint",
+                "ml.reasons": "Reasons",
+
+                "ml.predictTitle": "Prediction by mint",
+                "ml.predictSub": "advisory probability",
+                "ml.mint": "Mint address",
+                "ml.mintPlaceholder": "Paste a mint address…",
+                "ml.predict": "Predict",
+                "ml.predicting": "Scoring prediction…",
+                "ml.predictEmpty": "Enter a mint and run a prediction",
+                "ml.probability": "Probability",
+                "ml.advisory": "Advisory",
+                "ml.advisoryNote": "Advisory only — the bot does not size or block a trade based on this.",
+                "ml.buyBias": "BUY_BIAS",
+                "ml.neutral": "NEUTRAL",
+                "ml.skipBias": "SKIP_BIAS",
+                "ml.mintRequired": "Enter a mint address",
+                "ml.predictMissing": "Model is missing or stale",
+                "ml.predictNoEntry": "No scored journal entry for this mint",
+                "ml.predictError": "Prediction failed",
+
+                "ml.llmTitle": "LLM provider",
+                "ml.llmSub": "description from config.llm",
+                "ml.llmRaw": "Raw config",
+                "ml.llmEmpty": "LLM is not configured",
+                "ml.llmLabel": "Label",
+                "ml.llmModel": "Model",
+                "ml.llmAvailable": "Available",
+                "ml.llmLocal": "Local",
+                "ml.llmChain": "Fallback chain",
+                "ml.llmHeuristic": "Heuristic fallback",
+
+                "ml.footer": "ML / AI lab · advisory model, training and prediction"
+            }
+        };
+
+        const $ = (id) => document.getElementById(id);
+        const esc = (value) => BCT.escapeHtml(value);
+
+        function setText(id, value, className) {
+            const node = $(id);
+            if (!node) return;
+            node.textContent = value;
+            if (className !== undefined) node.className = className;
+        }
+
+        function dash(value) {
+            if (value === null || value === undefined || value === "") return "—";
+            return String(value);
+        }
+
+        function stamp(value) {
+            if (!value) return "—";
+            const date = new Date(value);
+            return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+        }
+
+        function stateMeta(state) {
+            if (state === "ok") return { key: "ml.stateOk", cls: "pill live text-xs px-3 py-1.5" };
+            if (state === "stale") return { key: "ml.stateStale", cls: "pill warn text-xs px-3 py-1.5" };
+            return { key: "ml.stateMissing", cls: "pill offline text-xs px-3 py-1.5" };
+        }
+
+        function advisoryMeta(advisory) {
+            const value = String(advisory || "").toUpperCase();
+            if (value === "BUY_BIAS") return { key: "ml.buyBias", cls: "pill live" };
+            if (value === "SKIP_BIAS") return { key: "ml.skipBias", cls: "pill offline" };
+            return { key: "ml.neutral", cls: "pill warn" };
+        }
+
+        function formatValue(value) {
+            if (value === null || value === undefined || value === "") return "—";
+            if (typeof value === "boolean") return value ? BCT.t("common.yes") : BCT.t("common.no");
+            if (Array.isArray(value)) return value.length ? value.map((item) => String(item)).join(" → ") : "—";
+            if (typeof value === "object") {
+                try { return JSON.stringify(value); } catch (err) { return "—"; }
+            }
+            return String(value);
+        }
+
+        function renderStatus(model) {
+            model = model || {};
+            const meta = stateMeta(model.state);
+            const badge = $("mlStateBadge");
+            badge.className = meta.cls;
+            badge.innerHTML = `<i class="dot"></i>${esc(BCT.t(meta.key))}`;
+            setText("mlPath", dash(model.path));
+
+            const summary = model.summary || {};
+            const trained = Boolean(summary.trained);
+            setText("mlTrainedAt", trained ? stamp(summary.trainedAt) : BCT.t("ml.notTrained"));
+            setText("mlSamples", trained ? BCT.fmtInt(summary.samples) : "—");
+            setText("mlPositives", trained ? BCT.fmtInt(summary.positives) : "—");
+            const accuracy = Number(summary.accuracy);
+            setText("mlAccuracy", trained && Number.isFinite(accuracy) ? BCT.fmtPct(accuracy * 100, 1) : "—");
+            const logLoss = Number(summary.logLoss);
+            setText("mlLogLoss", trained && Number.isFinite(logLoss) ? logLoss.toFixed(4) : "—");
+        }
+
+        function renderWeights(summary) {
+            const host = $("mlWeights");
+            const weights = summary && Array.isArray(summary.topWeights) ? summary.topWeights : [];
+            if (!weights.length) {
+                host.innerHTML = `<div class="empty-state">${esc(BCT.t("ml.weightsEmpty"))}</div>`;
+                return;
+            }
+            const max = Math.max(...weights.map((item) => Math.abs(Number(item.weight) || 0)), 0.0001);
+            host.innerHTML = weights.map((item) => {
+                const raw = Number(item.weight);
+                const weight = Number.isFinite(raw) ? raw : 0;
+                const width = Math.max(2, Math.min(100, (Math.abs(weight) / max) * 100));
+                const signed = weight > 0 ? `+${weight.toFixed(4)}` : weight.toFixed(4);
+                const tone = weight < 0 ? "text-rose-400" : (weight > 0 ? "text-sol-green" : "text-slate-400");
+                return `<div class="bar-row">` +
+                    `<div class="bar-top"><span class="sym">${esc(dash(item.feature))}</span><span class="${tone}">${signed}</span></div>` +
+                    `<div class="bar-track"><i class="bar-fill${weight < 0 ? " rose" : ""}" style="width:${width.toFixed(1)}%"></i></div>` +
+                    `</div>`;
+            }).join("");
+        }
+
+        function renderContract(model) {
+            model = model || {};
+            const summary = model.summary || {};
+            const trained = Boolean(summary.trained);
+            const stateKey = stateMeta(model.state).key;
+
+            const rows = [
+                ["ml.state", BCT.t(stateKey)],
+                ["ml.schema", trained ? dash(summary.schemaVersion) : "—"],
+                ["ml.featureSet", trained ? dash(summary.featureSetVersion) : "—"],
+                ["ml.labelSource", trained ? dash(summary.labelSource) : "—"],
+                ["ml.costModel", trained ? (summary.costModelVersion === null || summary.costModelVersion === undefined ? "—" : `v${summary.costModelVersion}`) : "—"]
+            ];
+
+            let html = rows.map(([key, value]) =>
+                `<div class="row-line"><span class="label">${esc(BCT.t(key))}</span><span class="val">${esc(value)}</span></div>`
+            ).join("");
+
+            const fingerprint = trained ? String(summary.dataFingerprint ?? "") : "";
+            const shortFingerprint = fingerprint
+                ? (fingerprint.length > 16 ? `${fingerprint.slice(0, 16)}…` : fingerprint)
+                : "—";
+            html += `<div class="row-line">` +
+                `<span class="label">${esc(BCT.t("ml.fingerprint"))}</span>` +
+                `<span class="val" title="${esc(fingerprint || "—")}">${esc(shortFingerprint)}</span>` +
+                `</div>`;
+
+            const reasons = Array.isArray(model.reasons) ? model.reasons : [];
+            if (reasons.length) {
+                const tone = model.state === "missing" ? "text-rose-200/90" : "text-amber-200/90";
+                html += `<div class="mt-3 pt-2 border-t border-sol-border">` +
+                    `<div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1">${esc(BCT.t("ml.reasons"))}</div>` +
+                    `<div class="space-y-1">${reasons.map((reason) =>
+                        `<div class="text-[11px] font-mono ${tone}">⚠ ${esc(dash(reason))}</div>`
+                    ).join("")}</div>` +
+                    `</div>`;
+            }
+            $("mlContract").innerHTML = html;
+        }
+
+        function renderPrediction(payload) {
+            payload = payload || {};
+            const probability = Number(payload.probability);
+            const pct = Number.isFinite(probability) ? BCT.fmtPct(Math.max(0, Math.min(1, probability)) * 100, 1) : "—";
+            const meta = advisoryMeta(payload.advisory);
+            $("predictResult").innerHTML =
+                `<div class="glass-inset rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">` +
+                    `<div class="min-w-0">` +
+                        `<div class="text-[10px] font-mono uppercase tracking-wider text-slate-500">${esc(BCT.t("ml.mint"))}</div>` +
+                        `<div class="text-[11px] font-mono text-slate-300 break-all">${esc(dash(payload.mint))}</div>` +
+                    `</div>` +
+                    `<div class="flex flex-wrap items-center gap-4">` +
+                        `<div>` +
+                            `<div class="text-[10px] font-mono uppercase tracking-wider text-slate-500">${esc(BCT.t("ml.probability"))}</div>` +
+                            `<div class="kpi-value">${esc(pct)}</div>` +
+                        `</div>` +
+                        `<div>` +
+                            `<div class="text-[10px] font-mono uppercase tracking-wider text-slate-500">${esc(BCT.t("ml.advisory"))}</div>` +
+                            `<span class="${meta.cls}"><i class="dot"></i>${esc(BCT.t(meta.key))}</span>` +
+                        `</div>` +
+                    `</div>` +
+                `</div>` +
+                `<div class="text-[10px] font-mono text-slate-500 mt-2">${esc(BCT.t("ml.advisoryNote"))}</div>`;
+        }
+
+        function renderPredictNotice(message, detail) {
+            $("predictResult").innerHTML =
+                `<div class="glass-inset rounded-xl p-4">` +
+                    `<div class="text-[11px] font-mono text-rose-200">${esc(message)}</div>` +
+                    (detail ? `<div class="text-[10px] font-mono text-slate-500 mt-1">${esc(detail)}</div>` : "") +
+                `</div>`;
+        }
+
+        function renderLlm(state) {
+            state = state || {};
+            const llm = (state.config || {}).llm;
+            const active = Boolean(state.ai_active);
+            const activeBadge = $("llmActiveBadge");
+            activeBadge.textContent = active ? BCT.t("common.on") : BCT.t("common.off");
+            activeBadge.className = active ? "pill live" : "pill offline";
+            setText("llmModelName", dash(state.ai_model));
+
+            const rowsHost = $("llmRows");
+            const rawHost = $("llmRaw");
+
+            if (!llm || typeof llm !== "object" || Array.isArray(llm)) {
+                rowsHost.innerHTML = `<div class="empty-state">${esc(BCT.t("ml.llmEmpty"))}</div>`;
+                rawHost.textContent = llm === null || llm === undefined ? "—" : String(llm);
+                return;
+            }
+
+            const labels = {
+                label: "ml.llmLabel",
+                model: "ml.llmModel",
+                available: "ml.llmAvailable",
+                local: "ml.llmLocal",
+                chain: "ml.llmChain",
+                fallbackToHeuristic: "ml.llmHeuristic"
+            };
+            const preferred = Object.keys(labels);
+            const order = preferred.filter((key) => Object.prototype.hasOwnProperty.call(llm, key))
+                .concat(Object.keys(llm).filter((key) => !preferred.includes(key)));
+
+            rowsHost.innerHTML = order.map((key) => {
+                const label = labels[key] ? BCT.t(labels[key]) : key;
+                return `<div class="row-line">` +
+                    `<span class="label">${esc(label)}</span>` +
+                    `<span class="val">${esc(formatValue(llm[key]))}</span>` +
+                    `</div>`;
+            }).join("") || `<div class="empty-state">${esc(BCT.t("ml.llmEmpty"))}</div>`;
+
+            try {
+                rawHost.textContent = JSON.stringify(llm, null, 2);
+            } catch (err) {
+                rawHost.textContent = "—";
+            }
+        }
+
+        async function refresh() {
+            const [statusPayload, state] = await Promise.all([
+                BCT.api("/api/ml/status"),
+                BCT.api("/api/state")
+            ]);
+            const model = (statusPayload && statusPayload.model) || {};
+            renderStatus(model);
+            renderWeights(model.summary);
+            renderContract(model);
+            renderLlm(state || {});
+            setText("authLabel", BCT.token() ? "token" : "off");
+            BCT.setConnection(true);
+        }
+
+        $("trainBtn").addEventListener("click", async () => {
+            const btn = $("trainBtn");
+            const label = btn.querySelector("span");
+            btn.disabled = true;
+            if (label) label.textContent = BCT.t("ml.training");
+            try {
+                const payload = await BCT.api("/api/ml/train", { method: "POST" });
+                const summary = (payload && payload.model && payload.model.summary) || {};
+                const accuracy = Number(summary.accuracy);
+                BCT.toast(BCT.t("ml.trainOk", {
+                    samples: BCT.fmtInt(summary.samples),
+                    accuracy: Number.isFinite(accuracy) ? BCT.fmtPct(accuracy * 100, 1) : "—"
+                }));
+                await refresh();
+            } catch (err) {
+                const reason = (err.body && err.body.reason) || err.message || BCT.t("ml.trainFail");
+                BCT.toast(reason);
+            } finally {
+                btn.disabled = false;
+                if (label) label.textContent = BCT.t("ml.train");
+            }
+        });
+
+        $("predictBtn").addEventListener("click", async () => {
+            const input = $("mintInput");
+            const mint = (input.value || "").trim();
+            if (!mint) {
+                BCT.toast(BCT.t("ml.mintRequired"));
+                input.focus();
+                return;
+            }
+
+            const btn = $("predictBtn");
+            btn.disabled = true;
+            $("predictResult").innerHTML = `<div class="empty-state">${esc(BCT.t("ml.predicting"))}</div>`;
+            try {
+                const payload = await BCT.api(`/api/ml/predict?mint=${encodeURIComponent(mint)}`);
+                renderPrediction(payload);
+            } catch (err) {
+                const body = err.body || {};
+                if (err.status === 409) {
+                    const meta = stateMeta(body.state);
+                    const reasons = Array.isArray(body.reasons) ? body.reasons : [];
+                    $("predictResult").innerHTML =
+                        `<div class="glass-inset rounded-xl p-4">` +
+                            `<div class="flex flex-wrap items-center justify-between gap-2">` +
+                                `<span class="text-[11px] font-mono text-rose-200">${esc(body.error || BCT.t("ml.predictMissing"))}</span>` +
+                                `<span class="${meta.cls}">${esc(BCT.t(meta.key))}</span>` +
+                            `</div>` +
+                            (reasons.length
+                                ? `<div class="mt-2 space-y-1">${reasons.map((reason) =>
+                                    `<div class="text-[11px] font-mono text-amber-200/90">⚠ ${esc(dash(reason))}</div>`
+                                ).join("")}</div>`
+                                : "") +
+                        `</div>`;
+                } else if (err.status === 404) {
+                    renderPredictNotice(BCT.t("ml.predictNoEntry"), "");
+                } else if (err.status === 400) {
+                    renderPredictNotice(body.error || BCT.t("ml.predictError"), "");
+                } else {
+                    renderPredictNotice(err.message || BCT.t("ml.predictError"), "");
+                }
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        $("mintInput").addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                $("predictBtn").click();
+            }
+        });
+
+        BCT.init({ page: "ml", i18n: I18N, onRefresh: refresh, poll: 20000 });
+    })();
+    </script>
+</body>
+</html>

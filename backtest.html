@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="hr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetterCallTrader — Backtest lab</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: { sol: { purple: '#9945FF', green: '#14F195', dark: '#0B0E14', card: '#131822', border: '#1E2638' } }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="webui/theme.css">
+    <script src="webui/console.js"></script>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-sol-purple selection:text-white">
+
+    <header id="bctHeader" class="glass-panel sticky top-0 z-40 sol-gradient-border"></header>
+
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 space-y-5">
+
+        <!-- RUN HEADER -->
+        <section class="glass-panel rounded-xl p-4 lg:p-5 fade-in">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-flask-vial sol-gradient-text"></i>
+                        <span data-i18n="backtest.title"></span>
+                    </h2>
+                    <p class="text-[11px] text-slate-400 mt-1 max-w-3xl" data-i18n="backtest.subtitle"></p>
+                    <p class="tiny-mono mt-2 flex items-start gap-1.5 text-slate-500">
+                        <i class="fa-solid fa-database text-sol-purple mt-0.5"></i>
+                        <span data-i18n="backtest.replayNote"></span>
+                    </p>
+                </div>
+                <button type="button" id="recomputeBtn" class="btn btn-primary">
+                    <i class="fa-solid fa-rotate"></i><span data-i18n="backtest.recompute"></span>
+                </button>
+            </div>
+            <div class="mt-3 pt-3 border-t border-sol-border/70 flex flex-wrap items-center gap-x-5 gap-y-2">
+                <div class="tiny-mono"><span class="text-slate-500" data-i18n="backtest.configHash"></span>: <span id="metaHash">—</span></div>
+                <div class="tiny-mono"><span class="text-slate-500" data-i18n="backtest.profile"></span>: <span id="metaProfile">—</span></div>
+                <div class="flex items-center gap-1.5 tiny-mono"><span class="text-slate-500" data-i18n="backtest.riskMode"></span><span id="metaMode" class="pill">—</span></div>
+                <div class="tiny-mono"><span class="text-slate-500" data-i18n="backtest.wallet"></span>: <span id="metaWallet">—</span></div>
+            </div>
+        </section>
+
+        <!-- KPI STRIP -->
+        <section class="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="backtest.kpiTrades"></span>
+                <div id="kpiTrades" class="kpi-value">—</div>
+                <div id="kpiTradesSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="backtest.kpiWinRate"></span>
+                <div id="kpiWinRate" class="kpi-value">—</div>
+                <div id="kpiWinRateSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="backtest.kpiProfitFactor"></span>
+                <div id="kpiProfitFactor" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="backtest.subGross"></div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="backtest.kpiNetPnl"></span>
+                <div id="kpiNetPnl" class="kpi-value">—</div>
+                <div id="kpiNetPnlSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="backtest.kpiExpectancy"></span>
+                <div id="kpiExpectancy" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="backtest.subPerTrade"></div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="backtest.kpiMaxDd"></span>
+                <div id="kpiMaxDd" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="backtest.subPeak"></div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="backtest.kpiAvgWin"></span>
+                <div id="kpiAvgWin" class="kpi-value">—</div>
+                <div id="kpiAvgWinSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="backtest.kpiAvgLoss"></span>
+                <div id="kpiAvgLoss" class="kpi-value">—</div>
+                <div id="kpiAvgLossSub" class="kpi-sub">—</div>
+            </div>
+        </section>
+
+        <!-- EQUITY + DAILY -->
+        <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+            <div class="xl:col-span-8 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                    <h2 class="section-title"><i class="fa-solid fa-chart-line text-sol-green"></i><span data-i18n="backtest.equityTitle"></span></h2>
+                    <span id="equityNote" class="panel-note">—</span>
+                </div>
+                <div class="relative w-full h-[260px] sm:h-[300px] glass-inset rounded-lg overflow-hidden">
+                    <div id="equityChart" class="w-full h-full flex items-center justify-center text-[11px] font-mono text-slate-500">—</div>
+                </div>
+            </div>
+
+            <div class="xl:col-span-4 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                    <h2 class="section-title"><i class="fa-solid fa-chart-column text-sol-purple"></i><span data-i18n="backtest.dailyTitle"></span></h2>
+                    <span class="panel-note" data-i18n="backtest.dailySub"></span>
+                </div>
+                <div class="relative w-full h-[260px] sm:h-[300px] glass-inset rounded-lg overflow-hidden">
+                    <div id="dailyChart" class="w-full h-full flex items-center justify-center text-[11px] font-mono text-slate-500">—</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- BREAKDOWNS -->
+        <section class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div class="glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-right-from-bracket text-rose-300"></i><span data-i18n="backtest.byExit"></span></h2>
+                    <span class="panel-note" data-i18n="backtest.breakdownSub"></span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="backtest.colLabel"></th>
+                                <th class="text-right" data-i18n="backtest.colTrades"></th>
+                                <th class="text-right" data-i18n="backtest.colWinRate"></th>
+                                <th class="text-right" data-i18n="backtest.colNet"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="exitBody">
+                            <tr><td colspan="4" class="muted" style="text-align:center">—</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-tags text-amber-300"></i><span data-i18n="backtest.bySource"></span></h2>
+                    <span class="panel-note" data-i18n="backtest.breakdownSub"></span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="backtest.colLabel"></th>
+                                <th class="text-right" data-i18n="backtest.colTrades"></th>
+                                <th class="text-right" data-i18n="backtest.colWinRate"></th>
+                                <th class="text-right" data-i18n="backtest.colNet"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="sourceBody">
+                            <tr><td colspan="4" class="muted" style="text-align:center">—</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-signal text-cyan-300"></i><span data-i18n="backtest.byConviction"></span></h2>
+                    <span class="panel-note" data-i18n="backtest.breakdownSub"></span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="backtest.colLabel"></th>
+                                <th class="text-right" data-i18n="backtest.colTrades"></th>
+                                <th class="text-right" data-i18n="backtest.colWinRate"></th>
+                                <th class="text-right" data-i18n="backtest.colNet"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="convictionBody">
+                            <tr><td colspan="4" class="muted" style="text-align:center">—</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- BEST / WORST -->
+        <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                    <h2 class="section-title"><i class="fa-solid fa-trophy text-sol-green"></i><span data-i18n="backtest.bestTitle"></span></h2>
+                    <span class="panel-note" data-i18n="backtest.bestSub"></span>
+                </div>
+                <div id="bestTrade"><div class="empty-state">—</div></div>
+            </div>
+
+            <div class="glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                    <h2 class="section-title"><i class="fa-solid fa-skull-crossbones text-rose-400"></i><span data-i18n="backtest.worstTitle"></span></h2>
+                    <span class="panel-note" data-i18n="backtest.worstSub"></span>
+                </div>
+                <div id="worstTrade"><div class="empty-state">—</div></div>
+            </div>
+        </section>
+
+        <!-- RECENT TRADES -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                <h2 class="section-title"><i class="fa-solid fa-list-ul text-sol-purple"></i><span data-i18n="backtest.tradesTitle"></span></h2>
+                <span class="panel-note" data-i18n="backtest.tradesSub"></span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th data-i18n="backtest.colClosed"></th>
+                            <th data-i18n="backtest.colSymbol"></th>
+                            <th data-i18n="backtest.colSource"></th>
+                            <th data-i18n="backtest.colConviction"></th>
+                            <th data-i18n="backtest.colExit"></th>
+                            <th class="text-right" data-i18n="backtest.colPnl"></th>
+                            <th class="text-right" data-i18n="backtest.colEquity"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradesBody">
+                        <tr><td colspan="7" class="muted" style="text-align:center">—</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-sol-border/70 text-[10px] font-mono uppercase tracking-wider text-slate-500">
+            <span data-i18n="footer.paper"></span>
+            <span><span data-i18n="footer.auth"></span>: <span id="authLabel">off</span> · <span data-i18n="footer.sync"></span>: <span id="footerSync">—</span></span>
+        </footer>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+    (function () {
+        "use strict";
+
+        const I18N = {
+            hr: {
+                "backtest.title": "Backtest lab",
+                "backtest.subtitle": "Replay realiziranih zatvorenih trejdova s metrikama rizika, raspodjelom po izlazu, izvoru i uvjerenju te equity i dnevnom krivuljom.",
+                "backtest.replayNote": "API samo čita zatvorene trejdove iz SQLite baze — nema mrežnog poziva ni simulacije povijesnih cijena.",
+                "backtest.recompute": "Ponovno izračunaj",
+                "backtest.recomputeBusy": "Računam…",
+                "backtest.configHash": "Config hash",
+                "backtest.profile": "Profil",
+                "backtest.riskMode": "Risk mode",
+                "backtest.wallet": "Novčanik",
+
+                "backtest.kpiTrades": "Trejdovi",
+                "backtest.kpiWinRate": "Win rate",
+                "backtest.kpiProfitFactor": "Profit faktor",
+                "backtest.kpiNetPnl": "Neto PnL",
+                "backtest.kpiExpectancy": "Očekivanje / trejd",
+                "backtest.kpiMaxDd": "Maks. drawdown",
+                "backtest.kpiAvgWin": "Prosječan dobitak",
+                "backtest.kpiAvgLoss": "Prosječan gubitak",
+                "backtest.subTrades": "{wins} pobjeda · {losses} gubitaka",
+                "backtest.subWinRate": "{wins}/{trades} zatvorenih",
+                "backtest.subGross": "bruto dobitak / gubitak",
+                "backtest.subNet": "na {initial} SOL početnog kapitala",
+                "backtest.subPerTrade": "po zatvorenom trejdu",
+                "backtest.subPeak": "vrh → dolina",
+                "backtest.subWins": "{wins} pobjeda",
+                "backtest.subLosses": "{losses} gubitaka",
+
+                "backtest.equityTitle": "Equity krivulja",
+                "backtest.equityEmpty": "Nema zatvorenih trejdova — krivulja se pojavljuje nakon prvog izlaza.",
+                "backtest.equityNote": "{n} točaka · {last} SOL · neto {net}",
+                "backtest.dailyTitle": "Dnevni PnL",
+                "backtest.dailySub": "zadnjih 30 dana",
+                "backtest.dailyEmpty": "Čekam zatvorene trejdove",
+
+                "backtest.byExit": "Po razlogu izlaza",
+                "backtest.bySource": "Po izvoru",
+                "backtest.byConviction": "Po uvjerenju",
+                "backtest.breakdownSub": "realizirani trejdovi",
+                "backtest.colLabel": "Oznaka",
+                "backtest.colTrades": "Trejdovi",
+                "backtest.colWinRate": "Win rate",
+                "backtest.colNet": "Neto",
+
+                "backtest.bestTitle": "Najbolji trejd",
+                "backtest.worstTitle": "Najgori trejd",
+                "backtest.bestSub": "najveći realizirani PnL",
+                "backtest.worstSub": "najmanji realizirani PnL",
+                "backtest.noTrade": "Nema zatvorenih trejdova",
+
+                "backtest.tradesTitle": "Zadnji trejdovi",
+                "backtest.tradesSub": "50 najnovijih · silazno",
+                "backtest.colClosed": "Zatvoreno",
+                "backtest.colSymbol": "Simbol",
+                "backtest.colSource": "Izvor",
+                "backtest.colConviction": "Uvjerenje",
+                "backtest.colExit": "Izlaz",
+                "backtest.colPnl": "PnL SOL",
+                "backtest.colEquity": "Equity SOL",
+
+                "backtest.toastDone": "Backtest ponovno izračunat",
+                "backtest.toastFail": "Izračun nije uspio"
+            },
+            en: {
+                "backtest.title": "Backtest lab",
+                "backtest.subtitle": "Realized closed-trade replay with risk metrics, exit/source/conviction breakdowns and an equity plus daily curve.",
+                "backtest.replayNote": "The API only reads closed trades from the SQLite book — no network call and no synthetic historical prices.",
+                "backtest.recompute": "Recompute",
+                "backtest.recomputeBusy": "Computing…",
+                "backtest.configHash": "Config hash",
+                "backtest.profile": "Profile",
+                "backtest.riskMode": "Risk mode",
+                "backtest.wallet": "Wallet",
+
+                "backtest.kpiTrades": "Trades",
+                "backtest.kpiWinRate": "Win rate",
+                "backtest.kpiProfitFactor": "Profit factor",
+                "backtest.kpiNetPnl": "Net PnL",
+                "backtest.kpiExpectancy": "Expectancy / trade",
+                "backtest.kpiMaxDd": "Max drawdown",
+                "backtest.kpiAvgWin": "Average win",
+                "backtest.kpiAvgLoss": "Average loss",
+                "backtest.subTrades": "{wins} wins · {losses} losses",
+                "backtest.subWinRate": "{wins}/{trades} closed",
+                "backtest.subGross": "gross win / loss",
+                "backtest.subNet": "on {initial} SOL initial capital",
+                "backtest.subPerTrade": "per closed trade",
+                "backtest.subPeak": "peak → trough",
+                "backtest.subWins": "{wins} wins",
+                "backtest.subLosses": "{losses} losses",
+
+                "backtest.equityTitle": "Equity curve",
+                "backtest.equityEmpty": "No closed trades yet — the line appears after the first exit.",
+                "backtest.equityNote": "{n} pts · {last} SOL · net {net}",
+                "backtest.dailyTitle": "Daily PnL",
+                "backtest.dailySub": "last 30 days",
+                "backtest.dailyEmpty": "Waiting for closed trades",
+
+                "backtest.byExit": "By exit reason",
+                "backtest.bySource": "By source",
+                "backtest.byConviction": "By conviction",
+                "backtest.breakdownSub": "realized trades",
+                "backtest.colLabel": "Label",
+                "backtest.colTrades": "Trades",
+                "backtest.colWinRate": "Win rate",
+                "backtest.colNet": "Net",
+
+                "backtest.bestTitle": "Best trade",
+                "backtest.worstTitle": "Worst trade",
+                "backtest.bestSub": "largest realized PnL",
+                "backtest.worstSub": "smallest realized PnL",
+                "backtest.noTrade": "No closed trades",
+
+                "backtest.tradesTitle": "Recent trades",
+                "backtest.tradesSub": "latest 50 · newest first",
+                "backtest.colClosed": "Closed",
+                "backtest.colSymbol": "Symbol",
+                "backtest.colSource": "Source",
+                "backtest.colConviction": "Conviction",
+                "backtest.colExit": "Exit",
+                "backtest.colPnl": "PnL SOL",
+                "backtest.colEquity": "Equity SOL",
+
+                "backtest.toastDone": "Backtest recomputed",
+                "backtest.toastFail": "Recompute failed"
+            }
+        };
+
+        const $ = (id) => document.getElementById(id);
+        const esc = (value) => BCT.escapeHtml(value);
+        const t = (key, vars) => BCT.t(key, vars);
+
+        function setText(id, value, className) {
+            const node = $(id);
+            if (!node) return;
+            node.textContent = value;
+            if (className !== undefined) node.className = className;
+        }
+
+        function numeric(value) {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : null;
+        }
+
+        function formatPf(summary) {
+            summary = summary || {};
+            const pf = summary.profitFactor;
+            if (pf === Infinity) return "∞";
+            if (pf === null || pf === undefined) {
+                const wins = numeric(summary.wins) || 0;
+                const losses = numeric(summary.losses) || 0;
+                return wins > 0 && losses === 0 ? "∞" : "—";
+            }
+            const n = Number(pf);
+            if (!Number.isFinite(n)) return n === Infinity ? "∞" : "—";
+            return n.toFixed(2);
+        }
+
+        function formatWinRate(value) {
+            const n = numeric(value);
+            return n === null ? "—" : BCT.fmtPct(n * 100, 1);
+        }
+
+        function formatTime(value) {
+            const text = String(value || "").replace("T", " ").trim();
+            return text ? text.slice(0, 16) : "—";
+        }
+
+        /* --------------------------------------------------------- run meta */
+        function renderMeta(state, report) {
+            state = state || {};
+            report = report || {};
+            const cfg = state.config || {};
+            const profile = state.strategyProfile || {};
+            const wallet = state.wallet || {};
+
+            const hash = cfg.configHash ? String(cfg.configHash) : "";
+            setText("metaHash", hash ? hash.slice(0, 20) : "—");
+            setText("metaProfile", profile.name || cfg.strategyProfile || "—");
+            setText("metaWallet", `${BCT.fmtSol(wallet.balance_sol, 3)} SOL`);
+
+            const mode = String(profile.riskMode || cfg.riskMode || "").toLowerCase();
+            const modeNode = $("metaMode");
+            if (modeNode) {
+                modeNode.textContent = mode === "high"
+                    ? t("risk.high")
+                    : (mode === "standard" ? t("risk.standard") : "—");
+                modeNode.className = `pill ${mode === "high" ? "offline" : (mode === "standard" ? "live" : "")}`;
+            }
+        }
+
+        /* -------------------------------------------------------------- KPIs */
+        function renderKpis(report) {
+            const summary = (report && report.summary) || {};
+            const initial = numeric(report && report.initialSol);
+
+            setText("kpiTrades", BCT.fmtInt(summary.trades));
+            setText("kpiTradesSub", t("backtest.subTrades", {
+                wins: BCT.fmtInt(summary.wins),
+                losses: BCT.fmtInt(summary.losses)
+            }));
+
+            setText("kpiWinRate", formatWinRate(summary.winRate));
+            setText("kpiWinRateSub", t("backtest.subWinRate", {
+                wins: BCT.fmtInt(summary.wins),
+                trades: BCT.fmtInt(summary.trades)
+            }));
+
+            setText("kpiProfitFactor", formatPf(summary));
+
+            setText("kpiNetPnl", `${BCT.fmtSol(summary.netPnlSol, 4, true)} SOL`);
+            setText("kpiNetPnlSub", t("backtest.subNet", {
+                initial: initial === null ? "—" : BCT.fmtSol(initial, 2)
+            }));
+
+            setText("kpiExpectancy", `${BCT.fmtSol(summary.expectancySol, 4, true)} SOL`,
+                `kpi-value ${BCT.signedClass(summary.expectancySol)}`);
+
+            const dd = numeric(summary.maxDrawdownPct);
+            setText("kpiMaxDd", dd === null ? "—" : BCT.fmtPct(dd, 2),
+                `kpi-value ${dd !== null && dd > 0 ? "neg" : ""}`);
+
+            setText("kpiAvgWin", `${BCT.fmtSol(summary.avgWinSol, 4, true)} SOL`,
+                `kpi-value ${BCT.signedClass(summary.avgWinSol)}`);
+            setText("kpiAvgWinSub", t("backtest.subWins", { wins: BCT.fmtInt(summary.wins) }));
+
+            setText("kpiAvgLoss", `${BCT.fmtSol(summary.avgLossSol, 4, true)} SOL`,
+                `kpi-value ${BCT.signedClass(summary.avgLossSol)}`);
+            setText("kpiAvgLossSub", t("backtest.subLosses", { losses: BCT.fmtInt(summary.losses) }));
+        }
+
+        /* ----------------------------------------------------- equity curve */
+        function renderEquityCurve(report) {
+            const host = $("equityChart");
+            const note = $("equityNote");
+            if (!host) return;
+
+            const raw = report && Array.isArray(report.equityCurve) ? report.equityCurve : [];
+            const points = raw.map((point) => ({
+                equity: numeric(point && point.equitySol),
+                at: point && point.closedAt ? String(point.closedAt) : ""
+            })).filter((point) => point.equity !== null);
+
+            if (!points.length) {
+                host.className = "w-full h-full flex items-center justify-center text-[11px] font-mono text-slate-500";
+                host.textContent = t("backtest.equityEmpty");
+                if (note) note.textContent = "—";
+                return;
+            }
+
+            const W = 1000;
+            const H = 260;
+            const padL = 64;
+            const padR = 18;
+            const padT = 18;
+            const padB = 28;
+            const innerW = W - padL - padR;
+            const innerH = H - padT - padB;
+
+            const values = points.map((point) => point.equity);
+            const baseRaw = numeric(report && report.initialSol);
+            const base = baseRaw === null ? values[0] : baseRaw;
+            let lo = Math.min.apply(null, values.concat([base]));
+            let hi = Math.max.apply(null, values.concat([base]));
+            if (!Number.isFinite(lo) || !Number.isFinite(hi)) { lo = 0; hi = 1; }
+            if (hi - lo < 1e-9) {
+                const bump = Math.max(Math.abs(hi) * 0.01, 0.05);
+                lo -= bump;
+                hi += bump;
+            } else {
+                const pad = (hi - lo) * 0.12;
+                lo -= pad;
+                hi += pad;
+            }
+
+            const denom = Math.max(1, points.length - 1);
+            const x = (index) => padL + (index * innerW) / denom;
+            const y = (value) => H - padB - ((value - lo) * innerH) / (hi - lo);
+            const path = points.map((point, index) =>
+                `${index ? "L" : "M"}${x(index).toFixed(1)},${y(point.equity).toFixed(1)}`
+            ).join(" ");
+            const area = points.length > 1
+                ? `${path} L${x(points.length - 1).toFixed(1)},${(H - padB).toFixed(1)} L${x(0).toFixed(1)},${(H - padB).toFixed(1)} Z`
+                : "";
+            const last = values[values.length - 1];
+            const color = last >= base ? "#14F195" : "#fb7185";
+
+            const grid = [0, 1, 2, 3].map((index) => {
+                const gy = padT + (innerH / 3) * index;
+                const gv = hi - ((hi - lo) / 3) * index;
+                return `<line x1="${padL}" x2="${W - padR}" y1="${gy.toFixed(1)}" y2="${gy.toFixed(1)}" stroke="#1E2638" stroke-width="1"/>` +
+                    `<text x="${padL - 8}" y="${(gy + 3).toFixed(1)}" fill="#64748b" font-size="10" text-anchor="end" font-family="JetBrains Mono">${esc(gv.toFixed(3))}</text>`;
+            }).join("");
+
+            const dotMarkup = points.length <= 120
+                ? points.map((point, index) =>
+                    `<circle cx="${x(index).toFixed(1)}" cy="${y(point.equity).toFixed(1)}" r="3" fill="${color}" stroke="#0B0E14" stroke-width="1.3">` +
+                    `<title>${esc(`${formatTime(point.at)} · ${BCT.fmtSol(point.equity, 4)} SOL`)}</title></circle>`
+                ).join("")
+                : `<circle cx="${x(points.length - 1).toFixed(1)}" cy="${y(last).toFixed(1)}" r="3.2" fill="${color}" stroke="#0B0E14" stroke-width="1.3"/>`;
+
+            const startLabel = formatTime(points[0].at);
+            const endLabel = formatTime(points[points.length - 1].at);
+
+            host.className = "w-full h-full";
+            host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="w-full h-full" role="img" aria-label="equity curve">` +
+                `<defs><linearGradient id="btEqFill" x1="0" y1="0" x2="0" y2="1">` +
+                `<stop offset="0%" stop-color="${color}" stop-opacity="0.22"/>` +
+                `<stop offset="100%" stop-color="${color}" stop-opacity="0"/>` +
+                `</linearGradient></defs>` +
+                grid +
+                `<line x1="${padL}" x2="${W - padR}" y1="${y(base).toFixed(1)}" y2="${y(base).toFixed(1)}" stroke="#475569" stroke-dasharray="4 4" stroke-width="1"/>` +
+                (area ? `<path d="${area}" fill="url(#btEqFill)"/>` : "") +
+                `<path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>` +
+                dotMarkup +
+                `<text x="${padL}" y="${H - 8}" fill="#64748b" font-size="10" font-family="JetBrains Mono">${esc(startLabel)}</text>` +
+                `<text x="${W - padR}" y="${H - 8}" fill="#64748b" font-size="10" text-anchor="end" font-family="JetBrains Mono">${esc(endLabel)}</text>` +
+                `</svg>`;
+
+            if (note) {
+                const net = last - base;
+                note.textContent = t("backtest.equityNote", {
+                    n: BCT.fmtInt(points.length),
+                    last: BCT.fmtSol(last, 4),
+                    net: `${net > 0 ? "+" : ""}${BCT.fmtSol(net, 4)}`
+                });
+            }
+        }
+
+        /* --------------------------------------------------------- daily PnL */
+        function renderDailyPnl(report) {
+            const host = $("dailyChart");
+            if (!host) return;
+
+            const source = (report && report.dailyPnl) || {};
+            const entries = Object.keys(source)
+                .filter((day) => numeric(source[day]) !== null)
+                .sort()
+                .slice(-30)
+                .map((day) => [day, numeric(source[day])]);
+
+            if (!entries.length) {
+                host.className = "w-full h-full flex items-center justify-center text-[11px] font-mono text-slate-500";
+                host.textContent = t("backtest.dailyEmpty");
+                return;
+            }
+
+            const W = 1000;
+            const H = 220;
+            const padL = 18;
+            const padR = 18;
+            const padT = 14;
+            const padB = 26;
+            const innerW = W - padL - padR;
+            const innerH = H - padT - padB;
+            const values = entries.map(([, value]) => value);
+            const maxAbs = Math.max.apply(null, values.map((value) => Math.abs(value)));
+            const scale = maxAbs > 1e-9 ? maxAbs : 1;
+            const mid = padT + innerH / 2;
+            const slot = innerW / entries.length;
+            const barW = Math.min(64, Math.max(3, slot - 4));
+
+            const bars = entries.map(([day, value], index) => {
+                const height = value === 0 ? 1.5 : Math.max(1.5, (Math.abs(value) / scale) * (innerH / 2));
+                const bx = padL + index * slot + (slot - barW) / 2;
+                const by = value >= 0 ? mid - height : mid;
+                const fill = value >= 0 ? "rgba(20,241,149,0.85)" : "rgba(251,113,133,0.85)";
+                return `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${height.toFixed(1)}" rx="1.5" fill="${fill}">` +
+                    `<title>${esc(`${day} · ${value >= 0 ? "+" : ""}${value.toFixed(4)} SOL`)}</title></rect>`;
+            }).join("");
+
+            const firstDay = String(entries[0][0]).slice(5);
+            const lastDay = String(entries[entries.length - 1][0]).slice(5);
+
+            host.className = "w-full h-full";
+            host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="w-full h-full" role="img" aria-label="daily pnl">` +
+                `<line x1="${padL}" x2="${W - padR}" y1="${mid.toFixed(1)}" y2="${mid.toFixed(1)}" stroke="#1E2638" stroke-width="1"/>` +
+                bars +
+                `<text x="${padL}" y="${H - 6}" fill="#64748b" font-size="9" font-family="JetBrains Mono">${esc(firstDay)}</text>` +
+                `<text x="${W - padR}" y="${H - 6}" fill="#64748b" font-size="9" text-anchor="end" font-family="JetBrains Mono">${esc(lastDay)}</text>` +
+                `</svg>`;
+        }
+
+        /* ------------------------------------------------------- breakdowns */
+        function renderGroupTable(bodyId, groups) {
+            const body = $(bodyId);
+            if (!body) return;
+            const entries = Object.keys(groups || {})
+                .map((label) => [label, groups[label]])
+                .filter(([, stats]) => stats && typeof stats === "object");
+
+            if (!entries.length) {
+                body.innerHTML = `<tr><td colspan="4" class="muted" style="text-align:center">${esc(t("common.empty"))}</td></tr>`;
+                return;
+            }
+
+            entries.sort((a, b) => (numeric(b[1].trades) || 0) - (numeric(a[1].trades) || 0));
+
+            body.innerHTML = entries.map(([label, stats]) => {
+                const wr = numeric(stats.winRate);
+                return `<tr>` +
+                    `<td>${esc(label || "—")}</td>` +
+                    `<td class="num">${BCT.fmtInt(stats.trades)}</td>` +
+                    `<td class="num">${wr === null ? "—" : BCT.fmtPct(wr * 100, 1)}</td>` +
+                    `<td class="num ${BCT.signedClass(stats.netPnlSol)}">${BCT.fmtSol(stats.netPnlSol, 4, true)}</td>` +
+                    `</tr>`;
+            }).join("");
+        }
+
+        function renderBreakdowns(report) {
+            report = report || {};
+            renderGroupTable("exitBody", report.byExitReason);
+            renderGroupTable("sourceBody", report.bySource);
+            renderGroupTable("convictionBody", report.byConviction);
+        }
+
+        /* --------------------------------------------------- best / worst */
+        function renderExtreme(id, trade) {
+            const host = $(id);
+            if (!host) return;
+            if (!trade) {
+                host.innerHTML = `<div class="empty-state">${esc(t("backtest.noTrade"))}</div>`;
+                return;
+            }
+            const closed = formatTime(trade.closedAt);
+            const source = trade.source ? String(trade.source) : "—";
+            const conviction = trade.conviction ? String(trade.conviction) : "—";
+            host.innerHTML = `<div class="flex flex-wrap items-start justify-between gap-2">` +
+                `<div class="min-w-0">` +
+                `<div class="text-lg font-bold text-white truncate">${esc(trade.symbol || "—")}</div>` +
+                `<div class="tiny-mono mt-0.5">${esc(closed)}</div>` +
+                `</div>` +
+                `<span class="pill">${esc(trade.exitReason || "—")}</span>` +
+                `</div>` +
+                `<div class="kpi-value mt-3 ${BCT.signedClass(trade.pnlSol)}">${BCT.fmtSol(trade.pnlSol, 4, true)} <small>SOL</small></div>` +
+                `<div class="kpi-sub mt-1">${esc(source)} · ${esc(conviction)}</div>`;
+        }
+
+        /* ------------------------------------------------------ recent trades */
+        function renderTrades(report) {
+            const body = $("tradesBody");
+            if (!body) return;
+            const raw = report && Array.isArray(report.trades) ? report.trades : [];
+            const trades = raw.slice().reverse().slice(0, 50);
+
+            if (!trades.length) {
+                body.innerHTML = `<tr><td colspan="7" class="muted" style="text-align:center">${esc(t("backtest.noTrade"))}</td></tr>`;
+                return;
+            }
+
+            body.innerHTML = trades.map((trade) => `<tr>` +
+                `<td class="muted">${esc(formatTime(trade.closedAt))}</td>` +
+                `<td>${esc(trade.symbol || "—")}</td>` +
+                `<td class="muted">${esc(trade.source || "—")}</td>` +
+                `<td class="muted">${esc(trade.conviction || "—")}</td>` +
+                `<td class="muted">${esc(trade.exitReason || "—")}</td>` +
+                `<td class="num ${BCT.signedClass(trade.pnlSol)}">${BCT.fmtSol(trade.pnlSol, 4, true)}</td>` +
+                `<td class="num muted">${BCT.fmtSol(trade.equitySol, 4)}</td>` +
+                `</tr>`).join("");
+        }
+
+        /* ------------------------------------------------------------ refresh */
+        async function refresh() {
+            const results = await Promise.all([
+                BCT.api("/api/backtest"),
+                BCT.api("/api/state")
+            ]);
+            const report = (results[0] && results[0].report) || {};
+            const state = results[1] || {};
+
+            renderMeta(state, report);
+            renderKpis(report);
+            renderEquityCurve(report);
+            renderDailyPnl(report);
+            renderBreakdowns(report);
+            renderExtreme("bestTrade", report.bestTrade);
+            renderExtreme("worstTrade", report.worstTrade);
+            renderTrades(report);
+
+            setText("authLabel", BCT.token() ? "token" : "off");
+            setText("footerSync", new Date().toLocaleTimeString());
+            BCT.setConnection(true);
+        }
+
+        const recomputeBtn = $("recomputeBtn");
+        if (recomputeBtn) {
+            recomputeBtn.addEventListener("click", async () => {
+                const label = recomputeBtn.querySelector("span");
+                recomputeBtn.disabled = true;
+                if (label) label.textContent = t("backtest.recomputeBusy");
+                try {
+                    await refresh();
+                    BCT.toast(t("backtest.toastDone"));
+                } catch (err) {
+                    BCT.toast(err.message || t("backtest.toastFail"));
+                } finally {
+                    if (label) label.textContent = t("backtest.recompute");
+                    recomputeBtn.disabled = false;
+                }
+            });
+        }
+
+        BCT.init({ page: "backtest", i18n: I18N, onRefresh: refresh, poll: 15000 });
+    })();
+    </script>
+</body>
+</html>

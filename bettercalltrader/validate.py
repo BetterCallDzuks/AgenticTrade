@@ -302,10 +302,24 @@ def validate_env(env: Mapping[str, str]) -> List[Issue]:
 
     profile = _raw(env, "STRATEGY_PROFILE")
     if profile and normalize_profile(profile) != profile.strip().lower():
+        # Aliases such as high-risk/degen resolve to a known profile; only warn
+        # when the value is neither a profile nor an alias.
+        from bettercalltrader.strategies import PROFILE_ALIASES
+
+        if profile.strip().lower() not in PROFILE_ALIASES:
+            c.warn(
+                "STRATEGY_PROFILE",
+                f"unknown profile {profile!r}; falling back to 'balanced' "
+                f"(known: {', '.join(sorted(PROFILES))})",
+            )
+        else:
+            profile = PROFILE_ALIASES[profile.strip().lower()]
+    if profile and normalize_profile(profile) == "high_risk":
         c.warn(
             "STRATEGY_PROFILE",
-            f"unknown profile {profile!r}; falling back to 'balanced' "
-            f"(known: {', '.join(sorted(PROFILES))})",
+            "high_risk mode overrides the .env sizing/exit keys (3x trade size, 4 open "
+            "positions, -45% stop, +250% TP1, 20% daily drawdown) and runs without those "
+            "env caps; entry filters are unchanged",
         )
 
     timezone_name = _raw(env, "BOT_TIMEZONE")

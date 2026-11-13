@@ -311,12 +311,30 @@
       </div>
 
       <div class="flex flex-wrap items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-sol-border/60">
-        <nav class="flex items-center gap-1" aria-label="Main">
+        <nav class="flex flex-wrap items-center gap-1" aria-label="Main">
           <a href="/" class="nav-tab" data-nav="command">
             <i class="fa-solid fa-gauge-high"></i><span data-i18n="nav.command">Command Center</span>
           </a>
           <a href="/analytics" class="nav-tab active" data-nav="analytics" aria-current="page">
             <i class="fa-solid fa-chart-line"></i><span data-i18n="nav.analytics">Analytics</span>
+          </a>
+          <a href="/risk" class="nav-tab" data-nav="risk">
+            <i class="fa-solid fa-shield-halved"></i><span data-i18n="nav.risk">Risk desk</span>
+          </a>
+          <a href="/wallets" class="nav-tab" data-nav="wallets">
+            <i class="fa-solid fa-wallet"></i><span data-i18n="nav.wallets">Wallets</span>
+          </a>
+          <a href="/backtest" class="nav-tab" data-nav="backtest">
+            <i class="fa-solid fa-flask-vial"></i><span data-i18n="nav.backtest">Backtest lab</span>
+          </a>
+          <a href="/ml" class="nav-tab" data-nav="ml">
+            <i class="fa-solid fa-brain"></i><span data-i18n="nav.ml">ML / AI lab</span>
+          </a>
+          <a href="/system" class="nav-tab" data-nav="system">
+            <i class="fa-solid fa-server"></i><span data-i18n="nav.system">System / ops</span>
+          </a>
+          <a href="/settings" class="nav-tab" data-nav="settings">
+            <i class="fa-solid fa-sliders"></i><span data-i18n="nav.settings">Settings</span>
           </a>
         </nav>
         <div class="flex flex-wrap items-center gap-2">
@@ -538,6 +556,12 @@
       "app.tagline": "Solana paper trading · risk engine, forenzika i analitika u jednom konzolu",
       "nav.command": "Command Center",
       "nav.analytics": "Analitika",
+      "nav.risk": "Risk desk",
+      "nav.wallets": "Novčanici",
+      "nav.backtest": "Backtest lab",
+      "nav.ml": "ML / AI lab",
+      "nav.system": "Sustav / ops",
+      "nav.settings": "Postavke",
       "action.token": "Token",
       "action.refresh": "Osvježi",
       "action.train": "Treniraj model",
@@ -628,6 +652,12 @@
       "app.tagline": "Solana paper trading · risk engine, forensics and analytics in one console",
       "nav.command": "Command Center",
       "nav.analytics": "Analytics",
+      "nav.risk": "Risk desk",
+      "nav.wallets": "Wallets",
+      "nav.backtest": "Backtest lab",
+      "nav.ml": "ML / AI lab",
+      "nav.system": "System / ops",
+      "nav.settings": "Settings",
       "action.token": "Token",
       "action.refresh": "Refresh",
       "action.train": "Train model",
@@ -779,9 +809,10 @@
 
   // Keep the shared nav working when the file is opened directly (file://).
   if (window.location.protocol === "file:") {
+    const filePages = { command: "command_center.html", analytics: "analytics.html" };
     document.querySelectorAll("[data-nav]").forEach((link) => {
       const page = link.dataset.nav;
-      link.href = page === "analytics" ? "analytics.html" : "command_center.html";
+      link.href = filePages[page] || `${page}.html`;
     });
   }
 

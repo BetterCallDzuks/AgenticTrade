@@ -6,8 +6,68 @@ All notable changes to BetterCallTrader are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Six new console windows.** Besides `/` (Command Center) and `/analytics`,
+  the bot now serves six separate pages, all reachable from the shared top nav:
+  - `/risk` — Risk desk: open exposure, HHI concentration, VaR95 and expected
+    shortfall, max drawdown, circuit-breaker state (trips, daily stops/trades,
+    daily PnL, reset button), entry gate and last blocked entry, sizing by
+    conviction, concentration bars, the effective strategy profile and
+    wallet-quality / source-analytics tables.
+  - `/wallets` — balance, locked SOL, realized PnL and win-rate KPIs; add /
+    remove tracked whales; a `simulate whale buy` test action; wallet-quality
+    scores; open positions with entry/current price and remaining size.
+  - `/backtest` — realized-trade replay from SQLite: summary KPIs, equity curve
+    and 30-day daily-PnL SVG charts, breakdowns by exit reason / source /
+    conviction, best and worst trade, recent trades.
+  - `/ml` — advisory model state and contract versions, one-click training,
+    feature weights, per-mint probability lookup and the resolved LLM provider.
+  - `/system` — readiness checks from `/ready`, runtime/config summary,
+    `/api/metrics` tiles, raw Prometheus text with copy, and the audit trail.
+  - `/settings` — every runtime knob grouped by area (sizing, entry filters,
+    exits, risk limits, flow/whale exits, paper costs, wallet quality,
+    execution), the strategy-profile selector, dirty-state save/discard, and a
+    read-only panel for live trading, Telegram, timezone, cost/exit models and
+    the LLM.
+- **Shared console asset layer.** `webui/console.js` injects the header and
+  eight-item nav into every page, owns the HR/EN switch, dashboard-token
+  storage, the `api()` helper (with 401/error handling), formatters, toasts and
+  the polling runtime, which pauses while the tab is hidden. Settings opts out
+  of polling and warns on `beforeunload` while it has unsaved edits.
+  `webui/theme.css` holds the console theme and components. New pages only
+  define their own panels and `I18N` dictionaries.
+- The two existing pages (`command_center.html`, `analytics.html`) now render
+  the full nav and gained `nav.*` translations for all eight windows; the
+  `file://` nav fallback maps every page to its local `.html` file.
+
 ### Changed
 
+- **Strategy profile selector in the Command Center.** The risk panel now has a
+  `conservative` / `balanced` / `aggressive` / `high_risk` dropdown with a
+  `STANDARD` / `HIGH RISK` badge. Selecting a profile applies its sizing and exit
+  numbers immediately (overriding a pinned `.env`), logs a `RISK MGR` line,
+  refreshes the config hash and is persisted in the `bot_state` table, so the
+  choice survives a restart and wins over `STRATEGY_PROFILE` (now only the
+  startup default). `POST /api/config {"strategyProfile": "..."}` exposes the
+  same switch and returns `400` for an unknown profile; `/api/state` reports
+  `config.strategyProfile` and `config.riskMode`.
+- **High-risk / high-reward mode.** `STRATEGY_PROFILE=high_risk` (aliases
+  `high-risk`, `highrisk`, `degen`) is a new opt-in risk mode: 1.5 SOL per trade,
+  4 concurrent positions, -45% stop, +250% TP1 on 35% of the position, a 35%/25%
+  trailing stop armed at +60% and looser daily limits (5 stops, 25 trades, 20%
+  drawdown). Unlike the other profiles it **overrides** the `.env` sizing/exit
+  keys — a pinned balanced `.env` would otherwise neutralise the mode — while
+  entry filters (liquidity, holders, volume, mint/freeze) are untouched. Startup
+  prints a risk banner, `/api/state` reports `strategyProfile.riskMode = "high"`
+  and the doctor warns that the env keys are overridden. The profile also gained
+  `TP1_FRACTION`, `TRAILING_ARM_GAIN_PCT`, `MIN_SECONDS_BETWEEN_ENTRIES` and
+  `STOP_LOSS_COOLDOWN_SEC` knobs.
+- **The bot now runs until it is stopped.** `run_research_pipeline()` defaults to
+  `cycles=None`, so once started the scan loop is uncapped and keeps cycling
+  (20s apart) until `Ctrl+C` / `SIGTERM`. Previously a run stopped by itself after
+  100 cycles (~35 minutes) and had to be restarted for another session. Pass a
+  positive integer — e.g. `run_research_pipeline(cycles=100)` — to cap a run.
 - **Project renamed** from AgenticTrade to BetterCallTrader. The Python package is
   now `bettercalltrader` (was `agentictrade`), so module entry points are
   `python -m bettercalltrader.doctor`, `bettercalltrader.ohlcv`, and so on.
@@ -30,6 +90,13 @@ All notable changes to BetterCallTrader are documented here. The format follows
 
 ### Fixed
 
+- **HTML pages now actually send `Content-Security-Policy`.** The middleware
+  only attached the policy when a response already had `Content-Type:
+  text/html`, but aiohttp's `FileResponse` guesses the type during
+  `prepare()` — after middleware runs — so no page (including `/` and
+  `/analytics`) ever received a CSP. Page responses are now served with an
+  explicit `text/html; charset=utf-8`, and the policy is applied consistently to
+  all eight windows.
 - **Docker Compose state layout.** Mounting individual files made Docker create
   missing host paths as *directories*, which broke SQLite and logging on a fresh
   checkout. The container now keeps all mutable state in `/app/data`

@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="hr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetterCallTrader — System / ops</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: { sol: { purple: '#9945FF', green: '#14F195', dark: '#0B0E14', card: '#131822', border: '#1E2638' } }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="webui/theme.css">
+    <script src="webui/console.js"></script>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-sol-purple selection:text-white">
+
+    <header id="bctHeader" class="glass-panel sticky top-0 z-40 sol-gradient-border"></header>
+
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 space-y-5">
+
+        <!-- STATUS HERO -->
+        <section class="glass-panel rounded-xl p-4 lg:p-5 fade-in">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span id="heroBadge" class="pill"><i class="dot"></i><span id="heroBadgeText">—</span></span>
+                        <span class="pill"><i class="fa-solid fa-code-branch"></i><span data-i18n="system.versionLabel"></span>: <span id="heroVersion" class="text-slate-300">—</span></span>
+                    </div>
+                    <h2 class="mt-3 text-lg lg:text-xl font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-server text-sol-purple"></i><span data-i18n="system.heroTitle"></span>
+                    </h2>
+                    <p class="text-[11px] text-slate-400 mt-1" data-i18n="system.heroSub"></p>
+                    <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 tiny-mono">
+                        <span><span data-i18n="system.runtimePhase"></span>: <span id="heroPhase" class="text-slate-200">—</span></span>
+                        <span><span data-i18n="system.lastUpdate"></span>: <span id="heroUpdated" class="text-slate-200">—</span></span>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500" data-i18n="system.serverTime"></div>
+                    <div id="heroServerTime" class="mt-1 text-sm font-mono text-white">—</div>
+                    <div id="heroServerMs" class="tiny-mono mt-0.5">—</div>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
+                <div class="stat-tile flex items-center justify-between gap-2">
+                    <span class="k" data-i18n="system.pillAi"></span>
+                    <span id="pillAi" class="pill">—</span>
+                </div>
+                <div class="stat-tile flex items-center justify-between gap-2">
+                    <span class="k" data-i18n="system.pillTelegram"></span>
+                    <span id="pillTelegram" class="pill">—</span>
+                </div>
+                <div class="stat-tile flex items-center justify-between gap-2">
+                    <span class="k" data-i18n="system.pillLive"></span>
+                    <span id="pillLive" class="pill">—</span>
+                </div>
+                <div class="stat-tile flex items-center justify-between gap-2">
+                    <span class="k" data-i18n="system.pillAuth"></span>
+                    <span id="pillAuth" class="pill">—</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- KPI STRIP -->
+        <section class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="system.kpiTrades"></span>
+                <div id="kpiTrades" class="kpi-value">—</div>
+                <div id="kpiTradesSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="system.kpiWinRate"></span>
+                <div id="kpiWinRate" class="kpi-value">—</div>
+                <div id="kpiWinRateSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="system.kpiNetPnl"></span>
+                <div id="kpiNetPnl" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="system.kpiNetPnlSub"></div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="system.kpiOpen"></span>
+                <div id="kpiOpen" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="system.kpiOpenSub"></div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="system.kpiBalance"></span>
+                <div id="kpiBalance" class="kpi-value">—</div>
+                <div id="kpiBalanceSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="system.kpiServerTime"></span>
+                <div id="kpiServerTime" class="kpi-value">—</div>
+                <div class="kpi-sub" data-i18n="system.kpiUtcSub"></div>
+            </div>
+        </section>
+
+        <!-- READINESS + RUNTIME CONFIG -->
+        <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+            <div class="xl:col-span-5 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-heart-pulse text-sol-green"></i><span data-i18n="system.readinessTitle"></span></h2>
+                    <span class="panel-note" data-i18n="system.readinessSub"></span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="system.colCheck"></th>
+                                <th class="text-right" data-i18n="system.colResult"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="readyBody">
+                            <tr><td colspan="2" class="muted" style="text-align:center" data-i18n="common.loading"></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="readyNote" class="tiny-mono mt-2">—</div>
+                <div id="readyDbError" class="hidden"></div>
+            </div>
+
+            <div class="xl:col-span-7 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                    <h2 class="section-title"><i class="fa-solid fa-gears text-cyan-300"></i><span data-i18n="system.runtimeTitle"></span></h2>
+                    <span class="panel-note" data-i18n="system.runtimeSub"></span>
+                </div>
+                <div class="row-line">
+                    <span class="label" data-i18n="system.walletAddress"></span>
+                    <span id="rtWallet" class="val" style="white-space:normal;word-break:break-all;max-width:70%">—</span>
+                </div>
+                <div class="grid sm:grid-cols-2 gap-x-5">
+                    <div class="row-line">
+                        <span class="label" data-i18n="system.aiModel"></span>
+                        <span id="rtAiModel" class="val">—</span>
+                    </div>
+                    <div class="row-line">
+                        <span class="label" data-i18n="system.strategy"></span>
+                        <span id="rtStrategy" class="val">—</span>
+                    </div>
+                    <div class="row-line">
+                        <span class="label" data-i18n="system.riskMode"></span>
+                        <span class="val"><span id="rtRiskMode" class="pill">—</span></span>
+                    </div>
+                    <div class="row-line">
+                        <span class="label" data-i18n="system.timezone"></span>
+                        <span id="rtTimezone" class="val">—</span>
+                    </div>
+                    <div class="row-line">
+                        <span class="label" data-i18n="system.configHash"></span>
+                        <span id="rtConfigHash" class="val">—</span>
+                    </div>
+                    <div class="row-line">
+                        <span class="label" data-i18n="system.rateLimit"></span>
+                        <span id="rtRateLimit" class="val">—</span>
+                    </div>
+                </div>
+                <div class="mt-3 pt-3 border-t border-sol-border">
+                    <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" data-i18n="system.priceCache"></div>
+                    <div id="priceCacheRows"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PORTFOLIO METRICS -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                <h2 class="section-title"><i class="fa-solid fa-chart-simple text-sol-purple"></i><span data-i18n="system.metricsTitle"></span></h2>
+                <span id="metricsSchema" class="panel-note">—</span>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
+                <div class="stat-tile"><div class="k" data-i18n="system.metricTotal"></div><div id="metricTotal" class="v">—</div></div>
+                <div class="stat-tile"><div class="k" data-i18n="system.metricWins"></div><div id="metricWins" class="v">—</div></div>
+                <div class="stat-tile"><div class="k" data-i18n="system.metricWinRate"></div><div id="metricWinRate" class="v">—</div></div>
+                <div class="stat-tile"><div class="k" data-i18n="system.metricNetPnl"></div><div id="metricNetPnl" class="v">—</div></div>
+                <div class="stat-tile"><div class="k" data-i18n="system.metricOpen"></div><div id="metricOpen" class="v">—</div></div>
+            </div>
+        </section>
+
+        <!-- PROMETHEUS TEXT EXPORT -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                <h2 class="section-title"><i class="fa-solid fa-fire text-amber-400"></i><span data-i18n="system.promTitle"></span></h2>
+                <div class="flex items-center gap-2">
+                    <span id="promMeta" class="panel-note">—</span>
+                    <button type="button" id="copyPromBtn" class="btn" disabled>
+                        <i class="fa-solid fa-copy"></i><span data-i18n="system.copy"></span>
+                    </button>
+                </div>
+            </div>
+            <pre id="promText" class="glass-inset rounded-lg p-3 text-[10px] font-mono leading-relaxed text-slate-300 overflow-auto whitespace-pre" style="max-height:320px" data-i18n="common.loading"></pre>
+            <p class="text-[10px] font-mono text-slate-500 mt-2" data-i18n="system.promNote"></p>
+        </section>
+
+        <!-- AUDIT TRAIL -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                <h2 class="section-title"><i class="fa-solid fa-clipboard-list text-sol-green"></i><span data-i18n="system.auditTitle"></span></h2>
+                <span id="auditMeta" class="panel-note" data-i18n="system.auditSub"></span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th data-i18n="system.colTime"></th>
+                            <th data-i18n="system.colEvent"></th>
+                            <th data-i18n="system.colDetails"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="auditBody">
+                        <tr><td colspan="3" class="muted" style="text-align:center" data-i18n="common.loading"></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-sol-border/70 text-[10px] font-mono uppercase tracking-wider text-slate-500">
+            <span data-i18n="footer.paper"></span>
+            <span><span data-i18n="footer.auth"></span>: <span id="authLabel">off</span> · <span data-i18n="footer.sync"></span>: <span id="footerSync">—</span></span>
+        </footer>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+    (function () {
+        "use strict";
+
+        const I18N = {
+            hr: {
+                "system.heroTitle": "Status sustava",
+                "system.heroSub": "Spremnost, runtime konfiguracija i izvoz metrika na jednom mjestu",
+                "system.stateLive": "AKTIVNO",
+                "system.stateDegraded": "DEGRADIRANO",
+                "system.stateOffline": "NEDOSTUPNO",
+                "system.versionLabel": "Verzija",
+                "system.runtimePhase": "Faza rada",
+                "system.lastUpdate": "Zadnje osvježenje",
+                "system.serverTime": "Vrijeme poslužitelja (UTC)",
+                "system.pillAi": "AI",
+                "system.pillTelegram": "Telegram",
+                "system.pillLive": "Live trgovanje",
+                "system.pillAuth": "Autentikacija",
+                "system.on": "UKLJ",
+                "system.off": "ISKLJ",
+                "system.kpiTrades": "Ukupno trejdova",
+                "system.kpiWinsSub": "{wins} pobjedničkih",
+                "system.kpiWinRate": "Win rate",
+                "system.kpiRealizedSub": "{n} realiziranih",
+                "system.kpiNetPnl": "Neto PnL",
+                "system.kpiNetPnlSub": "realizirano · SOL",
+                "system.kpiOpen": "Otvorene pozicije",
+                "system.kpiOpenSub": "aktivno u portfelju",
+                "system.kpiBalance": "Saldo novčanika",
+                "system.kpiLockedSub": "zaključano {amount} SOL",
+                "system.kpiServerTime": "Vrijeme poslužitelja",
+                "system.kpiUtcSub": "UTC",
+                "system.readinessTitle": "Provjere spremnosti",
+                "system.readinessSub": "/ready · 200 = spremno",
+                "system.colCheck": "Provjera",
+                "system.colResult": "Rezultat",
+                "system.checkDatabase": "Baza podataka",
+                "system.checkAi": "AI model",
+                "system.checkTelegram": "Telegram",
+                "system.checkLive": "Live trgovanje",
+                "system.checkAuth": "Autentikacija",
+                "system.ok": "OK",
+                "system.fail": "FAIL",
+                "system.readyEmpty": "Nema provjera",
+                "system.readyUnavailable": "Provjera spremnosti nije dostupna",
+                "system.dbError": "Greška baze",
+                "system.runtimeTitle": "Runtime i konfiguracija",
+                "system.runtimeSub": "env · profil · cache",
+                "system.walletAddress": "Adresa novčanika",
+                "system.aiModel": "AI model",
+                "system.strategy": "Profil strategije",
+                "system.riskMode": "Način rizika",
+                "system.riskHigh": "VISOKI RIZIK",
+                "system.riskStandard": "STANDARD",
+                "system.timezone": "Vremenska zona",
+                "system.configHash": "Config hash",
+                "system.rateLimit": "Ograničenje / min",
+                "system.priceCache": "Statistika price cachea",
+                "system.cacheEmpty": "Cache još nema zapisa",
+                "system.cacheEntries": "Unosi",
+                "system.cacheHits": "Pogodci",
+                "system.cacheMisses": "Promašaji",
+                "system.cacheHitRate": "Hit rate",
+                "system.cacheTtl": "TTL (s)",
+                "system.metricsTitle": "Metrike portfelja",
+                "system.metricTotal": "Ukupno trejdova",
+                "system.metricWins": "Pobjednički",
+                "system.metricWinRate": "Win rate",
+                "system.metricNetPnl": "Neto PnL",
+                "system.metricOpen": "Otvorene pozicije",
+                "system.schemaLine": "schema {version}",
+                "system.promTitle": "Prometheus izvoz",
+                "system.promNote": "Endpoint /metrics poštuje DASHBOARD_TOKEN.",
+                "system.copy": "Kopiraj",
+                "system.copied": "Kopirano",
+                "system.copyFail": "Kopiranje nije uspjelo",
+                "system.promEmpty": "Nema metrika",
+                "system.promError": "Nije moguće dohvatiti /metrics",
+                "system.promMeta": "{lines} linija · {bytes} B",
+                "system.auditTitle": "Audit trail",
+                "system.auditSub": "najnoviji prvi",
+                "system.colTime": "Vrijeme",
+                "system.colEvent": "Događaj",
+                "system.colDetails": "Detalji",
+                "system.auditEmpty": "Nema audit događaja",
+                "system.auditUnavailable": "Audit nije dostupan",
+                "system.auditCount": "{n} događaja",
+                "system.phaseLine": "{phase} · ciklus {cycle}"
+            },
+            en: {
+                "system.heroTitle": "System status",
+                "system.heroSub": "Readiness, runtime configuration and metrics export in one place",
+                "system.stateLive": "LIVE",
+                "system.stateDegraded": "DEGRADED",
+                "system.stateOffline": "OFFLINE",
+                "system.versionLabel": "Version",
+                "system.runtimePhase": "Runtime phase",
+                "system.lastUpdate": "Last update",
+                "system.serverTime": "Server time (UTC)",
+                "system.pillAi": "AI",
+                "system.pillTelegram": "Telegram",
+                "system.pillLive": "Live trading",
+                "system.pillAuth": "Authentication",
+                "system.on": "ON",
+                "system.off": "OFF",
+                "system.kpiTrades": "Total trades",
+                "system.kpiWinsSub": "{wins} winning",
+                "system.kpiWinRate": "Win rate",
+                "system.kpiRealizedSub": "{n} realized",
+                "system.kpiNetPnl": "Net PnL",
+                "system.kpiNetPnlSub": "realized · SOL",
+                "system.kpiOpen": "Open positions",
+                "system.kpiOpenSub": "active in portfolio",
+                "system.kpiBalance": "Wallet balance",
+                "system.kpiLockedSub": "locked {amount} SOL",
+                "system.kpiServerTime": "Server time",
+                "system.kpiUtcSub": "UTC",
+                "system.readinessTitle": "Readiness checks",
+                "system.readinessSub": "/ready · 200 = ready",
+                "system.colCheck": "Check",
+                "system.colResult": "Result",
+                "system.checkDatabase": "Database",
+                "system.checkAi": "AI model",
+                "system.checkTelegram": "Telegram",
+                "system.checkLive": "Live trading",
+                "system.checkAuth": "Authentication",
+                "system.ok": "OK",
+                "system.fail": "FAIL",
+                "system.readyEmpty": "No checks",
+                "system.readyUnavailable": "Readiness check unavailable",
+                "system.dbError": "Database error",
+                "system.runtimeTitle": "Runtime & configuration",
+                "system.runtimeSub": "env · profile · cache",
+                "system.walletAddress": "Wallet address",
+                "system.aiModel": "AI model",
+                "system.strategy": "Strategy profile",
+                "system.riskMode": "Risk mode",
+                "system.riskHigh": "HIGH RISK",
+                "system.riskStandard": "STANDARD",
+                "system.timezone": "Timezone",
+                "system.configHash": "Config hash",
+                "system.rateLimit": "Rate limit / min",
+                "system.priceCache": "Price cache stats",
+                "system.cacheEmpty": "Cache has no entries yet",
+                "system.cacheEntries": "Entries",
+                "system.cacheHits": "Hits",
+                "system.cacheMisses": "Misses",
+                "system.cacheHitRate": "Hit rate",
+                "system.cacheTtl": "TTL (s)",
+                "system.metricsTitle": "Portfolio metrics",
+                "system.metricTotal": "Total trades",
+                "system.metricWins": "Winning",
+                "system.metricWinRate": "Win rate",
+                "system.metricNetPnl": "Net PnL",
+                "system.metricOpen": "Open positions",
+                "system.schemaLine": "schema {version}",
+                "system.promTitle": "Prometheus export",
+                "system.promNote": "The /metrics endpoint honors DASHBOARD_TOKEN.",
+                "system.copy": "Copy",
+                "system.copied": "Copied",
+                "system.copyFail": "Copy failed",
+                "system.promEmpty": "No metrics",
+                "system.promError": "Could not fetch /metrics",
+                "system.promMeta": "{lines} lines · {bytes} B",
+                "system.auditTitle": "Audit trail",
+                "system.auditSub": "newest first",
+                "system.colTime": "Time",
+                "system.colEvent": "Event",
+                "system.colDetails": "Details",
+                "system.auditEmpty": "No audit events",
+                "system.auditUnavailable": "Audit unavailable",
+                "system.auditCount": "{n} events",
+                "system.phaseLine": "{phase} · cycle {cycle}"
+            }
+        };
+
+        const $ = (id) => document.getElementById(id);
+        const esc = (value) => BCT.escapeHtml(value);
+        const CHECKS = [
+            ["database", "system.checkDatabase"],
+            ["ai", "system.checkAi"],
+            ["telegram", "system.checkTelegram"],
+            ["liveTradingEnabled", "system.checkLive"],
+            ["authEnabled", "system.checkAuth"]
+        ];
+        const CACHE_LABELS = {
+            entries: "system.cacheEntries",
+            hits: "system.cacheHits",
+            misses: "system.cacheMisses",
+            hitRate: "system.cacheHitRate",
+            ttlSec: "system.cacheTtl"
+        };
+
+        let prometheusText = "";
+        let prometheusAuthNotified = false;
+
+        /* ------------------------------------------------------------ helpers */
+        function numberOf(value) {
+            if (value === undefined || value === null || value === "") return null;
+            const n = Number(value);
+            return Number.isFinite(n) ? n : null;
+        }
+
+        function firstNum() {
+            for (let i = 0; i < arguments.length; i += 1) {
+                const value = arguments[i];
+                if (value !== undefined && value !== null && Number.isFinite(Number(value))) return Number(value);
+            }
+            return null;
+        }
+
+        function firstNonEmpty() {
+            for (let i = 0; i < arguments.length; i += 1) {
+                const value = arguments[i];
+                if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+            }
+            return null;
+        }
+
+        function toBool(value) {
+            if (typeof value === "boolean") return value;
+            if (value === 1) return true;
+            if (value === 0) return false;
+            return null;
+        }
+
+        function setText(id, value) {
+            const node = $(id);
+            if (!node) return;
+            node.textContent = (value === undefined || value === null || value === "") ? "—" : String(value);
+        }
+
+        function setPill(id, value) {
+            const node = $(id);
+            if (!node) return;
+            if (value === true) {
+                node.className = "pill live";
+                node.textContent = BCT.t("system.on");
+            } else if (value === false) {
+                node.className = "pill offline";
+                node.textContent = BCT.t("system.off");
+            } else {
+                node.className = "pill";
+                node.textContent = "—";
+            }
+        }
+
+        function rowLine(label, value) {
+            return `<div class="row-line"><span class="label">${esc(label)}</span><span class="val">${esc(value)}</span></div>`;
+        }
+
+        function fmtUtc(value) {
+            if (value === undefined || value === null || value === "") return "—";
+            const text = String(value);
+            const match = text.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/);
+            return match ? `${match[1]} ${match[2]} UTC` : text;
+        }
+
+        function utcClock(value) {
+            if (value === undefined || value === null || value === "") return { time: "—", date: "—" };
+            const text = String(value);
+            const match = text.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/);
+            if (match) return { time: match[2], date: match[1] };
+            return { time: text, date: "—" };
+        }
+
+        function timeOnly(value) {
+            if (value === undefined || value === null || value === "") return "—";
+            const text = String(value);
+            const match = text.match(/(\d{2}:\d{2}:\d{2})/);
+            if (match) return match[1];
+            const epoch = numberOf(text);
+            if (epoch !== null && epoch > 1000000000000) {
+                try { return new Date(epoch).toISOString().slice(11, 19); } catch (err) { return "—"; }
+            }
+            return text.slice(0, 19);
+        }
+
+        function cacheValue(key, value) {
+            if (value === undefined || value === null) return "—";
+            const n = numberOf(value);
+            if (key === "hitRate" && n !== null) return BCT.fmtPct(n * 100, 1);
+            if (n !== null && Number.isInteger(n)) return BCT.fmtInt(n);
+            return String(value);
+        }
+
+        function cacheLabel(key) {
+            const i18nKey = CACHE_LABELS[key];
+            return i18nKey ? BCT.t(i18nKey) : key;
+        }
+
+        function safeRender(label, fn) {
+            try {
+                fn();
+            } catch (err) {
+                if (window.console && console.warn) console.warn(`[system] ${label}`, err);
+            }
+        }
+
+        /* ------------------------------------------------------------ loaders */
+        async function loadReady() {
+            try {
+                const response = await fetch("/ready", { headers: BCT.authHeaders(), cache: "no-store" });
+                let body = null;
+                try { body = await response.json(); } catch (err) { body = null; }
+                if (response.status === 401) return { ok: false, status: 401, unauthorized: true, body: body || {} };
+                return { ok: response.ok, status: response.status, unauthorized: false, body: body || {} };
+            } catch (err) {
+                return { ok: false, status: 0, unauthorized: false, body: {}, error: err };
+            }
+        }
+
+        async function loadPrometheus() {
+            try {
+                const response = await fetch("/metrics", { headers: BCT.authHeaders(), cache: "no-store" });
+                if (response.status === 401) return { unauthorized: true, text: "" };
+                if (!response.ok) return { error: `HTTP ${response.status}`, text: "" };
+                return { text: await response.text() };
+            } catch (err) {
+                return { error: (err && err.message) || "network", text: "" };
+            }
+        }
+
+        /* ------------------------------------------------------------ renderers */
+        function renderHero(health, state, ready) {
+            const healthOk = Boolean(health && health.ok);
+            const stateOk = Boolean(state);
+            const readyBody = ready && ready.body ? ready.body : null;
+            const readyOk = Boolean(readyBody && readyBody.ok);
+            const level = healthOk ? (readyOk ? "live" : "degraded") : (stateOk ? "degraded" : "offline");
+            const badge = $("heroBadge");
+            if (badge) {
+                badge.className = "pill " + (level === "live" ? "live" : (level === "degraded" ? "warn" : "offline"));
+            }
+            setText("heroBadgeText", BCT.t(
+                level === "live" ? "system.stateLive" : (level === "degraded" ? "system.stateDegraded" : "system.stateOffline")
+            ));
+            setText("heroVersion", firstNonEmpty(state && state.version, health && health.version));
+            setText("heroServerTime", fmtUtc(firstNonEmpty(health && health.serverTimeUtc, state && state.serverTimeUtc)));
+            const serverMs = firstNum(numberOf(health && health.serverTimeMs), numberOf(state && state.serverTimeMs));
+            setText("heroServerMs", serverMs === null ? "—" : `${BCT.fmtInt(serverMs)} ms`);
+
+            const runtime = state && state.runtime;
+            let phaseText = "—";
+            let updated = "—";
+            if (typeof runtime === "string") {
+                phaseText = runtime;
+            } else if (runtime && typeof runtime === "object") {
+                const phase = firstNonEmpty(runtime.current_phase, runtime.phase, runtime.status);
+                const cycle = numberOf(runtime.cycle);
+                if (phase !== null) {
+                    phaseText = cycle === null
+                        ? String(phase)
+                        : BCT.t("system.phaseLine", { phase: String(phase), cycle: BCT.fmtInt(cycle) });
+                }
+                updated = firstNonEmpty(runtime.last_update, runtime.lastUpdate);
+            }
+            setText("heroPhase", phaseText);
+            setText("heroUpdated", updated);
+
+            const security = (state && state.security) || {};
+            const checks = (readyBody && readyBody.checks) || {};
+            setPill("pillAi", toBool(firstNonEmpty(state && state.ai_active, checks.ai)));
+            setPill("pillTelegram", toBool(firstNonEmpty(
+                state && state.telegram_active,
+                health && health.telegramEnabled,
+                checks.telegram
+            )));
+            setPill("pillLive", toBool(firstNonEmpty(
+                state && state.live_trading_enabled,
+                health && health.liveTradingEnabled,
+                checks.liveTradingEnabled
+            )));
+            setPill("pillAuth", toBool(firstNonEmpty(security.authEnabled, checks.authEnabled)));
+        }
+
+        function renderKpis(health, state, metricsPayload) {
+            const wallet = (state && state.wallet) || {};
+            const metrics = (metricsPayload && metricsPayload.metrics) || {};
+
+            const totalTrades = firstNum(numberOf(metrics.totalTrades), numberOf(wallet.total_trades));
+            const wins = firstNum(numberOf(metrics.winningTrades), numberOf(wallet.winning_trades));
+            const netPnl = firstNum(numberOf(metrics.netPnlSol), numberOf(wallet.realized_pnl_sol));
+            const openPositions = firstNum(
+                numberOf(metrics.openPositions),
+                numberOf(wallet.open_positions),
+                numberOf(health && health.openPositions),
+                state && Array.isArray(state.positions) ? state.positions.length : null
+            );
+            const balance = numberOf(wallet.balance_sol);
+            const locked = numberOf(wallet.locked_sol);
+
+            let winRatePct = null;
+            const rawWinRate = numberOf(metrics.winRate);
+            if (rawWinRate !== null) {
+                winRatePct = rawWinRate * 100;
+            } else if (totalTrades !== null && totalTrades > 0 && wins !== null) {
+                winRatePct = (wins / totalTrades) * 100;
+            }
+
+            setText("kpiTrades", totalTrades === null ? "—" : BCT.fmtInt(totalTrades));
+            setText("kpiTradesSub", BCT.t("system.kpiWinsSub", { wins: wins === null ? "—" : BCT.fmtInt(wins) }));
+            setText("kpiWinRate", winRatePct === null ? "—" : BCT.fmtPct(winRatePct, 1));
+            setText("kpiWinRateSub", BCT.t("system.kpiRealizedSub", { n: totalTrades === null ? "—" : BCT.fmtInt(totalTrades) }));
+
+            const pnlNode = $("kpiNetPnl");
+            if (pnlNode) {
+                pnlNode.textContent = netPnl === null ? "—" : `${BCT.fmtSol(netPnl, 4, true)} SOL`;
+                pnlNode.className = `kpi-value ${BCT.signedClass(netPnl === null ? 0 : netPnl)}`;
+            }
+
+            setText("kpiOpen", openPositions === null ? "—" : BCT.fmtInt(openPositions));
+            setText("kpiBalance", balance === null ? "—" : `${BCT.fmtSol(balance, 3)} SOL`);
+            setText("kpiBalanceSub", BCT.t("system.kpiLockedSub", { amount: locked === null ? "—" : BCT.fmtSol(locked, 3) }));
+
+            const clock = utcClock(firstNonEmpty(health && health.serverTimeUtc, state && state.serverTimeUtc));
+            setText("kpiServerTime", clock.time);
+        }
+
+        function renderReadiness(ready) {
+            const body = $("readyBody");
+            if (!body) return;
+            const checks = (ready && ready.body && ready.body.checks) || {};
+            const known = CHECKS.map(([key]) => key);
+            const rows = [];
+
+            CHECKS.forEach(([key, labelKey]) => {
+                const value = checks[key];
+                const isBool = typeof value === "boolean";
+                const text = isBool ? BCT.t(value ? "system.ok" : "system.fail") : "—";
+                const cls = isBool ? (value ? "pill live" : "pill offline") : "pill";
+                rows.push(
+                    `<tr>` +
+                    `<td>${esc(BCT.t(labelKey))}</td>` +
+                    `<td class="num"><span class="${cls}">${esc(text)}</span></td>` +
+                    `</tr>`
+                );
+            });
+
+            Object.keys(checks).forEach((key) => {
+                if (known.indexOf(key) !== -1 || key === "dbError") return;
+                const value = checks[key];
+                const isBool = typeof value === "boolean";
+                const text = isBool ? BCT.t(value ? "system.ok" : "system.fail") : String(value);
+                const cls = isBool ? (value ? "pill live" : "pill offline") : "pill";
+                rows.push(
+                    `<tr>` +
+                    `<td>${esc(key)}</td>` +
+                    `<td class="num"><span class="${cls}">${esc(text)}</span></td>` +
+                    `</tr>`
+                );
+            });
+
+            body.innerHTML = rows.length
+                ? rows.join("")
+                : `<tr><td colspan="2" class="muted" style="text-align:center">${esc(BCT.t("system.readyEmpty"))}</td></tr>`;
+
+            let note = "—";
+            if (!ready) note = BCT.t("system.readyUnavailable");
+            else if (ready.unauthorized) note = BCT.t("toast.unauthorized");
+            else if (ready.status) note = `HTTP ${ready.status}`;
+            else if (ready.error) note = BCT.t("system.readyUnavailable");
+            setText("readyNote", note);
+
+            const errNode = $("readyDbError");
+            if (errNode) {
+                const dbError = checks.dbError;
+                if (dbError !== undefined && dbError !== null && String(dbError).trim() !== "") {
+                    errNode.textContent = `${BCT.t("system.dbError")}: ${String(dbError)}`;
+                    errNode.className = "mt-2 text-[10px] font-mono text-rose-300/90 break-words";
+                } else {
+                    errNode.textContent = "";
+                    errNode.className = "hidden";
+                }
+            }
+        }
+
+        function renderRuntime(state) {
+            const config = (state && state.config) || {};
+            const security = (state && state.security) || {};
+            const profile = (state && state.strategyProfile) || {};
+            const llm = config.llm || {};
+
+            const rawWallet = firstNonEmpty(state && state.wallet_address);
+            const walletNode = $("rtWallet");
+            if (walletNode) {
+                if (rawWallet !== null) {
+                    const text = String(rawWallet);
+                    walletNode.textContent = text.length > 28 ? `${text.slice(0, 10)}…${text.slice(-8)}` : text;
+                    walletNode.title = text;
+                } else {
+                    walletNode.textContent = "—";
+                    walletNode.removeAttribute("title");
+                }
+            }
+
+            setText("rtAiModel", firstNonEmpty(state && state.ai_model, llm.model, llm.label));
+            setText("rtStrategy", firstNonEmpty(profile.name));
+            setText("rtTimezone", firstNonEmpty(config.timezone));
+
+            const riskNode = $("rtRiskMode");
+            if (riskNode) {
+                if (profile.riskMode === "high") {
+                    riskNode.className = "pill offline";
+                    riskNode.textContent = BCT.t("system.riskHigh");
+                } else if (profile.riskMode) {
+                    riskNode.className = "pill live";
+                    riskNode.textContent = BCT.t("system.riskStandard");
+                } else {
+                    riskNode.className = "pill";
+                    riskNode.textContent = "—";
+                }
+            }
+
+            const hashNode = $("rtConfigHash");
+            const rawHash = firstNonEmpty(config.configHash);
+            if (hashNode) {
+                if (rawHash !== null) {
+                    const text = String(rawHash);
+                    hashNode.textContent = text.length > 12 ? `${text.slice(0, 12)}…` : text;
+                    hashNode.title = text;
+                } else {
+                    hashNode.textContent = "—";
+                    hashNode.removeAttribute("title");
+                }
+            }
+
+            const rate = numberOf(security.rateLimitPerMin);
+            setText("rtRateLimit", rate === null ? "—" : `${BCT.fmtInt(rate)} / min`);
+
+            const cacheHost = $("priceCacheRows");
+            if (cacheHost) {
+                const cache = (state && state.priceCache) || {};
+                const entries = Object.entries(cache);
+                cacheHost.innerHTML = entries.length
+                    ? entries.map(([key, value]) => rowLine(cacheLabel(key), cacheValue(key, value))).join("")
+                    : `<div class="tiny-mono text-slate-500 py-2">${esc(BCT.t("system.cacheEmpty"))}</div>`;
+            }
+        }
+
+        function renderMetrics(payload) {
+            const metrics = (payload && payload.metrics) || {};
+            const total = numberOf(metrics.totalTrades);
+            const wins = numberOf(metrics.winningTrades);
+            const rawWinRate = numberOf(metrics.winRate);
+            const netPnl = numberOf(metrics.netPnlSol);
+            const open = numberOf(metrics.openPositions);
+
+            setText("metricTotal", total === null ? "—" : BCT.fmtInt(total));
+            setText("metricWins", wins === null ? "—" : BCT.fmtInt(wins));
+            setText("metricWinRate", rawWinRate === null ? "—" : BCT.fmtPct(rawWinRate * 100, 1));
+
+            const pnlNode = $("metricNetPnl");
+            if (pnlNode) {
+                pnlNode.textContent = netPnl === null ? "—" : `${BCT.fmtSol(netPnl, 4, true)} SOL`;
+                pnlNode.className = `v ${BCT.signedClass(netPnl === null ? 0 : netPnl)}`;
+            }
+
+            setText("metricOpen", open === null ? "—" : BCT.fmtInt(open));
+            setText("metricsSchema", firstNonEmpty(
+                payload && payload.schemaVersion ? BCT.t("system.schemaLine", { version: String(payload.schemaVersion) }) : null
+            ));
+        }
+
+        function renderPrometheus(result) {
+            const pre = $("promText");
+            const meta = $("promMeta");
+            const copyBtn = $("copyPromBtn");
+            prometheusText = "";
+            if (copyBtn) copyBtn.disabled = true;
+
+            if (!result) {
+                if (pre) pre.textContent = BCT.t("system.promError");
+                setText("promMeta", "—");
+                return;
+            }
+
+            if (result.unauthorized) {
+                if (pre) pre.textContent = BCT.t("toast.unauthorized");
+                setText("promMeta", "401");
+                if (!prometheusAuthNotified) {
+                    BCT.toast(BCT.t("toast.unauthorized"));
+                    prometheusAuthNotified = true;
+                }
+                return;
+            }
+
+            prometheusAuthNotified = false;
+
+            if (result.error) {
+                if (pre) pre.textContent = `${BCT.t("system.promError")} (${result.error})`;
+                setText("promMeta", result.error);
+                return;
+            }
+
+            const text = result.text || "";
+            if (text.trim() === "") {
+                if (pre) pre.textContent = BCT.t("system.promEmpty");
+                setText("promMeta", "0");
+                return;
+            }
+
+            prometheusText = text;
+            if (pre) pre.textContent = text;
+            setText("promMeta", BCT.t("system.promMeta", {
+                lines: BCT.fmtInt(text.split("\n").length),
+                bytes: BCT.fmtInt(text.length)
+            }));
+            if (copyBtn) copyBtn.disabled = false;
+        }
+
+        function auditSeverity(name) {
+            const text = String(name || "").toLowerCase();
+            if (/(error|fail|blocked|tripped)/.test(text)) return "neg";
+            if (/(ok|sent|buy)/.test(text)) return "pos";
+            return "muted";
+        }
+
+        function auditDetails(event) {
+            const parts = [];
+            Object.keys(event || {}).forEach((key) => {
+                if (key === "ts" || key === "time" || key === "event") return;
+                const value = event[key];
+                let shown;
+                if (value === undefined || value === null) {
+                    shown = "null";
+                } else if (typeof value === "object") {
+                    try { shown = JSON.stringify(value); } catch (err) { shown = "[object]"; }
+                } else {
+                    shown = String(value);
+                }
+                parts.push(`${key}=${shown}`);
+            });
+            const text = parts.join(" · ");
+            return text.length > 400 ? `${text.slice(0, 400)}…` : text;
+        }
+
+        function renderAudit(payload) {
+            const body = $("auditBody");
+            if (!body) return;
+
+            if (!payload || !Array.isArray(payload.events)) {
+                body.innerHTML = `<tr><td colspan="3" class="muted" style="text-align:center">${esc(BCT.t("system.auditUnavailable"))}</td></tr>`;
+                setText("auditMeta", BCT.t("system.auditUnavailable"));
+                return;
+            }
+
+            const events = payload.events.slice(0, 100);
+            setText("auditMeta", BCT.t("system.auditCount", { n: BCT.fmtInt(events.length) }));
+
+            if (!events.length) {
+                body.innerHTML = `<tr><td colspan="3" class="muted" style="text-align:center">${esc(BCT.t("system.auditEmpty"))}</td></tr>`;
+                return;
+            }
+
+            body.innerHTML = events.map((event) => {
+                const name = firstNonEmpty(event && event.event) || "—";
+                const severity = auditSeverity(name);
+                const details = auditDetails(event || {});
+                return `<tr>` +
+                    `<td class="muted whitespace-nowrap">${esc(timeOnly(firstNonEmpty(event && event.ts, event && event.time)))}</td>` +
+                    `<td class="${severity}">${esc(String(name))}</td>` +
+                    `<td class="muted" style="max-width:760px;word-break:break-word">${esc(details)}</td>` +
+                    `</tr>`;
+            }).join("");
+        }
+
+        /* ------------------------------------------------------------ refresh */
+        async function refresh() {
+            const results = await Promise.allSettled([
+                BCT.api("/api/health"),
+                BCT.api("/api/state"),
+                BCT.api("/api/metrics"),
+                BCT.api("/api/audit?limit=100"),
+                loadReady(),
+                loadPrometheus()
+            ]);
+            const valueAt = (index) => (results[index] && results[index].status === "fulfilled" ? results[index].value : null);
+            const health = valueAt(0);
+            const state = valueAt(1);
+            const metricsPayload = valueAt(2);
+            const auditPayload = valueAt(3);
+            const ready = valueAt(4);
+            const prometheus = valueAt(5);
+
+            safeRender("hero", () => renderHero(health, state, ready));
+            safeRender("kpis", () => renderKpis(health, state, metricsPayload));
+            safeRender("readiness", () => renderReadiness(ready));
+            safeRender("runtime", () => renderRuntime(state));
+            safeRender("metrics", () => renderMetrics(metricsPayload));
+            safeRender("prometheus", () => renderPrometheus(prometheus));
+            safeRender("audit", () => renderAudit(auditPayload));
+
+            setText("authLabel", BCT.token() ? "token" : "off");
+            setText("footerSync", new Date().toLocaleTimeString());
+
+            const connected = Boolean(health) && Boolean(state);
+            BCT.setConnection(connected);
+            window.setTimeout(() => BCT.setConnection(connected), 0);
+        }
+
+        $("copyPromBtn").addEventListener("click", async () => {
+            if (!prometheusText) {
+                BCT.toast(BCT.t("system.promEmpty"));
+                return;
+            }
+            try {
+                if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+                    throw new Error("clipboard unavailable");
+                }
+                await navigator.clipboard.writeText(prometheusText);
+                BCT.toast(BCT.t("system.copied"));
+            } catch (err) {
+                BCT.toast(BCT.t("system.copyFail"));
+            }
+        });
+
+        BCT.init({ page: "system", i18n: I18N, onRefresh: refresh, poll: 5000 });
+    })();
+    </script>
+</body>
+</html>

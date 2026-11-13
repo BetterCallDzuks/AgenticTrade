@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="hr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetterCallTrader — Postavke</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: { sol: { purple: '#9945FF', green: '#14F195', dark: '#0B0E14', card: '#131822', border: '#1E2638' } }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="webui/theme.css">
+    <script src="webui/console.js"></script>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-sol-purple selection:text-white">
+
+    <header id="bctHeader" class="glass-panel sticky top-0 z-40 sol-gradient-border"></header>
+
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 space-y-5">
+
+        <!-- ACTION BAR -->
+        <section class="glass-panel rounded-xl p-4 sol-gradient-border fade-in lg:sticky lg:top-[96px] z-20">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <h1 class="text-base font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-sliders sol-gradient-text"></i>
+                        <span data-i18n="settings.title"></span>
+                    </h1>
+                    <p class="text-[11px] font-mono text-slate-400 mt-1" data-i18n="settings.subtitle"></p>
+                    <div class="flex flex-wrap items-center gap-2 mt-2">
+                        <span id="dirtyPill" class="pill warn" style="display:none">
+                            <i class="dot"></i><span data-i18n="settings.unsaved"></span>
+                        </span>
+                        <span class="tiny-mono">
+                            <span data-i18n="settings.hash"></span>: <span id="configHash" class="tiny-mono" title="">—</span>
+                        </span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="discardBtn" class="btn" disabled>
+                        <i class="fa-solid fa-rotate-left"></i><span data-i18n="settings.discard"></span>
+                    </button>
+                    <button type="button" id="saveBtn" class="btn btn-primary" disabled>
+                        <i class="fa-solid fa-floppy-disk"></i><span data-i18n="settings.save"></span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- STRATEGY PROFILE -->
+        <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+            <div class="xl:col-span-5 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                    <h2 class="section-title"><i class="fa-solid fa-layer-group text-sol-green"></i><span data-i18n="settings.profileTitle"></span></h2>
+                    <span id="profileBadge" class="pill">—</span>
+                </div>
+                <label for="profileSelect" class="block text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" data-i18n="settings.profileLabel"></label>
+                <select id="profileSelect" class="field">
+                    <option value="conservative" data-i18n="settings.profile.conservative">conservative</option>
+                    <option value="balanced" data-i18n="settings.profile.balanced">balanced</option>
+                    <option value="aggressive" data-i18n="settings.profile.aggressive">aggressive</option>
+                    <option value="high_risk" data-i18n="settings.profile.high_risk">high_risk</option>
+                </select>
+                <p class="text-[10px] font-mono text-slate-500 mt-2 leading-relaxed" data-i18n="settings.profileHint"></p>
+            </div>
+
+            <div class="xl:col-span-7 glass-panel rounded-xl p-4 fade-in">
+                <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                    <h2 class="section-title"><i class="fa-solid fa-circle-info text-sol-purple"></i><span data-i18n="settings.profileNoteTitle"></span></h2>
+                    <span class="panel-note">STRATEGY_PROFILE</span>
+                </div>
+                <ul class="space-y-2 text-[11px] font-mono text-slate-400 leading-relaxed">
+                    <li class="flex gap-2"><i class="fa-solid fa-check text-sol-green mt-0.5"></i><span data-i18n="settings.profileNote1"></span></li>
+                    <li class="flex gap-2"><i class="fa-solid fa-database text-sol-purple mt-0.5"></i><span data-i18n="settings.profileNote2"></span></li>
+                    <li class="flex gap-2"><i class="fa-solid fa-arrow-down-wide-short text-amber-300 mt-0.5"></i><span data-i18n="settings.profileNote3"></span></li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- KNOB GROUPS -->
+        <div id="groupsHost" class="space-y-4">
+            <div class="glass-panel rounded-xl p-4">
+                <div class="empty-state" data-i18n="common.loading"></div>
+            </div>
+        </div>
+
+        <!-- READ-ONLY -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                <h2 class="section-title"><i class="fa-solid fa-lock text-amber-300"></i><span data-i18n="settings.readonlyTitle"></span></h2>
+                <span class="panel-note" data-i18n="settings.readonlySub"></span>
+            </div>
+
+            <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
+                <div class="stat-tile">
+                    <div class="k" data-i18n="settings.liveTrading"></div>
+                    <div id="roLive" class="v">—</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="k" data-i18n="settings.telegram"></div>
+                    <div id="roTelegram" class="v">—</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="k" data-i18n="settings.riskMode"></div>
+                    <div id="roRisk" class="v">—</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="k" data-i18n="settings.timezone"></div>
+                    <div id="roTimezone" class="v" style="font-size:13px">—</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="k" data-i18n="settings.version"></div>
+                    <div id="roVersion" class="v" style="font-size:13px">—</div>
+                </div>
+                <div class="stat-tile">
+                    <div class="k" data-i18n="settings.configHash"></div>
+                    <div id="roHash" class="v" style="font-size:11px;word-break:break-all">—</div>
+                </div>
+            </div>
+
+            <p class="text-[10px] font-mono text-amber-300/80 mt-2 leading-relaxed">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i><span data-i18n="settings.liveFailClosed"></span>
+            </p>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+                <details class="glass-inset rounded-lg px-3 py-2">
+                    <summary class="cursor-pointer select-none text-[11px] font-mono uppercase tracking-wider text-slate-300">
+                        <i class="fa-solid fa-brain text-sol-purple mr-1"></i><span data-i18n="settings.llmTitle"></span>
+                    </summary>
+                    <div id="roLlm" class="mt-2 max-h-56 overflow-auto text-[10px] font-mono text-slate-300">—</div>
+                </details>
+
+                <details class="glass-inset rounded-lg px-3 py-2">
+                    <summary class="cursor-pointer select-none text-[11px] font-mono uppercase tracking-wider text-slate-300">
+                        <i class="fa-solid fa-door-closed text-rose-400 mr-1"></i><span data-i18n="settings.exitPolicyTitle"></span>
+                    </summary>
+                    <pre id="roExitPolicy" class="mt-2 max-h-56 overflow-auto text-[10px] font-mono text-slate-300 whitespace-pre-wrap break-all">—</pre>
+                </details>
+            </div>
+        </section>
+
+        <footer class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-sol-border/70 text-[10px] font-mono uppercase tracking-wider text-slate-500">
+            <span data-i18n="footer.paper"></span>
+            <span><span data-i18n="footer.auth"></span>: <span id="authLabel">off</span> · <span data-i18n="footer.sync"></span>: <span id="footerSync">—</span></span>
+        </footer>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+    (function () {
+        "use strict";
+
+        const I18N = {
+            hr: {
+                "settings.title": "Postavke bota",
+                "settings.subtitle": "Runtime parametri · promjene se primjenjuju odmah nakon spremanja",
+                "settings.unsaved": "Nespremljene promjene",
+                "settings.hash": "config hash",
+                "settings.discard": "Odbaci",
+                "settings.save": "Spremi promjene",
+                "settings.profileTitle": "Profil strategije",
+                "settings.profileLabel": "Aktivni profil",
+                "settings.profile.conservative": "Konzervativan",
+                "settings.profile.balanced": "Uravnotežen",
+                "settings.profile.aggressive": "Agresivan",
+                "settings.profile.high_risk": "Visoki rizik",
+                "settings.profileHint": "Odabir profila odmah primjenjuje njegov sizing i exit pravila.",
+                "settings.profileNoteTitle": "Kako profil djeluje",
+                "settings.profileNote1": "Profil odmah postavlja veličinu trejda, stop-loss, TP1 i trailing na bota.",
+                "settings.profileNote2": "Profil se sprema u bazu i nadjačava STRATEGY_PROFILE iz okoline nakon restarta.",
+                "settings.profileNote3": "Profil se primjenjuje zadnji, pa pobjeđuje nad numeričkim poljima iz istog zahtjeva.",
+                "settings.readonlyTitle": "Samo za čitanje",
+                "settings.readonlySub": "nije moguće mijenjati s ove stranice",
+                "settings.liveTrading": "Live trgovanje",
+                "settings.telegram": "Telegram",
+                "settings.riskMode": "Risk mode",
+                "settings.timezone": "Vremenska zona",
+                "settings.version": "Verzija",
+                "settings.configHash": "Config hash",
+                "settings.llmTitle": "LLM provider",
+                "settings.exitPolicyTitle": "Exit policy (JSON)",
+                "settings.liveFailClosed": "Fail-closed: live trgovanje se ne može uključiti s ove stranice — potrebna je eksplicitna env potvrda na serveru.",
+                "settings.toastSaved": "Spremljeno · {n} promjena",
+                "settings.toastDiscarded": "Promjene odbačene",
+                "settings.toastLoadFail": "Ne mogu učitati konfiguraciju",
+                "settings.group.sizing": "Veličina pozicija",
+                "settings.group.entry": "Ulazni filteri i timing",
+                "settings.group.exits": "Exit politika",
+                "settings.group.risk": "Risk limiti / circuit breaker",
+                "settings.group.flow": "Flow i whale izlazi",
+                "settings.group.paper": "Paper cost model",
+                "settings.group.wallet": "Kvaliteta novčanika",
+                "settings.group.execution": "Egzekucija",
+                "settings.group.advanced": "Napredno / ostalo",
+
+                "field.tradeSizeSol": "Veličina trejda",
+                "field.minLiquidityUsd": "Min. likvidnost",
+                "field.maxTop10Pct": "Max. top-10 udio",
+                "field.tp1Pct": "TP1 prag",
+                "field.stopLossPct": "Stop-loss",
+                "field.trailingStopPct": "Trailing stop",
+                "field.trailingStopPctAfterTp1": "Trailing nakon TP1",
+                "field.maxOpenPositions": "Max. otvorenih pozicija",
+                "field.minSecondsBetweenEntries": "Razmak između ulaza",
+                "field.stopLossCooldownSec": "Cooldown nakon stopa",
+                "field.fastInvalidationPct": "Brza invalidacija",
+                "field.fastInvalidationWindowSec": "Prozor brze invalidacije",
+                "field.positionMonitorSec": "Nadzor pozicija",
+                "field.rejectM5DumpPct": "Odbij 5m dump",
+                "field.maxChaseH1Pct": "Max. 1h chase",
+                "field.flowExitEnabled": "Flow exit",
+                "field.flowExitMinSells": "Min. prodaja (flow)",
+                "field.flowExitSellRatio": "Omjer prodaja (flow)",
+                "field.whaleExitEnabled": "Whale exit",
+                "field.maxDailyStopLosses": "Max. dnevnih stopova",
+                "field.maxDailyDrawdownPct": "Max. dnevni drawdown",
+                "field.maxDailyTrades": "Max. dnevnih trejdova",
+                "field.entryConfirmSec": "Potvrda ulaza",
+                "field.entryConfirmMaxDropPct": "Max. pad pri potvrdi",
+                "field.paperSlippageBps": "Paper slippage (ulaz)",
+                "field.paperExitSlippageBps": "Paper slippage (izlaz)",
+                "field.paperImpactCoeff": "Koef. tržišnog utjecaja",
+                "field.paperImpactExponent": "Eksponent utjecaja",
+                "field.paperAmmFeeBps": "AMM fee",
+                "field.paperPriorityFeeSol": "Priority fee",
+                "field.paperFailedTxProb": "Vjerojatnost failed tx",
+                "field.sizeAfterLossMult": "Množitelj nakon gubitka",
+                "field.sizeHeuristicMult": "Heuristički množitelj",
+                "field.sizeAiOnlyMult": "AI-only množitelj",
+                "field.sizeDrawdownMult": "Množitelj u drawdownu",
+                "field.sizeDrawdownTriggerPct": "Prag drawdowna",
+                "field.minPositionSol": "Min. pozicija",
+                "field.maxPositionSol": "Max. pozicija",
+                "field.clusterCooldownSec": "Cluster cooldown",
+                "field.clusterOpenDdPct": "Cluster open drawdown",
+                "field.clusterUnprovenSec": "Cluster neprovjereno",
+                "field.walletQualityWindow": "Prozor kvalitete",
+                "field.walletQualityMinSamples": "Min. uzoraka",
+                "field.walletQualityMinWinRate": "Min. win rate",
+                "field.stalePriceSec": "Stale cijena",
+                "field.moveStopToBreakevenAfterTp1": "Stop na breakeven nakon TP1",
+                "field.breakevenBufferPct": "Breakeven buffer",
+                "field.tp1Fraction": "TP1 frakcija",
+                "field.finalTakeProfitPct": "Final take-profit",
+                "field.trailingArmGainPct": "Trailing arm gain",
+                "field.timeStopEnabled": "Time stop",
+                "field.maxHoldNoPumpSec": "Max. držanje bez pumpa",
+                "field.timeStopMinProfitPct": "Min. profit za time stop",
+                "field.step1TriggerPct": "Korak 1 trigger",
+                "field.step1FloorPct": "Korak 1 floor",
+                "field.step2TriggerPct": "Korak 2 trigger",
+                "field.step2FloorPct": "Korak 2 floor",
+                "field.slippagePct": "Slippage (live)",
+                "field.jitoTipSol": "Jito tip"
+            },
+            en: {
+                "settings.title": "Bot settings",
+                "settings.subtitle": "Runtime parameters · changes apply immediately after saving",
+                "settings.unsaved": "Unsaved changes",
+                "settings.hash": "config hash",
+                "settings.discard": "Discard",
+                "settings.save": "Save changes",
+                "settings.profileTitle": "Strategy profile",
+                "settings.profileLabel": "Active profile",
+                "settings.profile.conservative": "Conservative",
+                "settings.profile.balanced": "Balanced",
+                "settings.profile.aggressive": "Aggressive",
+                "settings.profile.high_risk": "High risk",
+                "settings.profileHint": "Selecting a profile applies its sizing and exit rules immediately.",
+                "settings.profileNoteTitle": "How the profile works",
+                "settings.profileNote1": "The profile immediately sets trade size, stop-loss, TP1 and trailing on the bot.",
+                "settings.profileNote2": "The profile is persisted in the database and wins over STRATEGY_PROFILE after a restart.",
+                "settings.profileNote3": "The profile is applied last, so it wins over numeric fields sent in the same request.",
+                "settings.readonlyTitle": "Read-only",
+                "settings.readonlySub": "cannot be changed from this page",
+                "settings.liveTrading": "Live trading",
+                "settings.telegram": "Telegram",
+                "settings.riskMode": "Risk mode",
+                "settings.timezone": "Timezone",
+                "settings.version": "Version",
+                "settings.configHash": "Config hash",
+                "settings.llmTitle": "LLM provider",
+                "settings.exitPolicyTitle": "Exit policy (JSON)",
+                "settings.liveFailClosed": "Fail-closed: live trading cannot be enabled from this page — an explicit server-side env confirmation is required.",
+                "settings.toastSaved": "Saved · {n} change(s)",
+                "settings.toastDiscarded": "Changes discarded",
+                "settings.toastLoadFail": "Unable to load configuration",
+                "settings.group.sizing": "Position sizing",
+                "settings.group.entry": "Entry filters & timing",
+                "settings.group.exits": "Exit policy",
+                "settings.group.risk": "Risk limits / circuit breaker",
+                "settings.group.flow": "Flow & whale exits",
+                "settings.group.paper": "Paper cost model",
+                "settings.group.wallet": "Wallet quality",
+                "settings.group.execution": "Execution",
+                "settings.group.advanced": "Advanced / other",
+
+                "field.tradeSizeSol": "Trade size",
+                "field.minLiquidityUsd": "Min. liquidity",
+                "field.maxTop10Pct": "Max. top-10 share",
+                "field.tp1Pct": "TP1 trigger",
+                "field.stopLossPct": "Stop-loss",
+                "field.trailingStopPct": "Trailing stop",
+                "field.trailingStopPctAfterTp1": "Trailing after TP1",
+                "field.maxOpenPositions": "Max. open positions",
+                "field.minSecondsBetweenEntries": "Spacing between entries",
+                "field.stopLossCooldownSec": "Cooldown after stop",
+                "field.fastInvalidationPct": "Fast invalidation",
+                "field.fastInvalidationWindowSec": "Fast invalidation window",
+                "field.positionMonitorSec": "Position monitor",
+                "field.rejectM5DumpPct": "Reject 5m dump",
+                "field.maxChaseH1Pct": "Max. 1h chase",
+                "field.flowExitEnabled": "Flow exit",
+                "field.flowExitMinSells": "Min. sells (flow)",
+                "field.flowExitSellRatio": "Sell ratio (flow)",
+                "field.whaleExitEnabled": "Whale exit",
+                "field.maxDailyStopLosses": "Max. daily stops",
+                "field.maxDailyDrawdownPct": "Max. daily drawdown",
+                "field.maxDailyTrades": "Max. daily trades",
+                "field.entryConfirmSec": "Entry confirmation",
+                "field.entryConfirmMaxDropPct": "Max. drop on confirm",
+                "field.paperSlippageBps": "Paper slippage (entry)",
+                "field.paperExitSlippageBps": "Paper slippage (exit)",
+                "field.paperImpactCoeff": "Impact coefficient",
+                "field.paperImpactExponent": "Impact exponent",
+                "field.paperAmmFeeBps": "AMM fee",
+                "field.paperPriorityFeeSol": "Priority fee",
+                "field.paperFailedTxProb": "Failed tx probability",
+                "field.sizeAfterLossMult": "Size after loss",
+                "field.sizeHeuristicMult": "Heuristic multiplier",
+                "field.sizeAiOnlyMult": "AI-only multiplier",
+                "field.sizeDrawdownMult": "Drawdown multiplier",
+                "field.sizeDrawdownTriggerPct": "Drawdown trigger",
+                "field.minPositionSol": "Min. position",
+                "field.maxPositionSol": "Max. position",
+                "field.clusterCooldownSec": "Cluster cooldown",
+                "field.clusterOpenDdPct": "Cluster open drawdown",
+                "field.clusterUnprovenSec": "Cluster unproven",
+                "field.walletQualityWindow": "Wallet quality window",
+                "field.walletQualityMinSamples": "Min. samples",
+                "field.walletQualityMinWinRate": "Min. win rate",
+                "field.stalePriceSec": "Stale price",
+                "field.moveStopToBreakevenAfterTp1": "Move stop to breakeven after TP1",
+                "field.breakevenBufferPct": "Breakeven buffer",
+                "field.tp1Fraction": "TP1 fraction",
+                "field.finalTakeProfitPct": "Final take-profit",
+                "field.trailingArmGainPct": "Trailing arm gain",
+                "field.timeStopEnabled": "Time stop",
+                "field.maxHoldNoPumpSec": "Max. hold without pump",
+                "field.timeStopMinProfitPct": "Min. profit for time stop",
+                "field.step1TriggerPct": "Step 1 trigger",
+                "field.step1FloorPct": "Step 1 floor",
+                "field.step2TriggerPct": "Step 2 trigger",
+                "field.step2FloorPct": "Step 2 floor",
+                "field.slippagePct": "Slippage (live)",
+                "field.jitoTipSol": "Jito tip"
+            }
+        };
+
+        const GROUPS = [
+            {
+                key: "sizing",
+                icon: "fa-scale-balanced",
+                accent: "text-sol-green",
+                fields: [
+                    "tradeSizeSol", "minPositionSol", "maxPositionSol", "maxOpenPositions",
+                    "sizeAfterLossMult", "sizeHeuristicMult", "sizeAiOnlyMult",
+                    "sizeDrawdownMult", "sizeDrawdownTriggerPct"
+                ]
+            },
+            {
+                key: "entry",
+                icon: "fa-filter",
+                accent: "text-cyan-300",
+                fields: [
+                    "minLiquidityUsd", "maxTop10Pct", "rejectM5DumpPct", "maxChaseH1Pct",
+                    "minSecondsBetweenEntries", "stopLossCooldownSec", "entryConfirmSec",
+                    "entryConfirmMaxDropPct", "stalePriceSec"
+                ]
+            },
+            {
+                key: "exits",
+                icon: "fa-right-from-bracket",
+                accent: "text-rose-400",
+                fields: [
+                    "tp1Pct", "tp1Fraction", "stopLossPct", "trailingStopPct",
+                    "trailingStopPctAfterTp1", "trailingArmGainPct", "finalTakeProfitPct",
+                    "breakevenBufferPct", "moveStopToBreakevenAfterTp1", "fastInvalidationPct",
+                    "fastInvalidationWindowSec", "timeStopEnabled", "maxHoldNoPumpSec",
+                    "timeStopMinProfitPct", "step1TriggerPct", "step1FloorPct",
+                    "step2TriggerPct", "step2FloorPct", "positionMonitorSec"
+                ]
+            },
+            {
+                key: "risk",
+                icon: "fa-shield-halved",
+                accent: "text-amber-300",
+                fields: [
+                    "maxDailyStopLosses", "maxDailyDrawdownPct", "maxDailyTrades",
+                    "clusterCooldownSec", "clusterOpenDdPct", "clusterUnprovenSec"
+                ]
+            },
+            {
+                key: "flow",
+                icon: "fa-water",
+                accent: "text-sky-300",
+                fields: ["flowExitEnabled", "flowExitMinSells", "flowExitSellRatio", "whaleExitEnabled"]
+            },
+            {
+                key: "paper",
+                icon: "fa-flask-vial",
+                accent: "text-sol-purple",
+                fields: [
+                    "paperSlippageBps", "paperExitSlippageBps", "paperImpactCoeff",
+                    "paperImpactExponent", "paperAmmFeeBps", "paperPriorityFeeSol", "paperFailedTxProb"
+                ]
+            },
+            {
+                key: "wallet",
+                icon: "fa-user-shield",
+                accent: "text-cyan-300",
+                fields: ["walletQualityWindow", "walletQualityMinSamples", "walletQualityMinWinRate"]
+            },
+            {
+                key: "execution",
+                icon: "fa-bolt",
+                accent: "text-amber-300",
+                fields: ["slippagePct", "jitoTipSol"]
+            },
+            {
+                key: "advanced",
+                icon: "fa-flask",
+                accent: "text-slate-300",
+                fields: []
+            }
+        ];
+
+        const EXCLUDED = new Set([
+            "strategyProfile", "riskMode", "liveTradingEnabled", "telegramEnabled",
+            "timezone", "version", "configHash", "costModel", "exitCostModel",
+            "exitPolicy", "llm"
+        ]);
+
+        const BOOL_KEYS = new Set([
+            "flowExitEnabled", "whaleExitEnabled", "moveStopToBreakevenAfterTp1", "timeStopEnabled"
+        ]);
+
+        const PROFILES = ["conservative", "balanced", "aggressive", "high_risk"];
+
+        const UNITS = {
+            tradeSizeSol: "SOL",
+            minPositionSol: "SOL",
+            maxPositionSol: "SOL",
+            paperPriorityFeeSol: "SOL",
+            jitoTipSol: "SOL",
+            minLiquidityUsd: "USD",
+            maxTop10Pct: "%",
+            tp1Pct: "%",
+            stopLossPct: "%",
+            trailingStopPct: "%",
+            trailingStopPctAfterTp1: "%",
+            fastInvalidationPct: "%",
+            rejectM5DumpPct: "%",
+            maxChaseH1Pct: "%",
+            maxDailyDrawdownPct: "%",
+            entryConfirmMaxDropPct: "%",
+            sizeDrawdownTriggerPct: "%",
+            clusterOpenDdPct: "%",
+            walletQualityMinWinRate: "%",
+            breakevenBufferPct: "%",
+            finalTakeProfitPct: "%",
+            trailingArmGainPct: "%",
+            timeStopMinProfitPct: "%",
+            step1TriggerPct: "%",
+            step1FloorPct: "%",
+            step2TriggerPct: "%",
+            step2FloorPct: "%",
+            slippagePct: "%",
+            minSecondsBetweenEntries: "s",
+            stopLossCooldownSec: "s",
+            fastInvalidationWindowSec: "s",
+            positionMonitorSec: "s",
+            entryConfirmSec: "s",
+            clusterCooldownSec: "s",
+            clusterUnprovenSec: "s",
+            stalePriceSec: "s",
+            maxHoldNoPumpSec: "s",
+            paperSlippageBps: "bps",
+            paperExitSlippageBps: "bps",
+            paperAmmFeeBps: "bps",
+            sizeAfterLossMult: "×",
+            sizeHeuristicMult: "×",
+            sizeAiOnlyMult: "×",
+            sizeDrawdownMult: "×",
+            paperFailedTxProb: "0–1",
+            flowExitSellRatio: "0–1",
+            tp1Fraction: "0–1",
+            walletQualityWindow: "n",
+            walletQualityMinSamples: "n"
+        };
+
+        const $ = (id) => document.getElementById(id);
+        const esc = (value) => BCT.escapeHtml(value);
+
+        let config = null;
+        let dirty = false;
+        let saving = false;
+
+        function setText(id, value, className) {
+            const node = $(id);
+            if (!node) return;
+            node.textContent = value == null || value === "" ? "—" : String(value);
+            if (className !== undefined) node.className = className;
+        }
+
+        function humanize(key) {
+            return String(key || "")
+                .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+                .replace(/[_-]+/g, " ")
+                .replace(/\s+/g, " ")
+                .trim()
+                .replace(/^./, (c) => c.toUpperCase());
+        }
+
+        function hasFieldLabel(key) {
+            return Object.prototype.hasOwnProperty.call(I18N.hr, "field." + key);
+        }
+
+        function fieldLabel(key) {
+            const translated = BCT.t("field." + key);
+            return translated && translated !== "field." + key ? translated : humanize(key);
+        }
+
+        function isPrimitive(value) {
+            return typeof value === "number" || typeof value === "boolean";
+        }
+
+        function inputValue(value) {
+            if (value == null) return "";
+            const n = Number(value);
+            return Number.isFinite(n) ? String(n) : "";
+        }
+
+        /* ---------------------------------------------------------- rendering */
+        function fieldMarkup(key, cfg) {
+            const value = cfg[key];
+            const isBool = typeof value === "boolean" || BOOL_KEYS.has(key);
+            const label = fieldLabel(key);
+            const labelAttr = hasFieldLabel(key) ? ` data-i18n="field.${esc(key)}"` : "";
+            const unit = UNITS[key]
+                ? `<span class="text-[9px] font-mono uppercase tracking-wider text-slate-500">${esc(UNITS[key])}</span>`
+                : "";
+            const id = `cfg_${esc(key)}`;
+
+            if (isBool) {
+                return `<div class="flex items-center justify-between gap-2 glass-inset rounded-lg px-3 py-2 min-w-0">` +
+                    `<label class="text-[11px] text-slate-300 truncate" for="${id}"${labelAttr}>${esc(label)}</label>` +
+                    `<div class="flex items-center gap-2 shrink-0">${unit}` +
+                    `<input type="checkbox" id="${id}" data-key="${esc(key)}"${value ? " checked" : ""}` +
+                    ` style="width:16px;height:16px;accent-color:#9945FF;cursor:pointer">` +
+                    `</div></div>`;
+            }
+
+            const step = value != null && Number.isInteger(Number(value)) ? "1" : "any";
+            return `<div class="min-w-0">` +
+                `<label class="flex items-baseline justify-between gap-2 mb-1" for="${id}">` +
+                `<span class="text-[11px] text-slate-300 truncate"${labelAttr}>${esc(label)}</span>${unit}` +
+                `</label>` +
+                `<input type="number" inputmode="decimal" class="field" id="${id}" data-key="${esc(key)}"` +
+                ` step="${step}" value="${esc(inputValue(value))}">` +
+                `</div>`;
+        }
+
+        function groupMarkup(group, cfg) {
+            const titleKey = `settings.group.${group.key}`;
+            const fields = group.fields.map((key) => fieldMarkup(key, cfg)).join("");
+            return `<section class="glass-panel rounded-xl p-4 fade-in">` +
+                `<div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">` +
+                `<h2 class="section-title"><i class="fa-solid ${group.icon} ${group.accent}"></i>` +
+                `<span data-i18n="${titleKey}">${esc(BCT.t(titleKey))}</span></h2>` +
+                `<span class="panel-note">${group.fields.length}</span>` +
+                `</div>` +
+                `<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">${fields}</div>` +
+                `</section>`;
+        }
+
+        function renderGroups(cfg) {
+            const host = $("groupsHost");
+            if (!host || !cfg) return;
+            const known = new Set();
+            GROUPS.forEach((group) => group.fields.forEach((key) => known.add(key)));
+            const extras = Object.keys(cfg)
+                .filter((key) => !known.has(key) && !EXCLUDED.has(key) && isPrimitive(cfg[key]))
+                .sort();
+            const groups = GROUPS
+                .map((group) => (group.key === "advanced" ? Object.assign({}, group, { fields: extras }) : group))
+                .filter((group) => group.fields.length > 0);
+            host.innerHTML = groups.map((group) => groupMarkup(group, cfg)).join("");
+        }
+
+        function renderProfileBadge(profile) {
+            const badge = $("profileBadge");
+            if (!badge) return;
+            const high = profile === "high_risk" || (profile === undefined && config && config.riskMode === "high");
+            badge.textContent = high ? BCT.t("risk.high") : BCT.t("risk.standard");
+            badge.className = high ? "pill offline" : "pill live";
+        }
+
+        function renderFlag(id, on, dangerWhenOn) {
+            const node = $(id);
+            if (!node) return;
+            node.textContent = on ? BCT.t("common.on") : BCT.t("common.off");
+            node.className = on ? (dangerWhenOn ? "v neg" : "v pos") : "v";
+        }
+
+        function renderLlm(llm) {
+            const host = $("roLlm");
+            if (!host) return;
+            if (llm == null) {
+                host.innerHTML = `<div class="text-slate-500">—</div>`;
+                return;
+            }
+            if (typeof llm !== "object") {
+                host.innerHTML = `<div style="word-break:break-all">${esc(String(llm))}</div>`;
+                return;
+            }
+            const entries = Object.entries(llm);
+            if (!entries.length) {
+                host.innerHTML = `<div class="text-slate-500">—</div>`;
+                return;
+            }
+            host.innerHTML = entries.map(([key, value]) => {
+                let text;
+                if (value == null) text = "—";
+                else if (typeof value === "object") text = JSON.stringify(value);
+                else if (typeof value === "boolean") text = value ? BCT.t("common.yes") : BCT.t("common.no");
+                else text = String(value);
+                return `<div class="flex items-start justify-between gap-2 py-1 border-b border-sol-border/50">` +
+                    `<span class="text-slate-400 shrink-0">${esc(humanize(key))}</span>` +
+                    `<span class="text-slate-300 text-right" style="word-break:break-all">${esc(text)}</span>` +
+                    `</div>`;
+            }).join("");
+        }
+
+        function renderReadonly(cfg) {
+            cfg = cfg || {};
+            renderFlag("roLive", Boolean(cfg.liveTradingEnabled), true);
+            renderFlag("roTelegram", Boolean(cfg.telegramEnabled), false);
+            setText("roTimezone", cfg.timezone || "—");
+            setText("roVersion", cfg.version || "—");
+            const high = cfg.riskMode === "high";
+            setText("roRisk", high ? BCT.t("risk.high") : BCT.t("risk.standard"), `v ${high ? "neg" : "pos"}`);
+            renderLlm(cfg.llm);
+
+            const pre = $("roExitPolicy");
+            if (pre) {
+                let text = "—";
+                try {
+                    if (cfg.exitPolicy != null) {
+                        text = typeof cfg.exitPolicy === "string"
+                            ? cfg.exitPolicy
+                            : JSON.stringify(cfg.exitPolicy, null, 2);
+                    }
+                } catch (err) {
+                    text = "—";
+                }
+                pre.textContent = text;
+            }
+        }
+
+        function setHash(cfg) {
+            const raw = cfg && cfg.configHash ? String(cfg.configHash) : "";
+            const node = $("configHash");
+            if (node) {
+                node.textContent = raw ? (raw.length > 14 ? raw.slice(0, 14) + "…" : raw) : "—";
+                node.title = raw;
+            }
+            const ro = $("roHash");
+            if (ro) {
+                ro.textContent = raw || "—";
+                ro.title = raw;
+            }
+        }
+
+        /* ---------------------------------------------------------- form state */
+        function syncButtons() {
+            const loaded = Boolean(config);
+            const saveBtn = $("saveBtn");
+            const discardBtn = $("discardBtn");
+            if (saveBtn) saveBtn.disabled = !loaded || saving;
+            if (discardBtn) discardBtn.disabled = !loaded || saving;
+        }
+
+        function setDirty(next) {
+            dirty = Boolean(next);
+            const pill = $("dirtyPill");
+            if (pill) pill.style.display = dirty ? "" : "none";
+            syncButtons();
+        }
+
+        function populateForm(cfg) {
+            if (!cfg) return;
+            renderGroups(cfg);
+            const select = $("profileSelect");
+            if (select) {
+                const profile = PROFILES.indexOf(cfg.strategyProfile) >= 0 ? cfg.strategyProfile : "balanced";
+                select.value = profile;
+                renderProfileBadge(profile);
+            }
+            syncButtons();
+        }
+
+        function collect() {
+            const payload = {};
+            document.querySelectorAll("#groupsHost [data-key]").forEach((el) => {
+                const key = el.dataset.key;
+                if (!key) return;
+                if (el.type === "checkbox") {
+                    payload[key] = Boolean(el.checked);
+                    return;
+                }
+                if (el.value === "" || el.value == null) return;
+                const num = Number(el.value);
+                if (Number.isFinite(num)) payload[key] = num;
+            });
+            const select = $("profileSelect");
+            if (select && select.value) payload.strategyProfile = select.value;
+            return payload;
+        }
+
+        /* ---------------------------------------------------------- data flow */
+        async function refresh() {
+            const state = await BCT.api("/api/state");
+            const next = state && state.config;
+            if (!next || typeof next !== "object") {
+                throw new Error(BCT.t("settings.toastLoadFail"));
+            }
+            config = next;
+            setHash(config);
+            renderReadonly(config);
+            if (!dirty) {
+                populateForm(config);
+            } else {
+                syncButtons();
+            }
+            setText("authLabel", BCT.token() ? "token" : "off");
+            BCT.setConnection(true);
+        }
+
+        function markDirty() {
+            if (!config) return;
+            setDirty(true);
+        }
+
+        async function save() {
+            if (saving || !config) return;
+            saving = true;
+            syncButtons();
+            const payload = collect();
+            try {
+                const res = await BCT.api("/api/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const changed = res && Array.isArray(res.changed) ? res.changed : [];
+                BCT.toast(BCT.t("settings.toastSaved", { n: changed.length }));
+                if (res && res.config) {
+                    config = res.config;
+                    populateForm(config);
+                    renderReadonly(config);
+                    setHash(config);
+                }
+                setDirty(false);
+                if (!res || !res.config) await refresh();
+            } catch (err) {
+                BCT.toast(err && err.message ? err.message : BCT.t("toast.failed"));
+            } finally {
+                saving = false;
+                syncButtons();
+            }
+        }
+
+        $("saveBtn").addEventListener("click", save);
+
+        $("discardBtn").addEventListener("click", async () => {
+            setDirty(false);
+            try {
+                await refresh();
+                BCT.toast(BCT.t("settings.toastDiscarded"));
+            } catch (err) {
+                BCT.toast(err && err.message ? err.message : BCT.t("toast.syncFail"));
+            }
+        });
+
+        $("groupsHost").addEventListener("input", markDirty);
+        $("groupsHost").addEventListener("change", markDirty);
+
+        $("profileSelect").addEventListener("change", () => {
+            markDirty();
+            renderProfileBadge($("profileSelect").value);
+        });
+
+        window.addEventListener("beforeunload", (event) => {
+            if (!dirty) return;
+            event.preventDefault();
+            event.returnValue = "";
+            return "";
+        });
+
+        BCT.init({ page: "settings", i18n: I18N, onRefresh: refresh, poll: 0 });
+    })();
+    </script>
+</body>
+</html>

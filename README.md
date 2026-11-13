@@ -88,7 +88,7 @@ behaviour on day one:
 | `LLM_BASE_URL` + `LLM_MODEL` | empty | Optional alternative: Ollama, llama.cpp, LM Studio, vLLM. |
 | `INITIAL_PAPER_SOL` | `10.0` | Paper bankroll. |
 | `TRADE_SIZE_SOL` | `0.5` | Paper size per entry. |
-| `STRATEGY_PROFILE` | `balanced` | `conservative`, `balanced` or `aggressive`. |
+| `STRATEGY_PROFILE` | `balanced` | `conservative`, `balanced`, `aggressive` or `high_risk` (high-risk/high-reward mode). |
 | `DASHBOARD_TOKEN` | empty | Only needed if the dashboard binds beyond `127.0.0.1`. |
 
 Everything else in `.env.example` is grouped by topic with comments; the
@@ -118,11 +118,12 @@ python smoke_v10.py   # starts the real API on an ephemeral port, prints SMOKE O
 python research_bot.py
 ```
 
-Open **http://127.0.0.1:8080** — the bot also tries to open a browser. A run is
-**100 scan cycles, 20 seconds apart (roughly 35 minutes)**, plus endpoint
-monitoring every `POSITION_MONITOR_SEC` (4s) and pending confirmations every 2s.
-When the cycles finish, or on `Ctrl+C`/`SIGTERM`, it shuts down cleanly and
-writes a `shutdown` audit event. Restart it for another session.
+Open **http://127.0.0.1:8080** — the bot also tries to open a browser. Once started
+the bot **runs until you stop it**: it keeps scanning in 20-second cycles with no
+cycle cap, while endpoint monitoring runs every `POSITION_MONITOR_SEC` (4s) and
+pending confirmations every 2s. On `Ctrl+C`/`SIGTERM` it shuts down cleanly and
+writes a `shutdown` audit event. To cap a run, call
+`run_research_pipeline(cycles=N)` from your own launcher.
 
 Watch the first cycles before changing anything: discovery, filters, AI verdict
 and risk checks are all visible in the terminal, the dashboard and
@@ -168,20 +169,43 @@ Open **http://127.0.0.1:8080**:
   config panel, the decision journal, the equity chart and the audit feed.
 - **`/analytics`** — equity curve, portfolio risk ledger, concentration (HHI),
   exit anatomy, daily PnL, ML weights, audit feed and recent trades.
+- **`/risk`** — Risk desk: open exposure, HHI concentration, VaR/expected
+  shortfall, max drawdown, circuit-breaker state with a reset button, entry
+  gate and last blocked entry, sizing by conviction, live concentration bars,
+  the effective strategy profile and wallet-quality/source tables.
+- **`/wallets`** — Wallets: balance/locked/PnL KPIs, add/remove tracked whales,
+  a `simulate whale buy` test button, wallet-quality scores and open positions.
+- **`/backtest`** — Backtest lab: replays the realized paper trades from SQLite
+  into summary KPIs, an equity curve, 30-day daily PnL bars, breakdowns by exit
+  reason / source / conviction, best and worst trade, and the recent trade list.
+- **`/ml`** — ML / AI lab: advisory model state and contract versions, training
+  button, feature weights, per-mint probability lookup and the LLM provider
+  description.
+- **`/system`** — System / ops: readiness checks, runtime/config summary,
+  `/api/metrics` tiles, raw Prometheus text with copy, and the audit trail.
+- **`/settings`** — Settings: every runtime knob grouped by area, the strategy
+  profile selector, dirty-state save/discard, and a read-only panel for live
+  trading, Telegram, timezone, cost/exit models and the LLM.
 - **`/metrics`** — Prometheus text exposition (honours `DASHBOARD_TOKEN`).
 - **`/ready`** — dependency readiness (database, AI, Telegram, auth, live mode).
 - **`/api/state`** — everything the dashboard polls, as JSON.
 
-Both dashboards share one dark console layout and a language switch in the
-header (**HR / EN**, Croatian by default). The choice is stored in
-`localStorage` (`bettercalltrader_lang`) and carries across `/` and
-`/analytics`; every dashboard label, table header and empty state is
-translated, while messages produced by the Python bot (log lines, AI
-summaries, exit reasons) stay in the language it emitted them in.
+All eight windows share one dark console layout — identical header, top nav and
+a language switch (**HR / EN**, Croatian by default) — and are separate pages,
+not tabs. The choice is stored in `localStorage` (`bettercalltrader_lang`) and
+carries across every page; each page has its own translations for its panels
+and tables. Messages produced by the Python bot (log lines, AI summaries, exit
+reasons) stay in the language it emitted them in.
 
-When `DASHBOARD_TOKEN` is set, open the page once as `/?token=…`. Both
-dashboards store it as `bettercalltrader_token` and send it as `X-Auth-Token`
-on every request; the **Token** button in the header replaces or clears it.
+The pages are plain static HTML served by the bot (`risk.html`, `wallets.html`,
+`backtest.html`, `ml.html`, `system.html`, `settings.html`); the shared header,
+polling, token handling and formatters live in `webui/console.js`, and the
+console styling in `webui/theme.css`. Only `/api/*`, `/metrics` and `/ready`
+require the dashboard token — pages themselves are static and safe to refresh.
+
+When `DASHBOARD_TOKEN` is set, open the page once as `/?token=…`. Every page
+stores it as `bettercalltrader_token` and sends it as `X-Auth-Token` on every
+request; the **Token** button in the shared header replaces or clears it.
 Prometheus metrics use the `bettercalltrader_*` prefix (`bettercalltrader_info`,
 `bettercalltrader_db_up`, `bettercalltrader_http_requests_total`).
 
@@ -193,13 +217,29 @@ Prometheus metrics use the `bettercalltrader_*` prefix (`bettercalltrader_info`,
 | Paper buy | paste mint → BUY | `POST /api/buy` `{"mint": "..."}` |
 | Close a position | sell 100% on the row | `POST /api/sell` `{"mint": "..."}` |
 | Cancel a pending entry | `cancel` on the confirmation | `POST /api/confirmations/cancel` `{"mint": "..."}` |
-| Reset the circuit breaker | banner button | `POST /api/breaker/reset` |
-| Change runtime knobs | config panel | `POST /api/config` |
+| Reset the circuit breaker | banner button (`/`), reset button (`/risk`) | `POST /api/breaker/reset` |
+| Change runtime knobs | config panel (`/`), full editor (`/settings`) | `POST /api/config` |
+| Switch risk profile | **Strategy profile** dropdown (`/`, `/settings`) | `POST /api/config` `{"strategyProfile": "high_risk"}` |
+| Track a whale | add form (`/wallets`) | `POST /api/wallets/add` `{"address": "...", "label": "..."}` |
+| Untrack a whale | remove on the row (`/wallets`) | `POST /api/wallets/remove` `{"address": "..."}` |
+| Fire a demo whale signal | `simulate whale buy` (`/wallets`) | `POST /api/simulate_whale_buy` |
+| Train the advisory model | train button (`/ml`) | `POST /api/ml/train` |
 
 Manual buys are fail-closed: without a fresh DexScreener quote the API returns
 `400` and journals a `BLOCK`/`STALE_PRICE` decision instead of guessing a price.
 `/api/config` can change sizing and risk settings at runtime but **cannot**
 enable live trading; that only comes from `.env` and a restart.
+
+The **Strategy profile** dropdown in the risk panel switches
+`conservative`/`balanced`/`aggressive`/`high_risk` live. Selecting one applies
+that profile's sizing and exit numbers immediately (even when `.env` pins the
+keys — an explicit click is an explicit instruction), updates the `STANDARD` /
+`HIGH RISK` badge next to it, refreshes the config hash and writes a
+`RISK MGR` log line. The choice is stored in the `bot_state` table, so it
+**survives a restart and wins over `STRATEGY_PROFILE`**; `STRATEGY_PROFILE` is
+only the startup default. To let `.env` win again, select the profile you want
+once (that selection is now stored) or delete the row:
+`sqlite3 paper_portfolio.db "DELETE FROM bot_state WHERE key='strategy_profile'"`.
 
 ### Strategy profiles
 
@@ -210,11 +250,29 @@ enable live trading; that only comes from `.env` and a restart.
 | `conservative` | 0.25 SOL | 2 | -18% | +60% | 1 | 3% |
 | `balanced` | 0.5 SOL | 2 | -25% | +80% | 2 | 5% |
 | `aggressive` | 0.75 SOL | 3 | -35% | +120% | 3 | 8% |
+| `high_risk` | 1.5 SOL | 4 | -45% | +250% | 5 | 20% |
 
-Explicit env values always win. The most useful knobs to tune after a few paper
-sessions are `TRADE_SIZE_SOL`, `MAX_OPEN_POSITIONS`, `STOP_LOSS_PCT`, `TP1_PCT`,
-`TP1_FRACTION`, `FINAL_TAKE_PROFIT_PCT`, `MAX_DAILY_TRADES`,
-`MAX_DAILY_DRAWDOWN_PCT`, `MIN_LIQUIDITY_USD` and `MAX_TOP10_HOLDER_PCT`.
+Explicit env values always win at **startup** — **except** for `high_risk`, which
+is an explicit opt-in risk mode and therefore overrides the env sizing/exit keys.
+Otherwise a `.env` that pins the balanced numbers would silently make the mode a
+no-op. Switching the profile from the Command Center applies the profile numbers
+regardless of `.env` (see [The Command Center](#the-command-center)).
+`high_risk` also sells only 35% at TP1 (`TP1_FRACTION=0.35`), arms the
+trailing stop at +60% and uses a wider 35% trail (25% after TP1), so the
+remaining position can run. Aliases: `high-risk`, `highrisk`, `degen`.
+
+The mode changes **how much is bet and how it is exited, not what is bought**:
+liquidity, holder concentration, volume and mint/freeze filters are unchanged.
+It is still paper trading unless `LIVE_TRADING_ENABLED=true` with the live
+guards, which this profile does not touch. Startup prints a
+`🔥 [RISK MODE] HIGH RISK / HIGH REWARD` banner, the dashboard reports
+`strategyProfile.riskMode = "high"`, and `python -m bettercalltrader.doctor`
+warns that the `.env` sizing/exit keys are being overridden.
+
+The most useful knobs to tune after a few paper sessions are `TRADE_SIZE_SOL`,
+`MAX_OPEN_POSITIONS`, `STOP_LOSS_PCT`, `TP1_PCT`, `TP1_FRACTION`,
+`FINAL_TAKE_PROFIT_PCT`, `MAX_DAILY_TRADES`, `MAX_DAILY_DRAWDOWN_PCT`,
+`MIN_LIQUIDITY_USD` and `MAX_TOP10_HOLDER_PCT`.
 
 ### Where to look when something happens
 
@@ -491,8 +549,17 @@ the real API on an ephemeral port and prints `SMOKE OK`.
 ```
 BetterCallTrader/
 ├── research_bot.py       # Python multi-agent bot + local web/API server (http://localhost:8080)
-├── command_center.html   # Web Command Center, live-synced with the bot
-├── analytics.html        # analytics dashboard: equity, risk, exits, ML (/analytics)
+├── command_center.html   # / : Web Command Center, live-synced with the bot
+├── analytics.html        # /analytics : equity, risk, exits, ML
+├── risk.html             # /risk : circuit breaker, entry gate, sizing, concentration
+├── wallets.html          # /wallets : tracked whales, wallet quality, open positions
+├── backtest.html         # /backtest : realized-trade replay, equity curve, breakdowns
+├── ml.html               # /ml : advisory model status, training, per-mint prediction
+├── system.html           # /system : readiness, metrics, Prometheus text, audit trail
+├── settings.html         # /settings : runtime knob editor + strategy profile
+├── webui/
+│   ├── console.js        # shared console runtime: header/nav, i18n, token, api(), formatters
+│   └── theme.css         # shared console theme and components
 ├── test_v9.py            # local self-tests (v9 – v12)
 ├── smoke_v10.py          # end-to-end API smoke test (real aiohttp app, temp DB)
 ├── requirements.txt      # pinned runtime dependencies
@@ -601,6 +668,9 @@ is local under `config.llm`.
 | `GET /api/ml/status` | ML model contract state (`ok`/`stale`/`missing`), reasons and summary |
 | `GET /api/ml/predict?mint=...` | advisory buy/skip probability; `409` with staleness reasons instead of scoring a stale model |
 | `POST /api/ml/train` | retrain the advisory model from closed paper trades |
+| `GET /risk` `/wallets` `/backtest` `/ml` `/system` `/settings` | console windows (static pages, no token required) |
+| `POST /api/wallets/add` / `POST /api/wallets/remove` | track / untrack a whale `{address, label}` |
+| `POST /api/simulate_whale_buy` | fire a demo whale signal through the normal pipeline |
 | `GET /analytics` | dedicated analytics dashboard page |
 | `POST /api/breaker/reset` | manual breaker reset |
 | `POST /api/confirmations/cancel` | cancel a pending entry `{mint}` |
@@ -621,7 +691,7 @@ The project is being migrated incrementally from the original monolith into a sm
 - `bettercalltrader/risk_analytics.py` — drawdown, VaR, expected shortfall, profit factor, HHI (v10)
 - `bettercalltrader/backtest.py` — realized-trade replay report (v10)
 - `bettercalltrader/security.py` — optional dashboard token and rate limiter (v10)
-- `bettercalltrader/strategies.py` — conservative/balanced/aggressive risk profiles (v10)
+- `bettercalltrader/strategies.py` — conservative/balanced/aggressive/`high_risk` risk profiles (v10, high-risk mode v12)
 - `bettercalltrader/ml.py` — dependency-free logistic advisory model (v10)
 - `bettercalltrader/price_feed.py` — TTL price cache shared by the scan and monitor loops (v10)
 - `bettercalltrader/prometheus.py` — dependency-free counters/gauges/histograms and text exposition (v11)
@@ -755,7 +825,7 @@ The repository now includes the full v10 layer:
 **Operations**
 - optional `DASHBOARD_TOKEN` (sent as `X-Auth-Token` or `?token=`) and per-IP rate limiting
 - structured JSON logging option and `/api/audit`
-- strategy profiles: `STRATEGY_PROFILE=conservative|balanced|aggressive`; env values always win
+- strategy profiles: `STRATEGY_PROFILE=conservative|balanced|aggressive|high_risk`; env values win except for the opt-in `high_risk` risk mode, which overrides them
 - TTL price cache to cut duplicate DexScreener calls (`PRICE_CACHE_ENABLED`, `PRICE_CACHE_TTL_SEC`)
 
 **Analytics**
@@ -971,7 +1041,7 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 | Doctor warns the dashboard token is empty on a non-loopback bind | The bot refuses to expose an unauthenticated trading API | Bind `127.0.0.1` (default), or set `DASHBOARD_TOKEN` (and open `/?token=...` once). `ALLOW_INSECURE_DASHBOARD=true` is the explicit, unsafe opt-out. |
 | Dashboard returns `401` / `403` | `DASHBOARD_TOKEN` is set and the browser has no token cookie | Open `http://127.0.0.1:8080/?token=<value>` once; the cookie is then reused. |
 | Port `8080` already in use | Another process (often a previous bot) holds the port | Stop it, or set `COMMAND_CENTER_PORT=8081` in `.env` and restart. The bot falls back to terminal-only mode when the port is busy. |
-| The bot exits on its own after ~35 minutes | A run is 100 cycles × 20 seconds by design | Restart it, or run it under `tmux`/`systemd`. Open paper positions persist in `paper_portfolio.db`. |
+| The bot appears to stop on its own | The process was killed, or it received `Ctrl+C` / `SIGTERM` | Check `bot_history.log` and the `shutdown` entry in `bot_audit.jsonl`. The bot has no cycle cap and runs until stopped; open paper positions persist in `paper_portfolio.db`. |
 | No automatic buys, only `SKIP`/`WATCH` | No LLM configured; the strict heuristic stays below the auto-BUY threshold | Set `GEMINI_API_KEY`, or `LLM_BASE_URL` + `LLM_MODEL` for a local server. This is fail-closed by design. |
 | Manual buy returns `400` and journals `BLOCK`/`STALE_PRICE` | DexScreener has no fresh quote for that mint | Wait for a DexScreener pair (or enable `PUMPFUN_CURVE_ENABLED=true` for bonding-curve tokens) and retry. The bot never guesses a price. |
 | Journal/audit shows `NO_ROUTE` | No Jupiter route or no Pump.fun route for the amount | The token is too new, too illiquid or the amount is too small. Try later or a different mint. |

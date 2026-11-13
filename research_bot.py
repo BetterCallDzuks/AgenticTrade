@@ -1,4 +1,5 @@
 import asyncio
+import itertools
 import os
 import json
 import base64
@@ -1378,13 +1379,23 @@ class PaperTradingManager:
         self.step2_floor_pct = env_float("STEP2_FLOOR_PCT", 15.0)
 
         # v10.0 strategy profile: fills only env vars that are not explicitly set.
-        from bettercalltrader.strategies import normalize_profile, resolve_profile
-        self.strategy_profile = normalize_profile(os.environ.get("STRATEGY_PROFILE", "balanced"))
-        for attr, value in resolve_profile(os.environ, self.strategy_profile).items():
-            setattr(self, attr, value)
-        if not self._max_position_explicit:
-            self.max_position_sol = self.trade_size_sol
-        self.refresh_config_hash()
+        # An override profile (high_risk) is an explicit risk mode and wins over
+        # the environment; explicit constructor arguments still win over both.
+        # The profile itself is applied after the database is open, because a
+        # Command Center selection is persisted in bot_state and wins over .env.
+        from bettercalltrader.strategies import ATTRIBUTE_MAP
+
+        self._profile_baseline = {
+            attr: getattr(self, attr) for attr in ATTRIBUTE_MAP.values() if hasattr(self, attr)
+        }
+        self._profile_explicit = {
+            "trade_size_sol": trade_size_sol,
+            "stop_loss_pct": stop_loss_pct,
+            "tp1_pct": tp1_pct,
+            "trailing_stop_pct": trailing_stop_pct,
+        }
+        self.strategy_profile = "balanced"
+        self.high_risk_mode = False
 
         self.pending_confirmations: dict = {}
         self.last_entry_block: Optional[dict] = None
@@ -1392,6 +1403,18 @@ class PaperTradingManager:
         self._stale_logged: set = set()
         self._journal_inserts = 0
         self._init_db()
+        stored_profile = self._get_state("strategy_profile")
+        self.apply_strategy_profile(
+            stored_profile or os.environ.get("STRATEGY_PROFILE", "balanced"),
+            refresh=False,
+            persist=False,
+        )
+        for name, value in self._profile_explicit.items():
+            if value is not None:
+                setattr(self, name, value)
+        if not self._max_position_explicit:
+            self.max_position_sol = self.trade_size_sol
+        self.refresh_config_hash()
         self.restore_pending_confirmations()
 
     def now(self) -> datetime:
@@ -1404,6 +1427,51 @@ class PaperTradingManager:
         from bettercalltrader.strategies import ATTRIBUTE_MAP
 
         return {key: getattr(self, attr) for key, attr in ATTRIBUTE_MAP.items() if hasattr(self, attr)}
+
+    def apply_strategy_profile(
+        self,
+        name: str,
+        refresh: bool = True,
+        persist: bool = True,
+        force: Optional[bool] = None,
+    ) -> dict:
+        """Apply a named risk profile, at startup or from the Command Center.
+
+        Standard profiles only fill knobs that are absent from the environment.
+        The ``high_risk`` override profile always wins over them. Knobs not
+        pinned in the environment are reset to their pre-profile baseline first,
+        so switching back from ``high_risk`` restores the balanced (or .env)
+        numbers instead of leaving the 1.5 SOL sizing behind.
+
+        ``force=True`` applies every profile value over the environment. The
+        Command Center uses it: an explicit click on the dropdown is an explicit
+        instruction, and a .env that pins all the strategy keys would otherwise
+        make the selector look broken.
+
+        ``persist`` stores the choice in ``bot_state`` so a Command Center
+        switch survives a restart (it then wins over ``STRATEGY_PROFILE``).
+        """
+        from bettercalltrader.strategies import is_override_profile, normalize_profile, resolve_profile
+
+        profile = normalize_profile(name)
+        if force is None:
+            force = is_override_profile(profile)
+        for attr, value in getattr(self, "_profile_baseline", {}).items():
+            setattr(self, attr, value)
+        self.strategy_profile = profile
+        self.high_risk_mode = is_override_profile(profile)
+        for attr, value in resolve_profile(os.environ, profile, force=force).items():
+            setattr(self, attr, value)
+        if not self._max_position_explicit:
+            self.max_position_sol = self.trade_size_sol
+        if persist:
+            try:
+                self._set_state("strategy_profile", profile)
+            except Exception as e:
+                add_agent_log("RISK MGR", f"Profil nije spremljen u bazu: {e}", "warn")
+        if refresh:
+            self.refresh_config_hash()
+        return self.get_strategy_profile_info()
 
     def refresh_config_hash(self) -> str:
         """Recompute the effective strategy + cost fingerprint after a change."""
@@ -3104,6 +3172,8 @@ class PaperTradingManager:
         from bettercalltrader.strategies import profile_values
         return {
             "name": self.strategy_profile,
+            "riskMode": "high" if self.high_risk_mode else "standard",
+            "overridesEnvironment": self.high_risk_mode,
             "values": profile_values(self.strategy_profile),
             "effective": {
                 "tradeSizeSol": self.trade_size_sol,
@@ -3416,6 +3486,8 @@ def build_config_payload(portfolio, researcher, executor) -> dict:
     cfg = {key: getattr(owners[owner], attr) for key, owner, attr, _ in CONFIG_FIELDS}
     cfg["slippagePct"] = executor.slippage_bps / 100.0
     cfg["jitoTipSol"] = executor.priority_fee_sol
+    cfg["strategyProfile"] = portfolio.strategy_profile
+    cfg["riskMode"] = "high" if portfolio.high_risk_mode else "standard"
     cfg["liveTradingEnabled"] = executor.live_trading_enabled
     cfg["telegramEnabled"] = TELEGRAM.enabled
     cfg["timezone"] = BOT_TIMEZONE_NAME
@@ -3459,6 +3531,16 @@ def apply_config_payload(data: dict, portfolio, researcher, executor) -> List[st
             executor.priority_fee_sol = float(data["jitoTipSol"])
         except (TypeError, ValueError):
             pass
+    # Applied last so a profile switch wins over the numeric fields posted in
+    # the same request (the dashboard sends the whole form on every change).
+    requested_profile = data.get("strategyProfile")
+    if isinstance(requested_profile, str) and requested_profile.strip():
+        from bettercalltrader.strategies import normalize_profile
+
+        target = normalize_profile(requested_profile)
+        if target != portfolio.strategy_profile:
+            portfolio.apply_strategy_profile(target, force=True)
+            changed.append("strategyProfile")
     if changed:
         portfolio.refresh_config_hash()
     return changed
@@ -3587,13 +3669,33 @@ async def start_command_center_server(
         middlewares=[metrics_middleware, cors_middleware, security_middleware]
     )
 
+    def page_response(path: Path) -> web.FileResponse:
+        """Serve an HTML file with an explicit content type.
+
+        ``FileResponse`` only guesses ``Content-Type`` during ``prepare()``,
+        which happens after the middleware chain — so without pinning it here
+        the CSP header would never be attached to a page.
+        """
+        return web.FileResponse(path, headers={"Content-Type": "text/html; charset=utf-8"})
+
     async def handle_index(request: web.Request):
         html_path = BASE_DIR / "command_center.html"
         if not html_path.exists():
             html_path = Path.cwd() / "command_center.html"
         if html_path.exists():
-            return web.FileResponse(html_path)
+            return page_response(html_path)
         return web.Response(text="Datoteka command_center.html nije pronađena!", status=404)
+
+    def make_page_handler(filename: str):
+        """Serve a top-level console page from the app or the current directory."""
+        async def _handle_page(request: web.Request):
+            html_path = BASE_DIR / filename
+            if not html_path.exists():
+                html_path = Path.cwd() / filename
+            if html_path.exists():
+                return page_response(html_path)
+            return web.Response(text=f"{filename} not found", status=404)
+        return _handle_page
 
     async def handle_api_state(request: web.Request):
         risk = portfolio.get_risk_snapshot()
@@ -3764,7 +3866,7 @@ async def start_command_center_server(
         if not html_path.exists():
             html_path = Path.cwd() / "analytics.html"
         if html_path.exists():
-            return web.FileResponse(html_path)
+            return page_response(html_path)
         return web.Response(text="analytics.html not found", status=404)
 
     async def handle_api_wallet_quality(request: web.Request):
@@ -3893,8 +3995,29 @@ async def start_command_center_server(
 
     async def handle_api_config(request: web.Request):
         data = await request.json()
+        requested = data.get("strategyProfile")
+        if isinstance(requested, str) and requested.strip():
+            from bettercalltrader.strategies import PROFILES, is_known_profile
+
+            if not is_known_profile(requested):
+                return web.json_response(
+                    {
+                        "ok": False,
+                        "error": f"unknown strategy profile {requested!r}",
+                        "profiles": sorted(PROFILES),
+                    },
+                    status=400,
+                )
         changed = apply_config_payload(data, portfolio, researcher, executor)
         add_agent_log("RISK MGR", f"Settings updated ({', '.join(changed) if changed else 'no changes'})", "info")
+        if "strategyProfile" in changed:
+            add_agent_log(
+                "RISK MGR",
+                f"Profil strategije promijenjen na '{portfolio.strategy_profile}' "
+                f"({portfolio.trade_size_sol:g} SOL/trejd · stop {portfolio.stop_loss_pct:g}% · "
+                f"TP1 {portfolio.tp1_pct:g}% · max {portfolio.max_open_positions} pozicija)",
+                "warn" if portfolio.high_risk_mode else "info",
+            )
         return web.json_response({"ok": True, "changed": changed, "config": build_config_payload(portfolio, researcher, executor)})
 
     async def handle_api_health(request: web.Request):
@@ -3909,6 +4032,13 @@ async def start_command_center_server(
         })
 
     app.router.add_get("/", handle_index)
+    for console_page in ("risk", "wallets", "backtest", "ml", "system", "settings"):
+        app.router.add_get(f"/{console_page}", make_page_handler(f"{console_page}.html"))
+    webui_dir = BASE_DIR / "webui"
+    if not webui_dir.exists():
+        webui_dir = Path.cwd() / "webui"
+    if webui_dir.exists():
+        app.router.add_static("/webui/", webui_dir)
     app.router.add_get("/api/health", handle_api_health)
     app.router.add_get("/api/state", handle_api_state)
     app.router.add_get("/api/journal", handle_api_journal)
@@ -3986,12 +4116,18 @@ async def _confirmation_loop(
 
 
 async def run_research_pipeline(
-    cycles: int = 100,
+    cycles: Optional[int] = None,
     interval_seconds: int = 20,
     enable_pumpfun_ws: bool = True,
     live_trading_enabled: Optional[bool] = None,
     server_port: int = 8080
 ):
+    """Run the bot until it is stopped.
+
+    ``cycles=None`` (the default) means run indefinitely: the pipeline keeps
+    scanning until ``Ctrl+C`` / ``SIGTERM``.
+    Pass a positive integer to cap the run at that many cycles.
+    """
     print("=" * 70)
     print("🚀 SOLANA MEMECOIN MULTI-AGENT BOT (v12.0 — Mint/Freeze Fix · Time-Stop · Step-Up · Telegram)")
     print("=" * 70)
@@ -4018,10 +4154,37 @@ async def run_research_pipeline(
     mode_str = "🔥 LIVE ON-CHAIN TRADING" if executor.live_trading_enabled else "🛡️ PAPER TRADING + JUPITER DRY-RUN"
     print(f"⚙️  Mod izvršavanja: {mode_str} | Telegram: {'ON ✅' if TELEGRAM.enabled else 'OFF (dodaj u .env)'}")
     print(f"🧾 Config hash: {portfolio.config_hash} (profile: {portfolio.strategy_profile})")
+    if portfolio.high_risk_mode:
+        print(
+            "🔥 [RISK MODE] HIGH RISK / HIGH REWARD — "
+            f"{portfolio.trade_size_sol:g} SOL/trade · {portfolio.max_open_positions} max open · "
+            f"stop {portfolio.stop_loss_pct:g}% · TP1 {portfolio.tp1_pct:g}% "
+            f"(sell {portfolio.tp1_fraction:.0%}) · trailing {portfolio.trailing_stop_pct:g}% → "
+            f"{portfolio.trailing_stop_pct_after_tp1:g}% after TP1 · "
+            f"max daily drawdown {portfolio.max_daily_drawdown_pct:g}%"
+        )
+        print(
+            "   ⚠️  Profil nadjačava .env vrijednosti za sizing i izlaze. "
+            "Ulazni filteri (likvidnost, holderi, mint/freeze) ostaju nepromijenjeni."
+        )
+        add_agent_log(
+            "RISK MGR",
+            f"HIGH RISK mod aktivan: {portfolio.trade_size_sol:g} SOL/trade, "
+            f"{portfolio.max_open_positions} pozicija, stop {portfolio.stop_loss_pct:g}%, "
+            f"TP1 {portfolio.tp1_pct:g}% — profil nadjačava .env.",
+            "warn",
+        )
     portfolio.print_portfolio_summary()
 
     if TELEGRAM.enabled:
         TELEGRAM.enqueue("🚀 <b>Solana Agentic Bot v9.0 pokrenut!</b>\nPošalji /help za listu komandi.")
+        if portfolio.high_risk_mode:
+            TELEGRAM.enqueue(
+                "🔥 <b>HIGH RISK / HIGH REWARD mod aktivan</b>\n"
+                f"{portfolio.trade_size_sol:g} SOL/trade · {portfolio.max_open_positions} max otvorenih · "
+                f"stop {portfolio.stop_loss_pct:g}% · TP1 {portfolio.tp1_pct:g}% · "
+                f"max dnevni drawdown {portfolio.max_daily_drawdown_pct:g}%"
+            )
 
     async with aiohttp.ClientSession() as session:
         runner = None
@@ -4042,12 +4205,16 @@ async def run_research_pipeline(
         try:
             monitor_task = asyncio.create_task(_position_monitor_loop(portfolio, researcher, session))
             confirm_task = asyncio.create_task(_confirmation_loop(portfolio, researcher, executor, session))
-            for cycle in range(1, cycles + 1):
+            cycle_iter = itertools.count(1) if cycles is None else range(1, cycles + 1)
+            for cycle in cycle_iter:
                 if shutdown.requested:
                     add_agent_log("SYSTEM", f"Shutdown requested ({shutdown.reason}); stopping before cycle {cycle}.", "warn")
                     break
                 RUNTIME_STATUS["cycle"] = cycle
-                print(f"\n🔄 Pokrećem ciklus {cycle}/{cycles} (Web Dashboard: http://127.0.0.1:{server_port})...")
+                if cycles is None:
+                    print(f"\n🔄 Pokrećem ciklus {cycle} (Web Dashboard: http://127.0.0.1:{server_port})...")
+                else:
+                    print(f"\n🔄 Pokrećem ciklus {cycle}/{cycles} (Web Dashboard: http://127.0.0.1:{server_port})...")
 
                 dex_mints = await discovery.fetch_latest_solana_candidates(session, limit=3)
                 for mint in dex_mints:
@@ -4077,7 +4244,7 @@ async def run_research_pipeline(
 
                 if shutdown.requested:
                     break
-                if cycle < cycles:
+                if cycles is None or cycle < cycles:
                     try:
                         await asyncio.wait_for(shutdown.event.wait(), timeout=interval_seconds)
                     except asyncio.TimeoutError:
@@ -4108,7 +4275,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(
             run_research_pipeline(
-                cycles=100,
+                cycles=None,
                 interval_seconds=20,
                 server_port=COMMAND_CENTER_PORT,
             )

@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="hr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetterCallTrader — Wallets</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: { sol: { purple: '#9945FF', green: '#14F195', dark: '#0B0E14', card: '#131822', border: '#1E2638' } }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="webui/theme.css">
+    <script src="webui/console.js"></script>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-sol-purple selection:text-white">
+
+    <header id="bctHeader" class="glass-panel sticky top-0 z-40 sol-gradient-border"></header>
+
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 space-y-5">
+
+        <!-- KPI STRIP -->
+        <section class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="wallets.kpiBalance"></span>
+                <div id="kpiBalance" class="kpi-value">—</div>
+                <div id="kpiBalanceSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="wallets.kpiLocked"></span>
+                <div id="kpiLocked" class="kpi-value">—</div>
+                <div id="kpiLockedSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="wallets.kpiPnl"></span>
+                <div id="kpiPnl" class="kpi-value">—</div>
+                <div id="kpiPnlSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="wallets.kpiTrades"></span>
+                <div id="kpiTrades" class="kpi-value">—</div>
+                <div id="kpiTradesSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="wallets.kpiWinRate"></span>
+                <div id="kpiWinRate" class="kpi-value">—</div>
+                <div id="kpiWinRateSub" class="kpi-sub">—</div>
+            </div>
+            <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400" data-i18n="wallets.kpiOpen"></span>
+                <div id="kpiOpen" class="kpi-value">—</div>
+                <div id="kpiOpenSub" class="kpi-sub">—</div>
+            </div>
+        </section>
+
+        <!-- ADD WALLET -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
+                <h2 class="section-title"><i class="fa-solid fa-user-plus text-sol-purple"></i><span data-i18n="wallets.addTitle"></span></h2>
+                <span class="panel-note" data-i18n="wallets.addSub"></span>
+            </div>
+
+            <form id="addWalletForm" class="grid grid-cols-1 lg:grid-cols-12 gap-2 items-end" autocomplete="off" novalidate>
+                <div class="lg:col-span-6">
+                    <label class="block text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" for="walletAddress" data-i18n="wallets.fieldAddress"></label>
+                    <input id="walletAddress" name="address" type="text" class="field" spellcheck="false" autocomplete="off" data-i18n-placeholder="wallets.placeholderAddress">
+                </div>
+                <div class="lg:col-span-4">
+                    <label class="block text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" for="walletLabel" data-i18n="wallets.fieldLabel"></label>
+                    <input id="walletLabel" name="label" type="text" class="field" spellcheck="false" autocomplete="off" data-i18n-placeholder="wallets.placeholderLabel">
+                </div>
+                <div class="lg:col-span-2">
+                    <button id="addWalletBtn" type="submit" class="btn btn-primary w-full">
+                        <i class="fa-solid fa-plus"></i><span data-i18n="wallets.addBtn"></span>
+                    </button>
+                </div>
+            </form>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 mt-3 pt-2 border-t border-sol-border">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span id="walletAddrPill" class="pill">—</span>
+                    <span id="livePill" class="pill">—</span>
+                    <span id="modelPill" class="pill">—</span>
+                    <span id="profilePill" class="pill">—</span>
+                </div>
+                <button id="simulateBtn" type="button" class="btn btn-cyan">
+                    <i class="fa-solid fa-flask-vial"></i><span data-i18n="wallets.simulateBtn"></span>
+                </button>
+            </div>
+        </section>
+
+        <!-- TRACKED WALLETS -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                <h2 class="section-title"><i class="fa-solid fa-wallet text-sol-green"></i><span data-i18n="wallets.trackedTitle"></span></h2>
+                <span id="trackedMeta" class="panel-note" data-i18n="wallets.trackedSub"></span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th data-i18n="wallets.colWallet"></th>
+                            <th class="text-right" data-i18n="wallets.colSignals"></th>
+                            <th data-i18n="wallets.colQuality"></th>
+                            <th data-i18n="wallets.colAdded"></th>
+                            <th class="text-right" data-i18n="wallets.colAction"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="trackedBody">
+                        <tr><td colspan="5" class="muted text-center" data-i18n="common.loading"></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- WALLET QUALITY -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                <h2 class="section-title"><i class="fa-solid fa-user-shield text-cyan-300"></i><span data-i18n="wallets.qualityTitle"></span></h2>
+                <span class="panel-note" data-i18n="wallets.qualitySub"></span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th data-i18n="wallets.colWallet"></th>
+                            <th class="text-right" data-i18n="wallets.colSamples"></th>
+                            <th class="text-right" data-i18n="wallets.colWl"></th>
+                            <th class="text-right" data-i18n="wallets.colRecentWr"></th>
+                            <th class="text-right" data-i18n="wallets.colNet"></th>
+                            <th data-i18n="wallets.colState"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="qualityBody">
+                        <tr><td colspan="6" class="muted text-center" data-i18n="common.loading"></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- OPEN POSITIONS -->
+        <section class="glass-panel rounded-xl p-4 fade-in">
+            <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2 mb-2">
+                <h2 class="section-title"><i class="fa-solid fa-layer-group text-amber-300"></i><span data-i18n="wallets.positionsTitle"></span></h2>
+                <span id="positionsMeta" class="panel-note">—</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th data-i18n="wallets.colSymbol"></th>
+                            <th data-i18n="wallets.colMint"></th>
+                            <th class="text-right" data-i18n="wallets.colInvested"></th>
+                            <th class="text-right" data-i18n="wallets.colRemaining"></th>
+                            <th class="text-right" data-i18n="wallets.colPrice"></th>
+                            <th data-i18n="wallets.colSource"></th>
+                            <th data-i18n="wallets.colConviction"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="positionsBody">
+                        <tr><td colspan="7" class="muted text-center" data-i18n="common.loading"></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-sol-border/70 text-[10px] font-mono uppercase tracking-wider text-slate-500">
+            <span data-i18n="footer.paper"></span>
+            <span><span data-i18n="footer.auth"></span>: <span id="authLabel">off</span> · <span data-i18n="footer.sync"></span>: <span id="footerSync">—</span></span>
+        </footer>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script>
+    (function () {
+        "use strict";
+
+        const I18N = {
+            hr: {
+                "wallets.kpiBalance": "Saldo",
+                "wallets.kpiLocked": "Zaključano",
+                "wallets.kpiPnl": "Realizirani PnL",
+                "wallets.kpiTrades": "Ukupno trejdova",
+                "wallets.kpiWinRate": "Win rate",
+                "wallets.kpiOpen": "Otvorene pozicije",
+                "wallets.sizePerTrade": "{size} SOL / trejd",
+                "wallets.realizedSub": "zatvoreni trejdovi",
+                "wallets.inOpenPositions": "u otvorenim pozicijama",
+                "wallets.winsCount": "{wins} pobjeda / {total}",
+                "wallets.openSub": "{sol} SOL uloženo",
+                "wallets.noTrades": "bez trejdova",
+
+                "wallets.addTitle": "Dodaj novčanik",
+                "wallets.addSub": "prati smart money",
+                "wallets.fieldAddress": "Adresa novčanika",
+                "wallets.fieldLabel": "Oznaka (opcionalno)",
+                "wallets.placeholderAddress": "Base58 adresa (min. 32 znaka)",
+                "wallets.placeholderLabel": "npr. Cupsey",
+                "wallets.addBtn": "Dodaj",
+                "wallets.simulateBtn": "Simuliraj whale buy",
+                "wallets.noWallet": "novčanik nije povezan",
+                "wallets.liveOn": "LIVE",
+                "wallets.liveOff": "PAPER",
+                "wallets.modelLabel": "model",
+                "wallets.profileLabel": "profil",
+
+                "wallets.trackedTitle": "Praćeni novčanici",
+                "wallets.trackedSub": "whale / smart money lista",
+                "wallets.colWallet": "Novčanik",
+                "wallets.colSignals": "Signali",
+                "wallets.colQuality": "Kvaliteta",
+                "wallets.colAdded": "Dodano",
+                "wallets.colAction": "Akcija",
+                "wallets.emptyTracked": "Nema praćenih novčanika",
+                "wallets.noLabel": "bez oznake",
+                "wallets.trackedMeta": "{n} novčanika",
+
+                "wallets.stateTrusted": "trusted",
+                "wallets.stateDown": "down-weighted",
+                "wallets.stateNeutral": "neutral",
+                "wallets.stateUnknown": "nema uzoraka",
+
+                "wallets.qualityTitle": "Kvaliteta novčanika",
+                "wallets.qualitySub": "uzorci · zadnji prozor",
+                "wallets.colSamples": "Uzorci",
+                "wallets.colWl": "Pobjede / porazi",
+                "wallets.colRecentWr": "Zadnji WR",
+                "wallets.colNet": "Neto PnL",
+                "wallets.colState": "Stanje / razlog",
+                "wallets.emptyQuality": "Nema podataka o kvaliteti",
+
+                "wallets.positionsTitle": "Otvorene pozicije",
+                "wallets.positionsSub": "{n} aktivnih",
+                "wallets.colSymbol": "Simbol",
+                "wallets.colMint": "Mint",
+                "wallets.colInvested": "Uloženo SOL",
+                "wallets.colRemaining": "Ostatak",
+                "wallets.colPrice": "Cijena (sad / ulaz)",
+                "wallets.colSource": "Izvor",
+                "wallets.colConviction": "Uvjerenje",
+                "wallets.emptyPositions": "Nema otvorenih pozicija",
+
+                "wallets.errAddress": "Adresa mora imati najmanje 32 znaka",
+                "wallets.toastAdded": "Novčanik dodan",
+                "wallets.toastRemoved": "Novčanik uklonjen",
+                "wallets.toastSimulated": "Whale buy simuliran",
+                "wallets.toastFail": "Radnja nije uspjela"
+            },
+            en: {
+                "wallets.kpiBalance": "Balance",
+                "wallets.kpiLocked": "Locked",
+                "wallets.kpiPnl": "Realized PnL",
+                "wallets.kpiTrades": "Total trades",
+                "wallets.kpiWinRate": "Win rate",
+                "wallets.kpiOpen": "Open positions",
+                "wallets.sizePerTrade": "{size} SOL / trade",
+                "wallets.realizedSub": "closed trades",
+                "wallets.inOpenPositions": "in open positions",
+                "wallets.winsCount": "{wins} wins / {total}",
+                "wallets.openSub": "{sol} SOL deployed",
+                "wallets.noTrades": "no trades",
+
+                "wallets.addTitle": "Add wallet",
+                "wallets.addSub": "track smart money",
+                "wallets.fieldAddress": "Wallet address",
+                "wallets.fieldLabel": "Label (optional)",
+                "wallets.placeholderAddress": "Base58 address (min 32 chars)",
+                "wallets.placeholderLabel": "e.g. Cupsey",
+                "wallets.addBtn": "Add",
+                "wallets.simulateBtn": "Simulate whale buy",
+                "wallets.noWallet": "wallet not connected",
+                "wallets.liveOn": "LIVE",
+                "wallets.liveOff": "PAPER",
+                "wallets.modelLabel": "model",
+                "wallets.profileLabel": "profile",
+
+                "wallets.trackedTitle": "Tracked wallets",
+                "wallets.trackedSub": "whale / smart money list",
+                "wallets.colWallet": "Wallet",
+                "wallets.colSignals": "Signals",
+                "wallets.colQuality": "Quality",
+                "wallets.colAdded": "Added",
+                "wallets.colAction": "Action",
+                "wallets.emptyTracked": "No tracked wallets",
+                "wallets.noLabel": "unlabeled",
+                "wallets.trackedMeta": "{n} wallets",
+
+                "wallets.stateTrusted": "trusted",
+                "wallets.stateDown": "down-weighted",
+                "wallets.stateNeutral": "neutral",
+                "wallets.stateUnknown": "no samples",
+
+                "wallets.qualityTitle": "Wallet quality",
+                "wallets.qualitySub": "samples · recent window",
+                "wallets.colSamples": "Samples",
+                "wallets.colWl": "Wins / losses",
+                "wallets.colRecentWr": "Recent WR",
+                "wallets.colNet": "Net PnL",
+                "wallets.colState": "State / reason",
+                "wallets.emptyQuality": "No quality data",
+
+                "wallets.positionsTitle": "Open positions",
+                "wallets.positionsSub": "{n} active",
+                "wallets.colSymbol": "Symbol",
+                "wallets.colMint": "Mint",
+                "wallets.colInvested": "Invested SOL",
+                "wallets.colRemaining": "Remaining",
+                "wallets.colPrice": "Price (now / entry)",
+                "wallets.colSource": "Source",
+                "wallets.colConviction": "Conviction",
+                "wallets.emptyPositions": "No open positions",
+
+                "wallets.errAddress": "Address must be at least 32 characters",
+                "wallets.toastAdded": "Wallet added",
+                "wallets.toastRemoved": "Wallet removed",
+                "wallets.toastSimulated": "Whale buy simulated",
+                "wallets.toastFail": "Action failed"
+            }
+        };
+
+        const $ = (id) => document.getElementById(id);
+        const esc = (value) => BCT.escapeHtml(value);
+        const dash = "—";
+
+        function setText(id, value, className) {
+            const node = $(id);
+            if (!node) return;
+            node.textContent = value;
+            if (className !== undefined) node.className = className;
+        }
+
+        /* null / "" / NaN all become undefined so formatters print "—" */
+        function fin(value) {
+            if (value === null || value === undefined || value === "") return undefined;
+            const n = Number(value);
+            return Number.isFinite(n) ? n : undefined;
+        }
+
+        function first(source, keys) {
+            if (!source) return undefined;
+            for (let i = 0; i < keys.length; i += 1) {
+                const value = source[keys[i]];
+                if (value !== undefined && value !== null) return value;
+            }
+            return undefined;
+        }
+
+        function shortAddr(value) {
+            const text = String(value || "");
+            if (!text) return dash;
+            return text.length > 14 ? `${text.slice(0, 6)}…${text.slice(-4)}` : text;
+        }
+
+        function fmtPrice(value) {
+            const n = fin(value);
+            if (n === undefined) return dash;
+            if (n === 0) return "0";
+            if (n >= 1) return n.toFixed(4);
+            if (n >= 0.01) return n.toFixed(5);
+            return n.toPrecision(4);
+        }
+
+        function qualityState(quality) {
+            if (!quality) return "unknown";
+            const reason = String(quality.reason || "").toLowerCase();
+            if (!quality.trusted) return "downweighted";
+            return reason.indexOf("neutral") === 0 ? "neutral" : "trusted";
+        }
+
+        function qualityClass(state) {
+            if (state === "trusted") return "pos";
+            if (state === "downweighted") return "neg";
+            return "muted";
+        }
+
+        function qualityLabel(state) {
+            if (state === "trusted") return BCT.t("wallets.stateTrusted");
+            if (state === "downweighted") return BCT.t("wallets.stateDown");
+            if (state === "neutral") return BCT.t("wallets.stateNeutral");
+            return BCT.t("wallets.stateUnknown");
+        }
+
+        function walletCell(address, label) {
+            const text = label ? String(label) : BCT.t("wallets.noLabel");
+            return `<div class="text-white truncate" style="max-width:260px">${esc(text)}</div>` +
+                `<div class="muted text-[9px]" title="${esc(address || "")}">${esc(shortAddr(address))}</div>`;
+        }
+
+        function renderKpis(state, openPositions) {
+            const wallet = state.wallet || {};
+            const config = state.config || {};
+            const total = fin(wallet.total_trades);
+            const wins = fin(wallet.winning_trades);
+            const winRate = total !== undefined && total > 0 ? ((wins || 0) / total) * 100 : undefined;
+
+            setText("kpiBalance", BCT.fmtSol(fin(wallet.balance_sol), 4), "kpi-value");
+            setText("kpiBalanceSub", BCT.t("wallets.sizePerTrade", { size: BCT.fmtSol(fin(config.tradeSizeSol), 2) }));
+            setText("kpiLocked", BCT.fmtSol(fin(wallet.locked_sol), 3), "kpi-value");
+            setText("kpiLockedSub", BCT.t("wallets.inOpenPositions"));
+
+            const pnl = fin(wallet.realized_pnl_sol);
+            setText("kpiPnl", BCT.fmtSol(pnl, 3, true), `kpi-value ${BCT.signedClass(pnl)}`);
+            setText("kpiPnlSub", BCT.t("wallets.realizedSub"));
+
+            setText("kpiTrades", BCT.fmtInt(total), "kpi-value");
+            setText("kpiTradesSub", BCT.t("wallets.winsCount", { wins: BCT.fmtInt(wins || 0), total: BCT.fmtInt(total || 0) }));
+
+            setText("kpiWinRate", BCT.fmtPct(winRate, 1), "kpi-value");
+            setText("kpiWinRateSub", total && total > 0
+                ? `${BCT.fmtInt(wins || 0)}/${BCT.fmtInt(total)}`
+                : BCT.t("wallets.noTrades"));
+
+            const openCount = fin(wallet.open_positions);
+            const deployed = (openPositions || []).reduce((sum, p) => {
+                const value = fin(first(p, ["investedSol", "invested_sol"]));
+                return sum + (value || 0);
+            }, 0);
+            setText("kpiOpen", BCT.fmtInt(openCount !== undefined ? openCount : (openPositions || []).length), "kpi-value");
+            setText("kpiOpenSub", BCT.t("wallets.openSub", { sol: BCT.fmtSol(deployed, 2) }));
+        }
+
+        function renderMeta(state) {
+            const address = String(state.wallet_address || "");
+            const addrPill = $("walletAddrPill");
+            if (addrPill) {
+                addrPill.textContent = address ? shortAddr(address) : BCT.t("wallets.noWallet");
+                addrPill.title = address || "";
+                addrPill.className = address ? "pill live" : "pill offline";
+            }
+
+            const live = Boolean(state.live_trading_enabled);
+            const livePill = $("livePill");
+            if (livePill) {
+                livePill.textContent = live ? BCT.t("wallets.liveOn") : BCT.t("wallets.liveOff");
+                livePill.className = live ? "pill offline" : "pill live";
+            }
+
+            const modelPill = $("modelPill");
+            if (modelPill) {
+                modelPill.textContent = `${BCT.t("wallets.modelLabel")}: ${state.ai_model || dash}`;
+                modelPill.className = "pill";
+            }
+
+            const config = state.config || {};
+            const profile = state.strategyProfile || {};
+            const profileName = profile.name
+                || (typeof config.strategyProfile === "string" ? config.strategyProfile : "")
+                || config.riskMode
+                || state.riskMode
+                || "";
+            const profilePill = $("profilePill");
+            if (profilePill) {
+                const riskKey = profile.riskMode === "high" || config.riskMode === "high" ? "risk.high" : "risk.standard";
+                const mode = BCT.t(riskKey);
+                profilePill.textContent = `${BCT.t("wallets.profileLabel")}: ${profileName || dash} · ${mode}`;
+                profilePill.className = (profile.riskMode === "high" || config.riskMode === "high") ? "pill offline" : "pill live";
+            }
+        }
+
+        function renderTracked(list, qualityMap) {
+            const body = $("trackedBody");
+            const meta = $("trackedMeta");
+            if (meta) {
+                meta.textContent = `${BCT.t("wallets.trackedSub")} · ${BCT.t("wallets.trackedMeta", { n: BCT.fmtInt((list || []).length) })}`;
+            }
+            if (!list || !list.length) {
+                body.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center">${esc(BCT.t("wallets.emptyTracked"))}</td></tr>`;
+                return;
+            }
+            body.innerHTML = list.map((wallet) => {
+                const address = String(wallet.address || "");
+                const state = qualityState(qualityMap.get(address));
+                return `<tr>` +
+                    `<td>${walletCell(address, wallet.label)}</td>` +
+                    `<td class="num">${esc(BCT.fmtInt(fin(wallet.signalsCount)))}</td>` +
+                    `<td class="${qualityClass(state)}">${esc(qualityLabel(state))}</td>` +
+                    `<td class="muted">${esc(wallet.addedAt || dash)}</td>` +
+                    `<td class="text-right">` +
+                        `<button type="button" class="btn btn-danger" data-remove="${esc(address)}">` +
+                            `<i class="fa-solid fa-trash-can"></i><span>${esc(BCT.t("common.remove"))}</span>` +
+                        `</button>` +
+                    `</td>` +
+                    `</tr>`;
+            }).join("");
+        }
+
+        function renderQuality(list) {
+            const body = $("qualityBody");
+            if (!list || !list.length) {
+                body.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center">${esc(BCT.t("wallets.emptyQuality"))}</td></tr>`;
+                return;
+            }
+            body.innerHTML = list.map((quality) => {
+                const address = String(quality.address || "");
+                const recentRate = fin(quality.recentWinRate);
+                const recentText = recentRate === undefined ? dash : BCT.fmtPct(recentRate * 100, 0);
+                const state = qualityState(quality);
+                const net = fin(quality.netPnlSol);
+                return `<tr>` +
+                    `<td>${walletCell(address, quality.label)}</td>` +
+                    `<td class="num">${esc(BCT.fmtInt(fin(quality.samples)))}</td>` +
+                    `<td class="num"><span class="pos">${esc(BCT.fmtInt(fin(quality.wins)))}</span>` +
+                        `<span class="muted"> / </span><span class="neg">${esc(BCT.fmtInt(fin(quality.losses)))}</span></td>` +
+                    `<td class="num">${esc(recentText)}` +
+                        `<div class="muted text-[9px]">${esc(BCT.fmtInt(fin(quality.recentWins)))}/${esc(BCT.fmtInt(fin(quality.recentSamples)))}</div></td>` +
+                    `<td class="num ${BCT.signedClass(net)}">${esc(BCT.fmtSol(net, 3, true))}</td>` +
+                    `<td class="${qualityClass(state)}">${esc(qualityLabel(state))}` +
+                        `<div class="muted text-[9px]" style="max-width:260px">${esc(quality.reason || dash)}</div></td>` +
+                    `</tr>`;
+            }).join("");
+        }
+
+        function renderPositions(openPositions) {
+            const body = $("positionsBody");
+            const list = openPositions || [];
+            setText("positionsMeta", BCT.t("wallets.positionsSub", { n: BCT.fmtInt(list.length) }));
+            if (!list.length) {
+                body.innerHTML = `<tr><td colspan="7" class="muted" style="text-align:center">${esc(BCT.t("wallets.emptyPositions"))}</td></tr>`;
+                return;
+            }
+            body.innerHTML = list.map((position) => {
+                const mint = String(position.mint || "");
+                const symbol = String(position.symbol || mint.slice(0, 6) || dash);
+                const invested = fin(first(position, ["investedSol", "invested_sol"]));
+                const remaining = fin(first(position, ["remainingRatio", "remaining_ratio"]));
+                const current = fin(first(position, ["currentPriceUsd", "current_price_usd"]));
+                const entry = fin(first(position, ["entryPriceUsd", "entry_price_usd"]));
+                const openedAt = String(first(position, ["openedAt", "opened_at"]) || "");
+                const source = String(position.source || "");
+                const conviction = position.conviction;
+
+                let priceHtml = `<div>${esc(fmtPrice(current))} <span class="muted">/ ${esc(fmtPrice(entry))}</span></div>`;
+                if (current !== undefined && entry !== undefined && entry > 0) {
+                    const pnlPct = ((current - entry) / entry) * 100;
+                    priceHtml += `<div class="${BCT.signedClass(pnlPct)} text-[9px]">${esc(BCT.fmtPct(pnlPct, 1, true))}</div>`;
+                }
+
+                return `<tr>` +
+                    `<td><div class="text-white">${esc(symbol)}</div>` +
+                        (openedAt ? `<div class="muted text-[9px]">${esc(openedAt)}</div>` : "") +
+                    `</td>` +
+                    `<td class="muted" title="${esc(mint)}">${esc(shortAddr(mint))}</td>` +
+                    `<td class="num">${esc(BCT.fmtSol(invested, 3))}</td>` +
+                    `<td class="num">${esc(remaining === undefined ? dash : BCT.fmtPct(remaining * 100, 0))}</td>` +
+                    `<td class="num">${priceHtml}</td>` +
+                    `<td class="muted">${esc(source || dash)}</td>` +
+                    `<td>${esc(conviction === undefined || conviction === null || conviction === "" ? dash : String(conviction))}</td>` +
+                    `</tr>`;
+            }).join("");
+        }
+
+        async function refresh() {
+            const [state, qualityPayload] = await Promise.all([
+                BCT.api("/api/state"),
+                BCT.api("/api/wallet_quality")
+            ]);
+
+            const safeState = state || {};
+            const quality = (qualityPayload && qualityPayload.walletQuality) || [];
+            const qualityMap = new Map();
+            quality.forEach((entry) => {
+                if (entry && entry.address) qualityMap.set(String(entry.address), entry);
+            });
+
+            const openPositions = (safeState.positions || []).filter((position) =>
+                position && String(position.status || "").toUpperCase() === "OPEN"
+            );
+
+            renderKpis(safeState, openPositions);
+            renderMeta(safeState);
+            renderTracked(safeState.tracked_wallets || [], qualityMap);
+            renderQuality(quality);
+            renderPositions(openPositions);
+
+            setText("authLabel", BCT.token() ? "token" : "off");
+            setText("footerSync", new Date().toLocaleTimeString());
+            BCT.setConnection(true);
+        }
+
+        $("addWalletForm").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const addressInput = $("walletAddress");
+            const labelInput = $("walletLabel");
+            const address = addressInput.value.trim();
+            const label = labelInput.value.trim();
+
+            if (address.length < 32) {
+                BCT.toast(BCT.t("wallets.errAddress"));
+                addressInput.focus();
+                return;
+            }
+
+            const btn = $("addWalletBtn");
+            btn.disabled = true;
+            try {
+                await BCT.api("/api/wallets/add", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ address: address, label: label })
+                });
+                BCT.toast(BCT.t("wallets.toastAdded"));
+                addressInput.value = "";
+                labelInput.value = "";
+                await refresh();
+            } catch (err) {
+                BCT.toast(err.message || BCT.t("wallets.toastFail"));
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        $("trackedBody").addEventListener("click", async (event) => {
+            const btn = event.target.closest("[data-remove]");
+            if (!btn) return;
+            const address = btn.getAttribute("data-remove");
+            if (!address) return;
+            btn.disabled = true;
+            try {
+                await BCT.api("/api/wallets/remove", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ address: address })
+                });
+                BCT.toast(BCT.t("wallets.toastRemoved"));
+                await refresh();
+            } catch (err) {
+                BCT.toast(err.message || BCT.t("wallets.toastFail"));
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        $("simulateBtn").addEventListener("click", async () => {
+            const btn = $("simulateBtn");
+            btn.disabled = true;
+            try {
+                await BCT.api("/api/simulate_whale_buy", { method: "POST" });
+                BCT.toast(BCT.t("wallets.toastSimulated"));
+                await refresh();
+            } catch (err) {
+                BCT.toast(err.message || BCT.t("wallets.toastFail"));
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        BCT.init({ page: "wallets", i18n: I18N, onRefresh: refresh, poll: 10000 });
+    })();
+    </script>
+</body>
+</html>
