@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solana Memecoin Agentic Command Center v10.0</title>
+    <title>AgenticTrade — Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -30,102 +30,292 @@
         }
     </script>
     <style>
+        :root {
+            --sol-purple: #9945FF;
+            --sol-green: #14F195;
+            --sol-dark: #0B0E14;
+            --sol-card: #131822;
+            --sol-border: #1E2638;
+        }
+
+        html { color-scheme: dark; }
+
         body {
             background-color: #0B0E14;
             color: #E2E8F0;
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(153, 69, 255, 0.08) 0px, transparent 50%),
-                radial-gradient(at 100% 0%, rgba(20, 241, 149, 0.06) 0px, transparent 50%);
+            background-image:
+                radial-gradient(at 0% 0%, rgba(153, 69, 255, 0.10) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(20, 241, 149, 0.07) 0px, transparent 50%),
+                radial-gradient(at 50% 100%, rgba(153, 69, 255, 0.05) 0px, transparent 60%);
+            background-attachment: fixed;
         }
+
         .glass-panel {
             background: rgba(19, 24, 34, 0.85);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(30, 38, 56, 0.9);
         }
+
+        .glass-inset {
+            background: rgba(11, 14, 20, 0.7);
+            border: 1px solid rgba(30, 38, 56, 0.75);
+        }
+
         .sol-gradient-text {
             background: linear-gradient(90deg, #9945FF 0%, #14F195 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        .sol-gradient-border {
-            position: relative;
-        }
+
+        .sol-gradient-border { position: relative; }
         .sol-gradient-border::after {
-            content: '';
+            content: "";
             position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
+            bottom: 0; left: 0; right: 0;
             height: 2px;
             background: linear-gradient(90deg, #9945FF, #14F195);
         }
+
+        /* shared controls */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid #1E2638;
+            background: #0B0E14;
+            color: #E2E8F0;
+            font-size: 11px;
+            line-height: 1.2;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color 160ms ease, color 160ms ease, background 160ms ease, opacity 160ms ease;
+        }
+        .btn:hover { border-color: #9945FF; color: #fff; background: rgba(153, 69, 255, 0.10); }
+        .btn:focus-visible { outline: 2px solid #9945FF; outline-offset: 2px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary {
+            background: linear-gradient(90deg, #9945FF, #6D28D9);
+            border-color: transparent;
+            color: #fff;
+            box-shadow: 0 6px 18px -8px rgba(153, 69, 255, 0.8);
+        }
+        .btn-primary:hover { background: linear-gradient(90deg, #a765ff, #7c3aed); color: #fff; }
+        .btn-green { background: rgba(20, 241, 149, 0.12); border-color: rgba(20, 241, 149, 0.40); color: #14F195; }
+        .btn-green:hover { background: rgba(20, 241, 149, 0.22); border-color: rgba(20, 241, 149, 0.6); color: #14F195; }
+        .btn-cyan { background: rgba(6, 182, 212, 0.12); border-color: rgba(6, 182, 212, 0.4); color: #67e8f9; }
+        .btn-cyan:hover { background: rgba(6, 182, 212, 0.22); color: #a5f3fc; }
+        .btn-danger { background: rgba(244, 63, 94, 0.10); border-color: rgba(244, 63, 94, 0.32); color: #fda4af; }
+        .btn-danger:hover { background: rgba(244, 63, 94, 0.20); border-color: rgba(244, 63, 94, 0.55); color: #fecdd3; }
+
+        .nav-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 11px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            color: #94a3b8;
+            font-family: "JetBrains Mono", monospace;
+            font-size: 11px;
+            letter-spacing: 0.02em;
+            transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+        }
+        .nav-tab:hover { color: #fff; background: rgba(153, 69, 255, 0.12); }
+        .nav-tab.active { color: #fff; background: rgba(153, 69, 255, 0.18); border-color: rgba(153, 69, 255, 0.45); }
+
+        .lang-btn {
+            padding: 5px 10px;
+            font-family: "JetBrains Mono", monospace;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: #94a3b8;
+            background: transparent;
+            border: 0;
+            cursor: pointer;
+            transition: background 160ms ease, color 160ms ease;
+        }
+        .lang-btn:hover { color: #fff; }
+        .lang-btn.active { background: #9945FF; color: #fff; }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            border: 1px solid #1E2638;
+            background: rgba(15, 23, 42, 0.8);
+            color: #94a3b8;
+            font-family: "JetBrains Mono", monospace;
+            font-size: 10px;
+            line-height: 1.4;
+            white-space: nowrap;
+        }
+        .pill .dot { width: 6px; height: 6px; border-radius: 999px; background: #64748b; display: inline-block; }
+        .pill.live { color: #14F195; border-color: rgba(20, 241, 149, 0.4); background: rgba(20, 241, 149, 0.10); }
+        .pill.live .dot { background: #14F195; box-shadow: 0 0 0 0 rgba(20, 241, 149, 0.5); animation: pulse 2.2s infinite; }
+        .pill.offline { color: #fb7185; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.10); }
+        .pill.offline .dot { background: #fb7185; }
+        .pill.warn { color: #fbbf24; border-color: rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.10); }
+        .pill.warn .dot { background: #fbbf24; }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(20, 241, 149, 0.45); }
+            70% { box-shadow: 0 0 0 7px rgba(20, 241, 149, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(20, 241, 149, 0); }
+        }
+
+        .kpi-card { display: flex; flex-direction: column; justify-content: space-between; min-height: 96px; }
+        .kpi-value { font-family: "JetBrains Mono", monospace; font-size: clamp(20px, 2.2vw, 26px); line-height: 1.1; color: #fff; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+        .kpi-value small { font-size: 11px; letter-spacing: 0.06em; color: #94a3b8; }
+        .kpi-sub { font-family: "JetBrains Mono", monospace; font-size: 11px; color: #94a3b8; }
+
+        .stat-tile { background: #0B0E14; border: 1px solid #1E2638; border-radius: 10px; padding: 10px 12px; min-width: 0; }
+        .stat-tile .k { font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #64748b; }
+        .stat-tile .v { margin-top: 5px; font-family: "JetBrains Mono", monospace; font-size: 17px; color: #fff; font-variant-numeric: tabular-nums; }
+
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th {
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid #1E2638;
+            font-family: "JetBrains Mono", monospace;
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            white-space: nowrap;
+        }
+        .data-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(30, 38, 56, 0.6);
+            font-family: "JetBrains Mono", monospace;
+            font-size: 11px;
+            color: #E2E8F0;
+        }
+        .data-table tbody tr:hover { background: rgba(11, 14, 20, 0.55); }
+
+        .panel-note { font-family: "JetBrains Mono", monospace; font-size: 10px; color: #64748b; white-space: nowrap; }
+        .tiny-mono { font-family: "JetBrains Mono", monospace; font-size: 10px; color: #94a3b8; }
+
+        .empty-state {
+            padding: 30px 14px;
+            text-align: center;
+            font-family: "JetBrains Mono", monospace;
+            font-size: 10px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        .field {
+            width: 100%;
+            background: #0B0E14;
+            border: 1px solid #1E2638;
+            border-radius: 8px;
+            padding: 5px 8px;
+            font-family: "JetBrains Mono", monospace;
+            font-size: 11px;
+            color: #fff;
+            transition: border-color 160ms ease;
+        }
+        .field:focus { outline: none; border-color: #9945FF; }
+
+        .fade-in { animation: rise 480ms cubic-bezier(.2, .7, .2, 1) both; }
+        @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0B0E14; }
         ::-webkit-scrollbar-thumb { background: #1E2638; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #9945FF; }
+
+        @media (prefers-reduced-motion: reduce) {
+            * { animation: none !important; transition: none !important; }
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col font-sans antialiased selection:bg-sol-purple selection:text-white">
 
-    <!-- TOP NAVIGATION BAR -->
-    <header class="glass-panel sticky top-0 z-40 sol-gradient-border px-4 lg:px-6 py-3">
-        <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sol-purple to-sol-green p-[1px] flex items-center justify-center shadow-lg">
-                    <div class="w-full h-full bg-sol-dark rounded-[11px] flex items-center justify-center">
-                        <i class="fa-solid fa-robot text-lg sol-gradient-text"></i>
+    <!-- ============ SHARED TOP BAR (identical in analytics.html) ============ -->
+    <header class="glass-panel sticky top-0 z-40 sol-gradient-border">
+        <div class="max-w-[1600px] mx-auto px-4 lg:px-6 py-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <a href="/" class="flex items-center gap-3 min-w-0">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sol-purple to-sol-green p-[1px] flex items-center justify-center shadow-lg shrink-0">
+                        <div class="w-full h-full bg-sol-dark rounded-[11px] flex items-center justify-center">
+                            <i class="fa-solid fa-robot text-lg sol-gradient-text"></i>
+                        </div>
                     </div>
-                </div>
-                <div>
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">SOLANA AGENTIC BOT</h1>
-                        <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-sol-purple/20 text-sol-purple border border-sol-purple/40 font-semibold">v10.0</span>
-                        <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">🐋 WHALE + BUNDLE GUARD</span>
-                        <span id="telegramBadge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">📱 TG: OFF</span>
-                        <span id="pythonBridgeBadge" class="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
-                            <span id="pythonBridgeDot" class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                            <span id="pythonBridgeText">SPAJAM NA PYTHON BOT (127.0.0.1:8080)...</span>
-                        </span>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">AgenticTrade</h1>
+                            <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-sol-purple/20 text-sol-purple border border-sol-purple/40 font-semibold">v10 · paper</span>
+                            <span class="pill" data-i18n="cmd.whaleGuard">🐋 Whale + Bundle guard</span>
+                            <span id="pythonBridgeBadge" class="pill warn">
+                                <span id="pythonBridgeDot" class="dot"></span>
+                                <span id="pythonBridgeText" data-i18n="cmd.connecting">Spajam na Python bot…</span>
+                            </span>
+                            <span id="telegramBadge" class="pill">📱 TG: OFF</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                            <span id="liveIndicator" class="w-2 h-2 rounded-full bg-sol-green animate-ping shrink-0"></span>
+                            <span id="systemStatusText" class="truncate" data-i18n="cmd.statusLine">v10 paper · mint/freeze fix · time-stop · step-up trailing · flow &amp; whale exits · circuit breaker</span>
+                        </p>
                     </div>
-                    <p class="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
-                        <span id="liveIndicator" class="w-2 h-2 rounded-full bg-sol-green animate-ping"></span>
-                        <span id="systemStatusText">v10.0 (paper): mint/freeze fix · time-stop · step-up trailing · telegram · flow &amp; whale exits · circuit breaker</span>
-                    </p>
+                </a>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex items-center rounded-lg border border-sol-border bg-sol-dark overflow-hidden" role="group" aria-label="Language">
+                        <button type="button" class="lang-btn" data-lang="hr">HR</button>
+                        <button type="button" class="lang-btn" data-lang="en">EN</button>
+                    </div>
+                    <button type="button" id="tokenBtn" class="btn" title="Set dashboard token">
+                        <i class="fa-solid fa-key text-sol-purple"></i><span data-i18n="action.token">Token</span>
+                    </button>
+                    <button type="button" id="refreshBtn" class="btn">
+                        <i class="fa-solid fa-rotate text-sol-green"></i><span data-i18n="action.refresh">Osvježi</span>
+                    </button>
                 </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-                <div class="relative flex items-center">
-                    <input id="manualMintInput" type="text" placeholder="Unesi Solana Mint adresu za forenziku..." 
-                        class="w-48 sm:w-64 bg-sol-dark/90 border border-sol-border rounded-lg pl-3 pr-20 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-sol-purple transition">
-                    <button onclick="inspectManualMint()" class="absolute right-1 px-2.5 py-1 rounded-md bg-sol-purple/20 hover:bg-sol-purple/40 text-sol-purple text-xs font-medium transition">
-                        <i class="fa-solid fa-magnifying-glass mr-1"></i>Analiziraj
+            <div class="flex flex-wrap items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-sol-border/60">
+                <nav class="flex items-center gap-1" aria-label="Main">
+                    <a href="/" class="nav-tab active" data-nav="command" aria-current="page">
+                        <i class="fa-solid fa-gauge-high"></i><span data-i18n="nav.command">Command Center</span>
+                    </a>
+                    <a href="/analytics" class="nav-tab" data-nav="analytics">
+                        <i class="fa-solid fa-chart-line"></i><span data-i18n="nav.analytics">Analitika</span>
+                    </a>
+                </nav>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <div class="relative flex items-center">
+                        <input id="manualMintInput" type="text" data-i18n-placeholder="cmd.mintPlaceholder" placeholder="Unesi Solana Mint adresu za forenziku..."
+                            class="w-48 sm:w-64 bg-sol-dark/90 border border-sol-border rounded-lg pl-3 pr-24 py-1.5 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-sol-purple transition">
+                        <button type="button" onclick="inspectManualMint()" class="absolute right-1 px-2.5 py-1 rounded-md bg-sol-purple/20 hover:bg-sol-purple/40 text-sol-purple text-[11px] font-medium transition">
+                            <i class="fa-solid fa-magnifying-glass mr-1"></i><span data-i18n="cmd.analyze">Analiziraj</span>
+                        </button>
+                    </div>
+
+                    <button type="button" id="simWhaleBtn" onclick="triggerSimulatedWhaleSignal()" class="btn btn-cyan">
+                        <i class="fa-solid fa-water"></i><span data-i18n="cmd.testWhale">Testiraj 🐋 Whale signal</span>
+                    </button>
+
+                    <button type="button" id="scanNowBtn" onclick="runDiscoveryCycle(true)" class="btn btn-primary">
+                        <i class="fa-solid fa-radar"></i><span data-i18n="cmd.scanNow">Skeniraj odmah</span>
+                    </button>
+
+                    <button type="button" id="autoScanBtn" onclick="toggleAutoPilot()" class="btn btn-green" aria-pressed="true">
+                        <i id="autoScanIcon" class="fa-solid fa-pause"></i>
+                        <span id="autoScanLabel" data-i18n="sync.on">Sync: ON</span>
                     </button>
                 </div>
-
-                <button id="simWhaleBtn" onclick="triggerSimulatedWhaleSignal()" 
-                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/25 transition">
-                    <i class="fa-solid fa-water"></i>
-                    <span>Testiraj 🐋 Whale Signal</span>
-                </button>
-
-                <button id="scanNowBtn" onclick="runDiscoveryCycle(true)" 
-                    class="flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium text-xs bg-gradient-to-r from-sol-purple to-indigo-600 text-white hover:opacity-95 transition shadow-md">
-                    <i class="fa-solid fa-radar"></i>
-                    <span>Skeniraj Odmah</span>
-                </button>
-
-                <a href="/analytics" target="_blank" rel="noopener"
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium text-xs bg-sol-dark border border-sol-border hover:border-sol-purple text-slate-200 transition">
-                    <i class="fa-solid fa-chart-line text-sol-purple"></i>
-                    <span>Analytics</span>
-                </a>
-
-                <button id="autoScanBtn" onclick="toggleAutoPilot()" 
-                    class="flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium text-xs bg-sol-green/15 text-sol-green border border-sol-green/40 hover:bg-sol-green/25 transition">
-                    <i id="autoScanIcon" class="fa-solid fa-play"></i>
-                    <span id="autoScanLabel">Sync: ON</span>
-                </button>
             </div>
         </div>
     </header>
@@ -136,97 +326,97 @@
         <!-- ROW 1: PORTFOLIO KPI CARDS & 4 AGENT STATUS PIPELINE -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
             <div class="lg:col-span-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between">
+                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between kpi-card fade-in">
                     <div class="flex items-center justify-between text-xs text-slate-400">
-                        <span>Slobodni Balans</span>
+                        <span data-i18n="kpi.freeBalance">Slobodni balans</span>
                         <i class="fa-solid fa-wallet text-sol-purple"></i>
                     </div>
                     <div class="mt-2">
-                        <div class="text-lg sm:text-xl font-bold font-mono text-white" id="kpiBalanceSol">10.000 SOL</div>
-                        <div class="text-[11px] text-slate-400 font-mono" id="kpiBalanceUsd">~$1,850.00</div>
+                        <div class="kpi-value" id="kpiBalanceSol">10.000 SOL</div>
+                        <div class="kpi-sub" id="kpiBalanceUsd">~$1,850.00</div>
                     </div>
                 </div>
 
-                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between">
+                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between kpi-card fade-in">
                     <div class="flex items-center justify-between text-xs text-slate-400">
-                        <span>U Pozicijama</span>
+                        <span data-i18n="kpi.inPositions">U pozicijama</span>
                         <i class="fa-solid fa-layer-group text-cyan-400"></i>
                     </div>
                     <div class="mt-2">
-                        <div class="text-lg sm:text-xl font-bold font-mono text-cyan-300" id="kpiLockedSol">0.000 SOL</div>
-                        <div class="text-[11px] text-slate-400 font-mono"><span id="kpiOpenCount">0</span> aktivnih</div>
+                        <div class="kpi-value text-cyan-300" id="kpiLockedSol">0.000 SOL</div>
+                        <div class="kpi-sub"><span id="kpiOpenCount">0</span> <span data-i18n="kpi.active">aktivnih</span></div>
                     </div>
                 </div>
 
-                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between">
+                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between kpi-card fade-in">
                     <div class="flex items-center justify-between text-xs text-slate-400">
-                        <span>Ukupni PnL</span>
+                        <span data-i18n="kpi.totalPnl">Ukupni PnL</span>
                         <i class="fa-solid fa-chart-line text-sol-green"></i>
                     </div>
                     <div class="mt-2">
-                        <div class="text-lg sm:text-xl font-bold font-mono text-sol-green" id="kpiTotalPnl">+0.000 SOL</div>
-                        <div class="text-[11px] text-slate-400 font-mono" id="kpiTotalPnlPct">+0.00% ROI</div>
+                        <div class="kpi-value" id="kpiTotalPnl">+0.000 SOL</div>
+                        <div class="kpi-sub" id="kpiTotalPnlPct">+0.00% ROI</div>
                     </div>
                 </div>
 
-                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between">
+                <div class="glass-panel rounded-xl p-3.5 flex flex-col justify-between kpi-card fade-in">
                     <div class="flex items-center justify-between text-xs text-slate-400">
-                        <span>Win Rate</span>
+                        <span data-i18n="kpi.winRate">Win rate</span>
                         <i class="fa-solid fa-trophy text-amber-400"></i>
                     </div>
                     <div class="mt-2">
-                        <div class="text-lg sm:text-xl font-bold font-mono text-white" id="kpiWinRate">0%</div>
-                        <div class="text-[11px] text-slate-400 font-mono"><span id="kpiTradesCount">0</span> trejdova</div>
+                        <div class="kpi-value" id="kpiWinRate">0%</div>
+                        <div class="kpi-sub"><span id="kpiTradesCount">0</span> <span data-i18n="kpi.trades">trejdova</span></div>
                     </div>
                 </div>
             </div>
 
-            <div class="lg:col-span-7 glass-panel rounded-xl p-3.5">
-                <div class="flex items-center justify-between mb-2.5">
+            <div class="lg:col-span-7 glass-panel rounded-xl p-3.5 fade-in">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
                     <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                        <i class="fa-solid fa-network-wired text-sol-purple"></i> Multi-Agent Pipeline (v10.0: Risk Engine + Step-Up + Time-Stop)
+                        <i class="fa-solid fa-network-wired text-sol-purple"></i> <span data-i18n="pipeline.title">Multi-agent pipeline</span>
                     </span>
-                    <span id="lastScanTime" class="text-[11px] font-mono text-sol-green">Inicijalizacija...</span>
+                    <span id="lastScanTime" class="pill live">Inicijalizacija…</span>
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                     <div id="agentCard1" class="rounded-lg bg-sol-dark/80 border border-sol-border p-2.5 transition">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
-                                <i class="fa-solid fa-eye text-cyan-400"></i> 1. Whale & Scan
+                        <div class="flex items-center justify-between gap-1">
+                            <span class="text-[11px] font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-eye text-cyan-400"></i> <span data-i18n="agent1.name">1. Whale &amp; scan</span>
                             </span>
                             <span id="agent1Badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">3 WHALES</span>
                         </div>
-                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent1Task">Pump.fun + Copy-Tracker</p>
+                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent1Task" data-i18n="agent1.task">Pump.fun + copy-tracker</p>
                     </div>
 
                     <div id="agentCard2" class="rounded-lg bg-sol-dark/80 border border-sol-border p-2.5 transition">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
-                                <i class="fa-solid fa-brain text-sol-purple"></i> 2. Forenzika AI
+                        <div class="flex items-center justify-between gap-1">
+                            <span class="text-[11px] font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-brain text-sol-purple"></i> <span data-i18n="agent2.name">2. Forenzika AI</span>
                             </span>
-                            <span id="agent2Badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sol-purple/20 text-sol-purple">GEMINI 3.8</span>
+                            <span id="agent2Badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sol-purple/20 text-sol-purple">GEMINI</span>
                         </div>
-                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent2Task">Top 10 Holdera & Bundle</p>
+                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent2Task" data-i18n="agent2.task">Top 10 holdera &amp; bundle</p>
                     </div>
 
                     <div id="agentCard3" class="rounded-lg bg-sol-dark/80 border border-sol-border p-2.5 transition">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
-                                <i class="fa-solid fa-scale-balanced text-amber-400"></i> 3. Risk Agent
+                        <div class="flex items-center justify-between gap-1">
+                            <span class="text-[11px] font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-scale-balanced text-amber-400"></i> <span data-i18n="agent3.name">3. Risk agent</span>
                             </span>
-                            <span id="agent3Badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">SQLITE DB</span>
+                            <span id="agent3Badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">SQLITE</span>
                         </div>
-                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent3Task">Max 2 poz. | TP1: +80% | Time-Stop 15m</p>
+                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent3Task" data-i18n="agent3.task">Max 2 poz. | TP1: +80%</p>
                     </div>
 
                     <div id="agentCard4" class="rounded-lg bg-sol-dark/80 border border-sol-border p-2.5 transition">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold text-white flex items-center gap-1.5">
-                                <i class="fa-solid fa-bolt text-sol-green"></i> 4. Execution
+                        <div class="flex items-center justify-between gap-1">
+                            <span class="text-[11px] font-bold text-white flex items-center gap-1.5">
+                                <i class="fa-solid fa-bolt text-sol-green"></i> <span data-i18n="agent4.name">4. Execution</span>
                             </span>
                             <span id="agent4Badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sol-green/20 text-sol-green">JITO MEV</span>
                         </div>
-                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent4Task">Jupiter v6 + PumpPortal</p>
+                        <p class="text-[11px] text-slate-400 mt-1 truncate" id="agent4Task" data-i18n="agent4.task">Jupiter v6 + PumpPortal</p>
                     </div>
                 </div>
             </div>
@@ -237,74 +427,74 @@
             <div class="flex items-start gap-3">
                 <i class="fa-solid fa-hand text-rose-400 text-xl mt-0.5"></i>
                 <div>
-                    <div class="text-sm font-bold text-rose-300">Circuit breaker TRIPPED: no new entries until local midnight</div>
+                    <div class="text-sm font-bold text-rose-300" data-i18n="breaker.title">Circuit breaker TRIPPED: no new entries until local midnight</div>
                     <div id="breakerBannerReasons" class="text-xs text-rose-200/90 font-mono mt-0.5"></div>
                     <div id="breakerBannerMeta" class="text-[11px] text-slate-400 font-mono mt-0.5"></div>
                 </div>
             </div>
-            <button onclick="resetCircuitBreaker()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500/20 border border-rose-500/40 hover:bg-rose-500/30 text-rose-200 transition">
-                <i class="fa-solid fa-rotate-left mr-1"></i>Reset breaker (manual)
+            <button type="button" onclick="resetCircuitBreaker()" class="btn btn-danger">
+                <i class="fa-solid fa-rotate-left"></i><span data-i18n="breaker.reset">Reset breaker</span>
             </button>
         </div>
 
         <!-- RISK ENGINE ROW: EQUITY CURVE + BREAKER / CONFIRMATIONS / SIZING / SOURCE ANALYTICS -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            <div class="lg:col-span-7 glass-panel rounded-xl p-4 flex flex-col justify-between">
+            <div class="lg:col-span-7 glass-panel rounded-xl p-4 flex flex-col justify-between fade-in">
                 <div>
                     <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <h2 class="text-sm font-bold text-white flex items-center gap-2">
-                            <i class="fa-solid fa-chart-line text-sol-green"></i> Equity Curve (realized, per closed trade + mark-to-market now)
+                            <i class="fa-solid fa-chart-line text-sol-green"></i> <span data-i18n="equity.title">Equity curve (realized per closed trade + mark-to-market)</span>
                         </h2>
-                        <div id="equityStats" class="text-[11px] font-mono text-slate-400"></div>
+                        <div id="equityStats" class="panel-note"></div>
                     </div>
-                    <div id="equityChart" class="w-full h-[210px] rounded-lg bg-sol-dark/70 border border-sol-border flex items-center justify-center text-xs text-slate-500">
-                        Waiting for the Python bot (/api/equity)...
+                    <div id="equityChart" class="w-full h-[210px] rounded-lg glass-inset flex items-center justify-center text-[11px] font-mono text-slate-500">
+                        <span data-i18n="equity.waiting">Waiting for the Python bot (/api/equity)…</span>
                     </div>
                 </div>
                 <div class="mt-3 pt-2.5 border-t border-sol-border">
                     <div class="text-xs font-bold text-white flex items-center gap-1.5 mb-1.5">
-                        <i class="fa-solid fa-chart-pie text-sol-green"></i> Win-Rate &amp; PnL po Izvoru Signala
+                        <i class="fa-solid fa-chart-pie text-sol-green"></i> <span data-i18n="equity.sourceTitle">Win rate &amp; PnL by signal source</span>
                     </div>
                     <div id="sourceAnalyticsContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] font-mono text-slate-400">
-                        Čekam podatke o trejdovima...
+                        <span data-i18n="equity.sourceWaiting">Waiting for trade data…</span>
                     </div>
                 </div>
             </div>
 
             <div class="lg:col-span-5 grid grid-cols-1 gap-3">
-                <div class="glass-panel rounded-xl p-3.5">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fa-solid fa-plug-circle-xmark text-amber-300"></i> Session Circuit Breaker</span>
-                        <span id="breakerStatusBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">N/A</span>
+                <div class="glass-panel rounded-xl p-3.5 fade-in">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fa-solid fa-plug-circle-xmark text-amber-300"></i> <span data-i18n="riskBreaker.title">Session circuit breaker</span></span>
+                        <span id="breakerStatusBadge" class="pill">N/A</span>
                     </div>
-                    <div class="grid grid-cols-3 gap-2 text-[11px] font-mono">
-                        <div class="px-2 py-1.5 rounded-lg bg-sol-dark border border-sol-border"><div class="text-slate-500">Losing stops</div><div id="breakerStops" class="text-white font-bold">-</div></div>
-                        <div class="px-2 py-1.5 rounded-lg bg-sol-dark border border-sol-border"><div class="text-slate-500">Day P&amp;L</div><div id="breakerDd" class="text-white font-bold">-</div></div>
-                        <div class="px-2 py-1.5 rounded-lg bg-sol-dark border border-sol-border"><div class="text-slate-500">Trades today</div><div id="breakerTrades" class="text-white font-bold">-</div></div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="stat-tile"><div class="k" data-i18n="riskBreaker.losingStops">Losing stops</div><div class="v" id="breakerStops">-</div></div>
+                        <div class="stat-tile"><div class="k" data-i18n="riskBreaker.dayPnl">Day P&amp;L</div><div class="v" id="breakerDd">-</div></div>
+                        <div class="stat-tile"><div class="k" data-i18n="riskBreaker.trades">Trades today</div><div class="v" id="breakerTrades">-</div></div>
                     </div>
-                    <div id="breakerResets" class="text-[10px] text-slate-500 font-mono mt-1.5"></div>
+                    <div id="breakerResets" class="tiny-mono mt-1.5"></div>
                 </div>
 
-                <div class="glass-panel rounded-xl p-3.5">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fa-solid fa-hourglass-half text-cyan-300"></i> Pending Entry Confirmations</span>
-                        <span id="pendingCountBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">0</span>
+                <div class="glass-panel rounded-xl p-3.5 fade-in">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fa-solid fa-hourglass-half text-cyan-300"></i> <span data-i18n="pending.title">Pending entry confirmations</span></span>
+                        <span id="pendingCountBadge" class="pill">0</span>
                     </div>
-                    <div id="pendingContainer" class="space-y-1.5 text-[11px] font-mono text-slate-400">No pending entries.</div>
+                    <div id="pendingContainer" class="space-y-1.5 text-[11px] font-mono text-slate-400"><span data-i18n="pending.empty">No pending entries.</span></div>
                 </div>
 
-                <div class="glass-panel rounded-xl p-3.5">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fa-solid fa-scale-balanced text-sol-purple"></i> Position Sizing &amp; Entry Gate</span>
-                        <span id="entryGateBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">N/A</span>
+                <div class="glass-panel rounded-xl p-3.5 fade-in">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <span class="text-xs font-bold text-white flex items-center gap-1.5"><i class="fa-solid fa-scale-balanced text-sol-purple"></i> <span data-i18n="sizing.title">Position sizing &amp; entry gate</span></span>
+                        <span id="entryGateBadge" class="pill">N/A</span>
                     </div>
                     <div class="text-[11px] font-mono space-y-1">
-                        <div><span class="text-slate-500">Next size (high conviction):</span> <strong id="sizingNext" class="text-white">-</strong></div>
+                        <div><span class="text-slate-500" data-i18n="sizing.next">Next size (high conviction):</span> <strong id="sizingNext" class="text-white">-</strong></div>
                         <div id="sizingNextReasons" class="text-slate-400"></div>
                         <div id="sizingByConv" class="text-slate-500"></div>
-                        <div><span class="text-slate-500">Last entry:</span> <span id="sizingLast" class="text-slate-300">-</span></div>
-                        <div><span class="text-slate-500">Why blocked:</span> <span id="entryGateReason" class="text-amber-300">-</span></div>
-                        <div><span class="text-slate-500">Last block:</span> <span id="lastEntryBlock" class="text-slate-400">-</span></div>
+                        <div><span class="text-slate-500" data-i18n="sizing.last">Last entry:</span> <span id="sizingLast" class="text-slate-300">-</span></div>
+                        <div><span class="text-slate-500" data-i18n="sizing.blocked">Why blocked:</span> <span id="entryGateReason" class="text-amber-300">-</span></div>
+                        <div><span class="text-slate-500" data-i18n="sizing.lastBlock">Last block:</span> <span id="lastEntryBlock" class="text-slate-400">-</span></div>
                     </div>
                 </div>
             </div>
@@ -313,44 +503,43 @@
         <!-- ROW 2: THREE-COLUMN COMMAND WORKSPACE -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
-            <div class="lg:col-span-4 glass-panel rounded-xl flex flex-col h-[720px]">
-                <div class="p-4 border-b border-sol-border flex items-center justify-between">
+            <div class="lg:col-span-4 glass-panel rounded-xl flex flex-col h-[720px] fade-in">
+                <div class="p-4 border-b border-sol-border flex flex-wrap items-center justify-between gap-2">
                     <div>
                         <h2 class="text-sm font-bold text-white flex items-center gap-2">
                             <i class="fa-solid fa-satellite-dish text-cyan-400"></i>
-                            Live Token & Whale Skener
+                            <span data-i18n="feed.title">Live token &amp; whale scanner</span>
                         </h2>
-                        <p class="text-[11px] text-slate-400">Uključuje Top 10 Holder % i 🐋 Smart Money oznake</p>
+                        <p class="text-[11px] text-slate-400" data-i18n="feed.subtitle">Includes top-10 holder % and 🐋 smart-money tags</p>
                     </div>
                     <div class="flex items-center gap-1">
-                        <button onclick="filterFeed('ALL')" id="filterAllBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-purple text-white">SVI</button>
-                        <button onclick="filterFeed('BUY')" id="filterBuyBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-dark text-slate-400 hover:text-white">🟢 BUY</button>
-                        <button onclick="filterFeed('WHALE')" id="filterWhaleBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-dark text-slate-400 hover:text-white">🐋 WHALE</button>
-                        <button onclick="filterFeed('PUMP')" id="filterPumpBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-dark text-slate-400 hover:text-white">⚡ PUMP</button>
+                        <button type="button" onclick="filterFeed('ALL')" id="filterAllBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-purple text-white"><span data-i18n="filter.all">SVI</span></button>
+                        <button type="button" onclick="filterFeed('BUY')" id="filterBuyBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-dark text-slate-400 hover:text-white">🟢 BUY</button>
+                        <button type="button" onclick="filterFeed('WHALE')" id="filterWhaleBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-dark text-slate-400 hover:text-white">🐋 WHALE</button>
+                        <button type="button" onclick="filterFeed('PUMP')" id="filterPumpBtn" class="px-2 py-1 rounded text-[10px] font-mono bg-sol-dark text-slate-400 hover:text-white">⚡ PUMP</button>
                     </div>
                 </div>
 
                 <div id="tokenFeedContainer" class="flex-1 overflow-y-auto p-3 space-y-2.5"></div>
 
                 <div class="p-3 border-t border-sol-border bg-sol-dark/60 flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                    <span>Skenirano: <strong id="totalScannedCounter" class="text-white">0</strong></span>
-                    <span>Odbijeno (Hard/Bundle): <strong id="totalRejectedCounter" class="text-rose-400">0</strong></span>
+                    <span><span data-i18n="feed.scanned">Scanned:</span> <strong id="totalScannedCounter" class="text-white">0</strong></span>
+                    <span><span data-i18n="feed.rejected">Rejected (hard/bundle):</span> <strong id="totalRejectedCounter" class="text-rose-400">0</strong></span>
                 </div>
             </div>
 
-            <div class="lg:col-span-5 glass-panel rounded-xl flex flex-col h-[720px]">
-                <div class="p-4 border-b border-sol-border flex items-center justify-between">
+            <div class="lg:col-span-5 glass-panel rounded-xl flex flex-col h-[720px] fade-in">
+                <div class="p-4 border-b border-sol-border flex flex-wrap items-center justify-between gap-2">
                     <div>
                         <h2 class="text-sm font-bold text-white flex items-center gap-2">
                             <i class="fa-solid fa-microscope text-sol-purple"></i>
-                            On-Chain Forenzika (Top 10 Holdera, Bundle & Gemini AI)
+                            <span data-i18n="forensics.title">On-chain forensics</span>
                         </h2>
-                        <p class="text-[11px] text-slate-400">Solana RPC Holder Koncentracija + RugCheck + Gemini 3.8</p>
+                        <p class="text-[11px] text-slate-400" data-i18n="forensics.subtitle">Top-10 holders, bundle check, RugCheck and Gemini</p>
                     </div>
-                    <button id="forceAiBtn" onclick="runGeminiDeepAnalysisOnSelected()" 
-                        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-sol-purple/20 hover:bg-sol-purple/40 text-sol-purple border border-sol-purple/40 transition flex items-center gap-1.5">
+                    <button type="button" id="forceAiBtn" onclick="runGeminiDeepAnalysisOnSelected()" class="btn btn-primary">
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
-                        <span>Gemini AI Analiza</span>
+                        <span data-i18n="forensics.runAi">Gemini AI analysis</span>
                     </button>
                 </div>
 
@@ -358,85 +547,77 @@
             </div>
 
             <div class="lg:col-span-3 flex flex-col gap-4 h-[720px]">
-                <div class="glass-panel rounded-xl p-3.5 space-y-2.5">
-                    <div class="flex items-center justify-between border-b border-sol-border pb-2">
+                <div class="glass-panel rounded-xl p-3.5 space-y-2.5 fade-in">
+                    <div class="flex items-center justify-between gap-2 border-b border-sol-border pb-2">
                         <h3 class="text-xs font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-1.5">
-                            <i class="fa-solid fa-water"></i> Smart Money / Whale Tracker
+                            <i class="fa-solid fa-water"></i> <span data-i18n="whale.title">Smart money / whale tracker</span>
                         </h3>
-                        <span id="whaleCountBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">3 aktivna</span>
+                        <span id="whaleCountBadge" class="pill">3</span>
                     </div>
 
                     <div class="space-y-1.5">
                         <div class="flex gap-1.5">
-                            <input id="newWhaleAddr" type="text" placeholder="Solana adresa kita..." 
-                                class="flex-1 bg-sol-dark border border-sol-border rounded-lg px-2 py-1 text-[11px] font-mono text-white focus:border-cyan-400 focus:outline-none">
-                            <input id="newWhaleLabel" type="text" placeholder="Naziv" 
-                                class="w-24 bg-sol-dark border border-sol-border rounded-lg px-2 py-1 text-[11px] text-white focus:border-cyan-400 focus:outline-none">
-                            <button onclick="addSmartMoneyWallet()" class="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition">+</button>
+                            <input id="newWhaleAddr" type="text" data-i18n-placeholder="whale.address" placeholder="Solana adresa kita..."
+                                class="field flex-1 min-w-0">
+                            <input id="newWhaleLabel" type="text" data-i18n-placeholder="whale.label" placeholder="Naziv"
+                                class="field w-24 shrink-0">
+                            <button type="button" onclick="addSmartMoneyWallet()" class="btn btn-cyan px-2.5" data-i18n-title="whale.add" title="Dodaj novčanik">+</button>
                         </div>
                     </div>
 
                     <div id="trackedWalletsContainer" class="max-h-28 overflow-y-auto space-y-1.5 pr-1"></div>
                 </div>
 
-                <div class="glass-panel rounded-xl p-3.5 space-y-2.5">
+                <div class="glass-panel rounded-xl p-3.5 space-y-2.5 fade-in">
                     <div class="flex items-center justify-between border-b border-sol-border pb-1.5">
                         <h3 class="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-                            <i class="fa-solid fa-sliders text-sol-green"></i> Postavke Rizika & Forenzike
+                            <i class="fa-solid fa-sliders text-sol-green"></i> <span data-i18n="settings.title">Risk &amp; forensics settings</span>
                         </h3>
                         <span class="text-[10px] font-mono text-sol-green">v10.0</span>
                     </div>
 
                     <div class="grid grid-cols-2 gap-2 text-xs">
                         <div>
-                            <label class="text-[10px] text-slate-400 block mb-0.5">Ulog po trejdu (SOL)</label>
-                            <input id="cfgTradeSize" type="number" step="0.1" value="0.5" onchange="updateRiskConfig()"
-                                class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1 font-mono text-white focus:border-sol-purple focus:outline-none">
+                            <label class="text-[10px] text-slate-400 block mb-0.5" data-i18n="settings.tradeSize">Size per trade (SOL)</label>
+                            <input id="cfgTradeSize" type="number" step="0.1" value="0.5" onchange="updateRiskConfig()" class="field">
                         </div>
                         <div>
-                            <label class="text-[10px] text-cyan-300 block mb-0.5 font-semibold">Max Top 10 Holdera (%)</label>
-                            <input id="cfgMaxTop10" type="number" step="1" value="35" onchange="updateRiskConfig()"
-                                class="w-full bg-sol-dark border border-cyan-500/40 rounded-lg px-2 py-1 font-mono text-cyan-300 focus:border-sol-purple focus:outline-none">
+                            <label class="text-[10px] text-cyan-300 block mb-0.5 font-semibold" data-i18n="settings.maxTop10">Max top-10 holders (%)</label>
+                            <input id="cfgMaxTop10" type="number" step="1" value="35" onchange="updateRiskConfig()" class="field border-cyan-500/40 text-cyan-300">
                         </div>
                         <div>
-                            <label class="text-[10px] text-slate-400 block mb-0.5">Min. Likvidnost ($)</label>
-                            <input id="cfgMinLiq" type="number" step="1000" value="5000" onchange="updateRiskConfig()"
-                                class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1 font-mono text-white focus:border-sol-purple focus:outline-none">
+                            <label class="text-[10px] text-slate-400 block mb-0.5" data-i18n="settings.minLiq">Min liquidity ($)</label>
+                            <input id="cfgMinLiq" type="number" step="1000" value="5000" onchange="updateRiskConfig()" class="field">
                         </div>
                         <div>
-                            <label class="text-[10px] text-slate-400 block mb-0.5">Take-Profit 1 (50%)</label>
-                            <input id="cfgTp1" type="number" step="10" value="80" onchange="updateRiskConfig()"
-                                class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1 font-mono text-sol-green focus:border-sol-purple focus:outline-none">
+                            <label class="text-[10px] text-slate-400 block mb-0.5" data-i18n="settings.tp1">Take-profit 1 (50%)</label>
+                            <input id="cfgTp1" type="number" step="10" value="80" onchange="updateRiskConfig()" class="field text-sol-green">
                         </div>
                         <div>
-                            <label class="text-[10px] text-slate-400 block mb-0.5">Stop-Loss (%)</label>
-                            <input id="cfgStopLoss" type="number" step="5" value="-25" onchange="updateRiskConfig()"
-                                class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1 font-mono text-rose-400 focus:border-sol-purple focus:outline-none">
+                            <label class="text-[10px] text-slate-400 block mb-0.5" data-i18n="settings.stopLoss">Stop-loss (%)</label>
+                            <input id="cfgStopLoss" type="number" step="5" value="-25" onchange="updateRiskConfig()" class="field text-rose-400">
                         </div>
                         <div>
-                            <label class="text-[10px] text-slate-400 block mb-0.5">Jito MEV Tip (SOL)</label>
-                            <input id="cfgJitoTip" type="number" step="0.0005" value="0.0015" onchange="updateRiskConfig()"
-                                class="w-full bg-sol-dark border border-sol-border rounded-lg px-2 py-1 font-mono text-amber-300 focus:border-sol-purple focus:outline-none">
+                            <label class="text-[10px] text-slate-400 block mb-0.5" data-i18n="settings.jitoTip">Jito MEV tip (SOL)</label>
+                            <input id="cfgJitoTip" type="number" step="0.0005" value="0.0015" onchange="updateRiskConfig()" class="field text-amber-300">
                         </div>
                         <div>
-                            <label class="text-[10px] text-cyan-300 block mb-0.5 font-semibold">Max otvorenih pozicija</label>
-                            <input id="cfgMaxOpen" type="number" step="1" value="2" onchange="updateRiskConfig()"
-                                class="w-full bg-sol-dark border border-cyan-500/40 rounded-lg px-2 py-1 font-mono text-cyan-300 focus:border-sol-purple focus:outline-none">
+                            <label class="text-[10px] text-cyan-300 block mb-0.5 font-semibold" data-i18n="settings.maxOpen">Max open positions</label>
+                            <input id="cfgMaxOpen" type="number" step="1" value="2" onchange="updateRiskConfig()" class="field border-cyan-500/40 text-cyan-300">
                         </div>
                         <div>
-                            <label class="text-[10px] text-amber-300 block mb-0.5 font-semibold">Brza invalidacija (%)</label>
-                            <input id="cfgFastInv" type="number" step="1" value="-12" onchange="updateRiskConfig()"
-                                class="w-full bg-sol-dark border border-amber-500/40 rounded-lg px-2 py-1 font-mono text-amber-300 focus:border-sol-purple focus:outline-none">
+                            <label class="text-[10px] text-amber-300 block mb-0.5 font-semibold" data-i18n="settings.fastInv">Fast invalidation (%)</label>
+                            <input id="cfgFastInv" type="number" step="1" value="-12" onchange="updateRiskConfig()" class="field border-amber-500/40 text-amber-300">
                         </div>
                     </div>
                 </div>
 
-                <div class="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden min-h-[180px]">
+                <div class="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden min-h-[180px] fade-in">
                     <div class="px-3.5 py-2 border-b border-sol-border flex items-center justify-between bg-sol-dark/60">
                         <span class="text-xs font-bold font-mono text-slate-300 flex items-center gap-1.5">
                             <i class="fa-solid fa-terminal text-sol-green"></i> AGENT_STREAM.LOG
                         </span>
-                        <button onclick="clearTerminalLogs()" class="text-[10px] font-mono text-slate-400 hover:text-white">Očisti</button>
+                        <button type="button" onclick="clearTerminalLogs()" class="text-[10px] font-mono text-slate-400 hover:text-white" data-i18n="terminal.clear">Očisti</button>
                     </div>
                     <div id="terminalLogContainer" class="flex-1 overflow-y-auto p-3 font-mono text-[11px] space-y-1.5 bg-[#080B10]"></div>
                 </div>
@@ -444,24 +625,25 @@
         </div>
 
         <!-- ROW 3: PAPER TRADING POSITIONS & JUPITER/JITO EXECUTION MONITOR -->
-        <div class="glass-panel rounded-xl p-4 lg:p-5">
+        <div class="glass-panel rounded-xl p-4 lg:p-5 fade-in">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div>
                     <h2 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
                         <i class="fa-solid fa-briefcase text-sol-green"></i>
-                        Aktivne Pozicije & Povijest Trejdova (`paper_portfolio.db` + Jupiter v6 Dry-Run)
+                        <span data-i18n="positions.title">Open positions &amp; trade history</span>
+                        <span class="text-[10px] font-mono text-slate-500">paper_portfolio.db</span>
                     </h2>
-                    <p class="text-xs text-slate-400">Sinkronizirano s lokalnom SQLite bazom. Uključuje Time-Stop i Step-Up Trailing zaštitu.</p>
+                    <p class="text-xs text-slate-400" data-i18n="positions.subtitle">Synced with the local SQLite database. Includes time-stop and step-up trailing protection.</p>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="refreshOpenPositionsPrices()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-sol-dark border border-sol-border hover:border-sol-green text-slate-200 transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-arrows-rotate text-sol-green"></i> Osvježi Cijene
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="refreshOpenPositionsPrices()" class="btn">
+                        <i class="fa-solid fa-arrows-rotate text-sol-green"></i> <span data-i18n="positions.refresh">Refresh prices</span>
                     </button>
-                    <button onclick="simulatePumpOnOpenPositions()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-sol-purple/20 border border-sol-purple/40 hover:bg-sol-purple/30 text-sol-purple transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-rocket"></i> Simuliraj +115% Pump (Test TP1)
+                    <button type="button" onclick="simulatePumpOnOpenPositions()" class="btn btn-primary">
+                        <i class="fa-solid fa-rocket"></i> <span data-i18n="positions.simPump">Simulate +115% pump</span>
                     </button>
-                    <button onclick="resetPortfolio()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 text-rose-300 transition">
-                        Resetiraj (10 SOL)
+                    <button type="button" onclick="resetPortfolio()" class="btn btn-danger">
+                        <i class="fa-solid fa-rotate-left"></i> <span data-i18n="positions.reset">Reset (10 SOL)</span>
                     </button>
                 </div>
             </div>
@@ -470,14 +652,14 @@
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="border-b border-sol-border text-[11px] font-mono uppercase text-slate-400">
-                            <th class="py-2.5 px-3">Token / Izvor</th>
-                            <th class="py-2.5 px-3">Status</th>
-                            <th class="py-2.5 px-3">Uloženo / Preostalo</th>
-                            <th class="py-2.5 px-3">Signal → Fill (slippage)</th>
-                            <th class="py-2.5 px-3">Trenutna / ATH</th>
-                            <th class="py-2.5 px-3">PnL (%) / SOL</th>
-                            <th class="py-2.5 px-3">Size reason / Stop</th>
-                            <th class="py-2.5 px-3 text-right">Akcija</th>
+                            <th class="py-2.5 px-3" data-i18n="positions.colToken">Token / source</th>
+                            <th class="py-2.5 px-3" data-i18n="positions.colStatus">Status</th>
+                            <th class="py-2.5 px-3" data-i18n="positions.colInvested">Invested / left</th>
+                            <th class="py-2.5 px-3" data-i18n="positions.colFill">Signal → fill (slip)</th>
+                            <th class="py-2.5 px-3" data-i18n="positions.colPrice">Current / ATH</th>
+                            <th class="py-2.5 px-3" data-i18n="positions.colPnl">PnL (%) / SOL</th>
+                            <th class="py-2.5 px-3" data-i18n="positions.colReason">Size reason / stop</th>
+                            <th class="py-2.5 px-3 text-right" data-i18n="positions.colAction">Action</th>
                         </tr>
                     </thead>
                     <tbody id="positionsTableBody" class="divide-y divide-sol-border/60 text-xs font-mono"></tbody>
@@ -486,47 +668,47 @@
         </div>
 
         <!-- DECISION JOURNAL -->
-        <div class="glass-panel rounded-xl p-4 lg:p-5">
+        <div class="glass-panel rounded-xl p-4 lg:p-5 fade-in">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <div>
                     <h2 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                        <i class="fa-solid fa-book-open text-cyan-300"></i> Decision Journal (every SKIP / WATCH / BUY / BLOCK / CONFIRM / OPEN / EXIT)
+                        <i class="fa-solid fa-book-open text-cyan-300"></i> <span data-i18n="journal.title">Decision journal</span>
                     </h2>
-                    <p class="text-xs text-slate-400">Every decision with the rule that fired, suggested vs actual size, signal vs fill price.</p>
+                    <p class="text-xs text-slate-400" data-i18n="journal.subtitle">Every decision with the rule that fired, suggested vs actual size, signal vs fill price.</p>
                 </div>
                 <div class="flex items-center gap-1.5 text-[11px] font-mono">
-                    <button onclick="setJournalFilter('ALL')" data-jf="ALL" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-purple bg-sol-purple/20 text-white">All</button>
-                    <button onclick="setJournalFilter('TRADES')" data-jf="TRADES" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-border text-slate-300">Trades</button>
-                    <button onclick="setJournalFilter('BLOCKS')" data-jf="BLOCKS" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-border text-slate-300">Blocks</button>
-                    <button onclick="setJournalFilter('SCANS')" data-jf="SCANS" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-border text-slate-300">Scans</button>
+                    <button type="button" onclick="setJournalFilter('ALL')" data-jf="ALL" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-purple bg-sol-purple/20 text-white"><span data-i18n="journal.all">All</span></button>
+                    <button type="button" onclick="setJournalFilter('TRADES')" data-jf="TRADES" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-border text-slate-300"><span data-i18n="journal.trades">Trades</span></button>
+                    <button type="button" onclick="setJournalFilter('BLOCKS')" data-jf="BLOCKS" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-border text-slate-300"><span data-i18n="journal.blocks">Blocks</span></button>
+                    <button type="button" onclick="setJournalFilter('SCANS')" data-jf="SCANS" class="jf-btn px-2.5 py-1 rounded-lg border border-sol-border text-slate-300"><span data-i18n="journal.scans">Scans</span></button>
                 </div>
             </div>
             <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
                 <table class="w-full text-left border-collapse">
                     <thead class="sticky top-0 bg-sol-card">
                         <tr class="border-b border-sol-border text-[11px] font-mono uppercase text-slate-400">
-                            <th class="py-2 px-2">Time (local)</th>
-                            <th class="py-2 px-2">Token</th>
-                            <th class="py-2 px-2">Action</th>
-                            <th class="py-2 px-2">Rule</th>
-                            <th class="py-2 px-2">Size (sugg. / actual)</th>
-                            <th class="py-2 px-2">Signal → Fill</th>
-                            <th class="py-2 px-2">Reasons</th>
+                            <th class="py-2 px-2" data-i18n="journal.colTime">Time (local)</th>
+                            <th class="py-2 px-2" data-i18n="journal.colToken">Token</th>
+                            <th class="py-2 px-2" data-i18n="journal.colAction">Action</th>
+                            <th class="py-2 px-2" data-i18n="journal.colRule">Rule</th>
+                            <th class="py-2 px-2" data-i18n="journal.colSize">Size (sugg. / actual)</th>
+                            <th class="py-2 px-2" data-i18n="journal.colFill">Signal → fill</th>
+                            <th class="py-2 px-2" data-i18n="journal.colReasons">Reasons</th>
                         </tr>
                     </thead>
                     <tbody id="journalTableBody" class="divide-y divide-sol-border/60 text-[11px] font-mono">
-                        <tr><td colspan="7" class="py-6 text-center text-slate-500">Waiting for the Python bot (/api/journal)...</td></tr>
+                        <tr><td colspan="7" class="py-6 text-center text-slate-500"><span data-i18n="journal.waiting">Waiting for the Python bot (/api/journal)…</span></td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
         <!-- RISK ENGINE SETTINGS -->
-        <details class="glass-panel rounded-xl p-4 lg:p-5" id="v8SettingsPanel">
+        <details class="glass-panel rounded-xl p-4 lg:p-5 fade-in" id="v8SettingsPanel">
             <summary class="cursor-pointer text-sm font-bold text-white flex items-center gap-2">
-                <i class="fa-solid fa-sliders text-sol-purple"></i> v10.0 Risk Engine Settings (time-stop, step-up trailing, flow exits, breaker, confirmation, sizing)
+                <i class="fa-solid fa-sliders text-sol-purple"></i> <span data-i18n="v8.title">v10.0 risk engine settings</span>
             </summary>
-            <p class="text-[11px] text-slate-400 mt-2">Changes apply to the running bot immediately and last until restart. Put permanent values in <code>.env</code>.</p>
+            <p class="text-[11px] text-slate-400 mt-2"><span data-i18n="v8.note">Changes apply to the running bot immediately and last until restart. Put permanent values in .env.</span></p>
             <div id="v8SettingsGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mt-3 text-[11px]"></div>
         </details>
 
@@ -534,6 +716,482 @@
 
     <!-- APPLICATION LOGIC -->
     <script>
+        /* ============================ i18n ============================ */
+        const LANG_KEY = "agentictrade_lang";
+        const I18N = {
+            hr: {
+                "action.token": "Token",
+                "action.refresh": "Osvježi",
+                "nav.command": "Command Center",
+                "nav.analytics": "Analitika",
+                "sync.on": "Sync: ON",
+                "sync.off": "Sync: PAUZA",
+                "cmd.whaleGuard": "🐋 Whale + Bundle guard",
+                "cmd.statusLine": "v10 paper · mint/freeze fix · time-stop · step-up trailing · flow i whale izlazi · circuit breaker",
+                "cmd.mintPlaceholder": "Unesi Solana Mint adresu za forenziku...",
+                "cmd.analyze": "Analiziraj",
+                "cmd.testWhale": "Testiraj 🐋 Whale signal",
+                "cmd.scanNow": "Skeniraj odmah",
+                "cmd.connecting": "Spajam na Python bot…",
+                "cmd.bridgeOnline": "Python + {ai}: spojeno",
+                "cmd.bridgeSqlite": "Python SQLite: spojeno",
+                "cmd.bridgeOffline": "Standalone mod · pokreni research_bot.py",
+                "cmd.tgOn": "📱 TG: ON",
+                "cmd.tgOff": "📱 TG: OFF",
+                "cmd.phaseScan": "🔍 Python skenira DexScreener…",
+                "cmd.phaseWhale": "⚡ Slušam Pump.fun + smart-money kitove…",
+                "cmd.phaseEval": "🧠 Forenzika i Gemini za {token}",
+                "cmd.phaseIdle": "✅ Ciklus #{cycle} završen",
+                "cmd.phaseActive": "Python aktivan",
+                "cmd.logConnected": "🐍 Spojen na lokalni Python v10 bot (paper mode, risk engine aktivan).",
+                "cmd.init": "Inicijalizacija…",
+
+                "kpi.freeBalance": "Slobodni balans",
+                "kpi.inPositions": "U pozicijama",
+                "kpi.active": "aktivnih",
+                "kpi.totalPnl": "Ukupni PnL",
+                "kpi.winRate": "Win rate",
+                "kpi.trades": "trejdova",
+
+                "pipeline.title": "Multi-agent pipeline · v10 risk engine",
+                "agent1.name": "1. Whale & scan",
+                "agent1.task": "Pump.fun + copy-tracker",
+                "agent2.name": "2. Forenzika AI",
+                "agent2.task": "Top 10 holdera i bundle",
+                "agent3.name": "3. Risk agent",
+                "agent3.task": "Max 2 poz. | TP1: +80% | Time-stop 15m",
+                "agent4.name": "4. Execution",
+                "agent4.task": "Jupiter v6 + PumpPortal",
+
+                "breaker.title": "Circuit breaker TRIPPED: nema novih ulaza do lokalne ponoći",
+                "breaker.reset": "Resetiraj breaker",
+                "breaker.armed": "ARMED · OK",
+                "breaker.tripped": "TRIPPED",
+                "breaker.resets": "Dan {day} ({tz}) · reset u {at}",
+                "breaker.manualReset": " · ručni reset u {at} UTC",
+                "breaker.meta": "Gubitnički stopovi {stops}/{maxStops} · dnevni P&L {pnl} SOL ({pct}%) · trejdovi {trades}/{maxTrades} · auto-reset {at}",
+                "confirm.resetBreaker": "Ručno resetirati circuit breaker?",
+
+                "equity.title": "Krivulja kapitala (realizirano po zatvorenom trejdu + mark-to-market)",
+                "equity.waiting": "Čekam Python bot (/api/equity)…",
+                "equity.sourceTitle": "Win rate i PnL po izvoru signala",
+                "equity.sourceWaiting": "Čekam podatke o trejdovima…",
+                "equity.sourceEmpty": "Nema završenih trejdova po izvorima.",
+                "equity.notEnough": "Još nema dovoljno zatvorenih trejdova.",
+                "equity.stats": "sada {now} · max DD {dd}% · {closed} zatvorenih",
+
+                "riskBreaker.title": "Session circuit breaker",
+                "riskBreaker.losingStops": "Gubitnički stopovi",
+                "riskBreaker.dayPnl": "Dnevni P&L",
+                "riskBreaker.trades": "Trejdovi danas",
+
+                "pending.title": "Čekaju potvrdu ulaza",
+                "pending.empty": "Nema poziva na čekanju.",
+                "pending.emptyLong": "Nema poziva na čekanju. Signali čekaju {sec}s i moraju ostati unutar -{drop}% prije ulaza.",
+                "pending.cancel": "otkaži",
+
+                "sizing.title": "Veličina pozicije i ulazna vrata",
+                "sizing.next": "Sljedeća veličina (visoka uvjerenost):",
+                "sizing.last": "Zadnji ulaz:",
+                "sizing.blocked": "Zašto blokirano:",
+                "sizing.lastBlock": "Zadnji blok:",
+                "sizing.none": "nema od početka",
+                "gate.open": "ULAZI OTVORENI",
+                "gate.allowed": "ništa; ulazi dopušteni",
+
+                "feed.title": "Live token i whale skener",
+                "feed.subtitle": "Uključuje Top 10 holdera % i 🐋 smart-money oznake",
+                "filter.all": "SVI",
+                "feed.scanned": "Skenirano:",
+                "feed.rejected": "Odbijeno (hard/bundle):",
+                "feed.empty": "Nema tokena u ovom filteru.",
+
+                "forensics.title": "On-chain forenzika",
+                "forensics.subtitle": "Top 10 holdera, bundle provjera, RugCheck i Gemini",
+                "forensics.runAi": "Gemini AI analiza",
+
+                "whale.title": "Smart money / whale tracker",
+                "whale.address": "Solana adresa kita...",
+                "whale.label": "Naziv",
+                "whale.add": "Dodaj novčanik",
+                "whale.count": "{count} aktivnih",
+                "whale.hit": "{count} hit",
+                "whale.none": "Nema praćenih novčanika. Dodaj adresu iznad.",
+                "whale.remove": "Ukloni novčanik",
+                "whale.defaultLabel": "Kit {short}",
+                "whale.qualityNa": "kvaliteta N/A",
+                "whale.trusted": "pouzdan",
+                "whale.downweighted": "umanjen",
+                "whale.quality": "{state} · {samples} tr · WR {wr} · {pnl}",
+
+                "settings.title": "Postavke rizika i forenzike",
+                "settings.tradeSize": "Ulog po trejdu (SOL)",
+                "settings.maxTop10": "Max Top 10 holdera (%)",
+                "settings.minLiq": "Min. likvidnost ($)",
+                "settings.tp1": "Take-profit 1 (50%)",
+                "settings.stopLoss": "Stop-loss (%)",
+                "settings.jitoTip": "Jito MEV tip (SOL)",
+                "settings.maxOpen": "Max otvorenih pozicija",
+                "settings.fastInv": "Brza invalidacija (%)",
+                "settings.agent3Task": "Max {max} poz. | TP1: +{tp1}% | Time-stop {min}m",
+
+                "terminal.clear": "Očisti",
+                "terminal.cleared": "Terminal očišćen. Sustav aktivan.",
+
+                "positions.title": "Aktivne pozicije i povijest trejdova",
+                "positions.subtitle": "Sinkronizirano s lokalnom SQLite bazom. Uključuje time-stop i step-up trailing zaštitu.",
+                "positions.refresh": "Osvježi cijene",
+                "positions.simPump": "Simuliraj +115% pump",
+                "positions.reset": "Resetiraj (10 SOL)",
+                "positions.colToken": "Token / izvor",
+                "positions.colStatus": "Status",
+                "positions.colInvested": "Uloženo / preostalo",
+                "positions.colFill": "Signal → fill (slippage)",
+                "positions.colPrice": "Trenutna / ATH",
+                "positions.colPnl": "PnL (%) / SOL",
+                "positions.colReason": "Razlog veličine / stop",
+                "positions.colAction": "Akcija",
+                "positions.empty": "Još nema otvorenih pozicija u paper_portfolio.db.",
+                "positions.active": "Aktivno: {pct}%",
+                "positions.legacy": "legacy",
+                "positions.entrySlip": "ulaz {bps} bps",
+                "positions.stop": "Stop",
+                "positions.open": "OTVORENO",
+                "positions.moonbag": "MOONBAG",
+                "positions.closed": "ZATVORENO",
+                "positions.stale": "ZASTARJELO",
+                "positions.floor": "FLOOR",
+                "positions.sell100": "Prodaj 100%",
+                "positions.done": "Završeno",
+                "positions.resetConfirm": "Resetirati PAPER portfelj na 10 SOL? Briše pozicije, povijest i equity snimke.",
+                "positions.resetConfirm2": "Sigurno?",
+
+                "journal.title": "Dnevnik odluka",
+                "journal.subtitle": "Svaka odluka s pravilom koje je reagiralo, predloženom i stvarnom veličinom, signalom i fill cijenom.",
+                "journal.all": "Sve",
+                "journal.trades": "Trejdovi",
+                "journal.blocks": "Blokade",
+                "journal.scans": "Skeniranja",
+                "journal.colTime": "Vrijeme (lokalno)",
+                "journal.colToken": "Token",
+                "journal.colAction": "Akcija",
+                "journal.colRule": "Pravilo",
+                "journal.colSize": "Veličina (predl. / stv.)",
+                "journal.colFill": "Signal → fill",
+                "journal.colReasons": "Razlozi",
+                "journal.waiting": "Čekam Python bot (/api/journal)…",
+                "journal.empty": "Nema zapisa u dnevniku za ovaj filter.",
+
+                "v8.title": "v10.0 postavke risk enginea",
+                "v8.note": "Promjene vrijede odmah za pokrenuti bot i traju do restarta. Trajne vrijednosti upiši u .env.",
+
+                "inspector.waiting": "Čekam prvi skenirani token ili klikni \"Skeniraj odmah\"…",
+                "inspector.copy": "Kopiraj",
+                "inspector.buy": "Kupi ({size} SOL)",
+                "inspector.topTitle": "On-chain Top 10 holder i Jito bundle forenzika",
+                "inspector.bundleRisk": "⚠️ SUMNJA NA DEV BUNDLE",
+                "inspector.clean": "✅ ČISTA DISTRIBUCIJA",
+                "inspector.top10": "Top 10 holdera (izvan LP-a):",
+                "inspector.maxThreshold": "(Max prag: {pct}%)",
+                "inspector.largest": "Najveći:",
+                "inspector.mintAuth": "Mint auth:",
+                "inspector.freezeAuth": "Freeze auth:",
+                "inspector.curve": "Krivulja/LP:",
+                "inspector.riskScore": "🛡️ Sigurnost (risk score)",
+                "inspector.hypeScore": "🚀 Hype i whale score",
+                "inspector.reasoning": "Obrazloženje research agenta:",
+                "inspector.price": "CIJENA (USD)",
+                "inspector.liquidity": "LIKVIDNOST",
+                "inspector.fdv": "FDV / MCAP",
+                "inspector.volume": "VOLUMEN (5m)",
+                "inspector.buys": "Kupnje (5m): {n} ({pct}%)",
+                "inspector.sells": "Prodaje (5m): {n} ({pct}%)",
+                "inspector.green": "Green flags",
+                "inspector.red": "Red flags i RugCheck",
+                "inspector.greenEmpty": "Nema istaknutih pozitivnih signala",
+                "inspector.redEmpty": "Nema kritičnih on-chain upozorenja",
+                "inspector.disabled": "UGAŠEN",
+                "inspector.active": "AKTIVAN!",
+
+                "log.badAddress": "Unesi ispravnu Solana adresu novčanika (32-44 znaka).",
+                "log.badMint": "Unesi ispravnu Solana Mint adresu (32-44 znaka).",
+                "log.copied": "Mint adresa {short}… kopirana u međuspremnik.",
+                "log.whaleBuying": "Whale kupuje…",
+                "log.scanning": "Skeniram…",
+                "log.gemini": "Gemini analizira…",
+                "log.buyRefused": "Ručna kupnja ${symbol} nije otvorena [{rule}]: {reason}",
+                "log.buyRefusedShort": "Ručna kupnja ${symbol} odbijena od Python bota.",
+                "log.breakerReset": "Circuit breaker ručno resetiran s dashboarda.",
+                "token.prompt": "Dashboard token (prazno briše spremljeni token):",
+                "token.saved": "Token spremljen. Stranica se osvježava…"
+            },
+            en: {
+                "action.token": "Token",
+                "action.refresh": "Refresh",
+                "nav.command": "Command Center",
+                "nav.analytics": "Analytics",
+                "sync.on": "Sync: ON",
+                "sync.off": "Sync: PAUSED",
+                "cmd.whaleGuard": "🐋 Whale + bundle guard",
+                "cmd.statusLine": "v10 paper · mint/freeze fix · time-stop · step-up trailing · flow & whale exits · circuit breaker",
+                "cmd.mintPlaceholder": "Paste a Solana mint address for forensics...",
+                "cmd.analyze": "Analyze",
+                "cmd.testWhale": "Test 🐋 whale signal",
+                "cmd.scanNow": "Scan now",
+                "cmd.connecting": "Connecting to the Python bot…",
+                "cmd.bridgeOnline": "Python + {ai}: connected",
+                "cmd.bridgeSqlite": "Python SQLite: connected",
+                "cmd.bridgeOffline": "Standalone mode · start research_bot.py",
+                "cmd.tgOn": "📱 TG: ON",
+                "cmd.tgOff": "📱 TG: OFF",
+                "cmd.phaseScan": "🔍 Python is scanning DexScreener…",
+                "cmd.phaseWhale": "⚡ Listening to Pump.fun + smart-money whales…",
+                "cmd.phaseEval": "🧠 Forensics & Gemini for {token}",
+                "cmd.phaseIdle": "✅ Cycle #{cycle} finished",
+                "cmd.phaseActive": "Python active",
+                "cmd.logConnected": "🐍 Connected to the local Python v10 bot (paper mode, risk engine active).",
+                "cmd.init": "Initializing…",
+
+                "kpi.freeBalance": "Free balance",
+                "kpi.inPositions": "In positions",
+                "kpi.active": "active",
+                "kpi.totalPnl": "Total PnL",
+                "kpi.winRate": "Win rate",
+                "kpi.trades": "trades",
+
+                "pipeline.title": "Multi-agent pipeline · v10 risk engine",
+                "agent1.name": "1. Whale & scan",
+                "agent1.task": "Pump.fun + copy-tracker",
+                "agent2.name": "2. Forensics AI",
+                "agent2.task": "Top 10 holders & bundle",
+                "agent3.name": "3. Risk agent",
+                "agent3.task": "Max 2 pos. | TP1: +80% | Time-stop 15m",
+                "agent4.name": "4. Execution",
+                "agent4.task": "Jupiter v6 + PumpPortal",
+
+                "breaker.title": "Circuit breaker TRIPPED: no new entries until local midnight",
+                "breaker.reset": "Reset breaker",
+                "breaker.armed": "ARMED · OK",
+                "breaker.tripped": "TRIPPED",
+                "breaker.resets": "Day {day} ({tz}) · resets {at}",
+                "breaker.manualReset": " · manual reset at {at} UTC",
+                "breaker.meta": "Losing stops {stops}/{maxStops} · day P&L {pnl} SOL ({pct}%) · trades {trades}/{maxTrades} · auto-reset {at}",
+                "confirm.resetBreaker": "Reset the circuit breaker manually?",
+
+                "equity.title": "Equity curve (realized per closed trade + mark-to-market)",
+                "equity.waiting": "Waiting for the Python bot (/api/equity)…",
+                "equity.sourceTitle": "Win rate & PnL by signal source",
+                "equity.sourceWaiting": "Waiting for trade data…",
+                "equity.sourceEmpty": "No closed trades per source yet.",
+                "equity.notEnough": "Not enough closed trades yet.",
+                "equity.stats": "now {now} · max DD {dd}% · {closed} closed",
+
+                "riskBreaker.title": "Session circuit breaker",
+                "riskBreaker.losingStops": "Losing stops",
+                "riskBreaker.dayPnl": "Day P&L",
+                "riskBreaker.trades": "Trades today",
+
+                "pending.title": "Pending entry confirmations",
+                "pending.empty": "No pending entries.",
+                "pending.emptyLong": "No pending entries. Signals wait {sec}s and must hold within -{drop}% before opening.",
+                "pending.cancel": "cancel",
+
+                "sizing.title": "Position sizing & entry gate",
+                "sizing.next": "Next size (high conviction):",
+                "sizing.last": "Last entry:",
+                "sizing.blocked": "Why blocked:",
+                "sizing.lastBlock": "Last block:",
+                "sizing.none": "none since start",
+                "gate.open": "ENTRIES OPEN",
+                "gate.allowed": "nothing; entries allowed",
+
+                "feed.title": "Live token & whale scanner",
+                "feed.subtitle": "Includes top-10 holder % and 🐋 smart-money tags",
+                "filter.all": "ALL",
+                "feed.scanned": "Scanned:",
+                "feed.rejected": "Rejected (hard/bundle):",
+                "feed.empty": "No tokens in this filter.",
+
+                "forensics.title": "On-chain forensics",
+                "forensics.subtitle": "Top-10 holders, bundle check, RugCheck and Gemini",
+                "forensics.runAi": "Gemini AI analysis",
+
+                "whale.title": "Smart money / whale tracker",
+                "whale.address": "Whale Solana address...",
+                "whale.label": "Label",
+                "whale.add": "Add wallet",
+                "whale.count": "{count} active",
+                "whale.hit": "{count} hit",
+                "whale.none": "No tracked wallets. Add an address above.",
+                "whale.remove": "Remove wallet",
+                "whale.defaultLabel": "Whale {short}",
+                "whale.qualityNa": "quality N/A",
+                "whale.trusted": "trusted",
+                "whale.downweighted": "down-weighted",
+                "whale.quality": "{state} · {samples} tr · WR {wr} · {pnl}",
+
+                "settings.title": "Risk & forensics settings",
+                "settings.tradeSize": "Size per trade (SOL)",
+                "settings.maxTop10": "Max top-10 holders (%)",
+                "settings.minLiq": "Min liquidity ($)",
+                "settings.tp1": "Take-profit 1 (50%)",
+                "settings.stopLoss": "Stop-loss (%)",
+                "settings.jitoTip": "Jito MEV tip (SOL)",
+                "settings.maxOpen": "Max open positions",
+                "settings.fastInv": "Fast invalidation (%)",
+                "settings.agent3Task": "Max {max} pos. | TP1: +{tp1}% | Time-stop {min}m",
+
+                "terminal.clear": "Clear",
+                "terminal.cleared": "Terminal cleared. System active.",
+
+                "positions.title": "Open positions & trade history",
+                "positions.subtitle": "Synced with the local SQLite database. Includes time-stop and step-up trailing protection.",
+                "positions.refresh": "Refresh prices",
+                "positions.simPump": "Simulate +115% pump",
+                "positions.reset": "Reset (10 SOL)",
+                "positions.colToken": "Token / source",
+                "positions.colStatus": "Status",
+                "positions.colInvested": "Invested / left",
+                "positions.colFill": "Signal → fill (slip)",
+                "positions.colPrice": "Current / ATH",
+                "positions.colPnl": "PnL (%) / SOL",
+                "positions.colReason": "Size reason / stop",
+                "positions.colAction": "Action",
+                "positions.empty": "No open positions in paper_portfolio.db yet.",
+                "positions.active": "Active: {pct}%",
+                "positions.legacy": "legacy",
+                "positions.entrySlip": "entry {bps} bps",
+                "positions.stop": "Stop",
+                "positions.open": "OPEN",
+                "positions.moonbag": "MOONBAG",
+                "positions.closed": "CLOSED",
+                "positions.stale": "STALE",
+                "positions.floor": "FLOOR",
+                "positions.sell100": "Sell 100%",
+                "positions.done": "Closed",
+                "positions.resetConfirm": "Reset the PAPER portfolio to 10 SOL? This clears paper positions, trade history and equity snapshots.",
+                "positions.resetConfirm2": "Are you sure?",
+
+                "journal.title": "Decision journal",
+                "journal.subtitle": "Every decision with the rule that fired, suggested vs actual size, signal vs fill price.",
+                "journal.all": "All",
+                "journal.trades": "Trades",
+                "journal.blocks": "Blocks",
+                "journal.scans": "Scans",
+                "journal.colTime": "Time (local)",
+                "journal.colToken": "Token",
+                "journal.colAction": "Action",
+                "journal.colRule": "Rule",
+                "journal.colSize": "Size (sugg. / actual)",
+                "journal.colFill": "Signal → fill",
+                "journal.colReasons": "Reasons",
+                "journal.waiting": "Waiting for the Python bot (/api/journal)…",
+                "journal.empty": "No journal entries for this filter yet.",
+
+                "v8.title": "v10.0 risk engine settings",
+                "v8.note": "Changes apply to the running bot immediately and last until restart. Put permanent values in .env.",
+
+                "inspector.waiting": "Waiting for the first scanned token or click \"Scan now\"…",
+                "inspector.copy": "Copy",
+                "inspector.buy": "Buy ({size} SOL)",
+                "inspector.topTitle": "On-chain Top 10 holder & Jito bundle forensics",
+                "inspector.bundleRisk": "⚠️ POSSIBLE DEV BUNDLE",
+                "inspector.clean": "✅ CLEAN DISTRIBUTION",
+                "inspector.top10": "Top 10 holders (excl. LP):",
+                "inspector.maxThreshold": "(max threshold: {pct}%)",
+                "inspector.largest": "Largest:",
+                "inspector.mintAuth": "Mint auth:",
+                "inspector.freezeAuth": "Freeze auth:",
+                "inspector.curve": "Curve/LP:",
+                "inspector.riskScore": "🛡️ Safety (risk score)",
+                "inspector.hypeScore": "🚀 Hype & whale score",
+                "inspector.reasoning": "Research agent reasoning:",
+                "inspector.price": "PRICE (USD)",
+                "inspector.liquidity": "LIQUIDITY",
+                "inspector.fdv": "FDV / MCAP",
+                "inspector.volume": "VOLUME (5m)",
+                "inspector.buys": "Buys (5m): {n} ({pct}%)",
+                "inspector.sells": "Sells (5m): {n} ({pct}%)",
+                "inspector.green": "Green flags",
+                "inspector.red": "Red flags & RugCheck",
+                "inspector.greenEmpty": "No standout positive signals",
+                "inspector.redEmpty": "No critical on-chain warnings",
+                "inspector.disabled": "REVOKED",
+                "inspector.active": "ACTIVE!",
+
+                "log.badAddress": "Enter a valid Solana wallet address (32-44 chars).",
+                "log.badMint": "Enter a valid Solana mint address (32-44 chars).",
+                "log.copied": "Mint address {short}… copied to clipboard.",
+                "log.whaleBuying": "Whale buying…",
+                "log.scanning": "Scanning…",
+                "log.gemini": "Gemini analyzing…",
+                "log.buyRefused": "Manual buy of ${symbol} not opened [{rule}]: {reason}",
+                "log.buyRefusedShort": "Manual buy of ${symbol} refused by the Python bot.",
+                "log.breakerReset": "Circuit breaker reset manually from the dashboard.",
+                "token.prompt": "Dashboard token (leave empty to clear the stored token):",
+                "token.saved": "Token saved. Reloading…"
+            }
+        };
+
+        const UI = { lang: "hr" };
+
+        function t(key, vars) {
+            const table = I18N[UI.lang] || I18N.hr;
+            let text = table[key] ?? I18N.hr[key] ?? key;
+            if (vars) {
+                for (const [name, value] of Object.entries(vars)) {
+                    text = text.replaceAll(`{${name}}`, String(value));
+                }
+            }
+            return text;
+        }
+
+        function applyI18n() {
+            document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+            document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
+            document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+            document.documentElement.lang = UI.lang;
+            document.title = UI.lang === "hr" ? "AgenticTrade — Command Center" : "AgenticTrade — Command Center";
+            document.querySelectorAll("[data-lang]").forEach((btn) => {
+                btn.classList.toggle("active", btn.dataset.lang === UI.lang);
+                btn.setAttribute("aria-pressed", String(btn.dataset.lang === UI.lang));
+            });
+        }
+
+        function setLang(lang) {
+            UI.lang = I18N[lang] ? lang : "hr";
+            try { localStorage.setItem(LANG_KEY, UI.lang); } catch (err) { /* ignore */ }
+            applyI18n();
+            // Re-render every dynamic surface so JS-built labels switch too.
+            const bridge = appState.bridge || { aiActive: false, aiModel: "gemini", tgActive: false };
+            updatePythonBridgeBadge(appState.pythonConnected, bridge.aiActive, bridge.aiModel, bridge.tgActive);
+            renderPhase();
+            renderPortfolioKPIs();
+            renderPositionsTable();
+            renderTrackedWallets();
+            renderBreaker();
+            renderPendingConfirmations();
+            renderSizingAndGate();
+            renderSourceAnalytics();
+            renderTokenFeed();
+            renderResearchInspector();
+            renderJournal();
+            if (appState.data && appState.data.equity) renderEquityCurve(appState.data.equity);
+        }
+
+        try {
+            const stored = localStorage.getItem(LANG_KEY);
+            if (I18N[stored]) UI.lang = stored;
+        } catch (err) { /* ignore */ }
+
+        // Keep the shared nav working when the file is opened directly (file://).
+        if (window.location.protocol === "file:") {
+            document.querySelectorAll("[data-nav]").forEach((link) => {
+                const page = link.dataset.nav;
+                link.href = page === "analytics" ? "analytics.html" : "command_center.html";
+            });
+        }
+
         const SOL_PRICE_USD = 185.0;
         const CANDIDATE_BRIDGE_URLS = [
             window.location.origin.startsWith("http") ? window.location.origin : null,
@@ -604,7 +1262,9 @@
             walletQuality: [],
             sourceAnalytics: [],
             journal: [],
-            journalFilter: "ALL"
+            journalFilter: "ALL",
+            phase: null,
+            data: {}
         };
 
         const FALLBACK_SOLANA_MINTS = [
@@ -706,6 +1366,22 @@
             throw new Error("Python bridge nije dostupan");
         }
 
+        function renderPhase() {
+            const el = document.getElementById("lastScanTime");
+            if (!el) return;
+            const runtime = appState.phase;
+            if (!runtime) { el.innerText = t("cmd.init"); return; }
+            const tokenShort = runtime.active_token ? runtime.active_token.slice(0, 6) + "…" : "token";
+            const phaseMap = {
+                "DEXSCREENER_SCAN": t("cmd.phaseScan"),
+                "PUMPFUN_WS_LISTEN": t("cmd.phaseWhale"),
+                "EVALUATING_TOKEN": t("cmd.phaseEval", { token: tokenShort }),
+                "IDLE_WAITING": t("cmd.phaseIdle", { cycle: runtime.cycle })
+            };
+            const phaseLabel = phaseMap[runtime.current_phase] || t("cmd.phaseActive");
+            el.innerText = `${phaseLabel} (${runtime.last_update || "now"})`;
+        }
+
         async function syncWithPythonBackend() {
             try {
                 const data = await fetchFromPythonBridge("/api/state");
@@ -713,20 +1389,14 @@
                 if (!appState.pythonConnected) {
                     appState.pythonConnected = true;
                     updatePythonBridgeBadge(true, data.ai_active, data.ai_model, data.telegram_active);
-                    logAgent("DISCOVERY", "🐍 Connected to the local Python v10.0 bot (paper mode, risk engine active).", "success");
+                    logAgent("DISCOVERY", t("cmd.logConnected"), "success");
                 } else {
                     updatePythonBridgeBadge(true, data.ai_active, data.ai_model, data.telegram_active);
                 }
 
                 if (data.runtime) {
-                    const phaseMap = {
-                        "DEXSCREENER_SCAN": "🔍 Python skenira DexScreener...",
-                        "PUMPFUN_WS_LISTEN": "⚡ Slušam Pump.fun + Smart Money Whales...",
-                        "EVALUATING_TOKEN": `🧠 Forenzika & Gemini za ${data.runtime.active_token ? data.runtime.active_token.slice(0, 6) + '...' : 'token'}`,
-                        "IDLE_WAITING": `✅ Ciklus #${data.runtime.cycle} završen`
-                    };
-                    const phaseLabel = phaseMap[data.runtime.current_phase] || "Python aktivan";
-                    document.getElementById("lastScanTime").innerText = `${phaseLabel} (${data.runtime.last_update || 'sad'})`;
+                    appState.phase = data.runtime;
+                    renderPhase();
                 }
 
                 if (data.config) {
@@ -741,7 +1411,11 @@
                     setVal("cfgMaxOpen", data.config.maxOpenPositions);
                     setVal("cfgFastInv", data.config.fastInvalidationPct);
                     const a3 = document.getElementById("agent3Task");
-                    if (a3) a3.innerText = `Max ${appState.config.maxOpenPositions || 2} poz. | TP1: +${appState.config.tp1Pct}% | Time-Stop ${Math.round((appState.config.maxHoldNoPumpSec || 900)/60)}m`;
+                    if (a3) a3.innerText = t("settings.agent3Task", {
+                        max: appState.config.maxOpenPositions || 2,
+                        tp1: appState.config.tp1Pct,
+                        min: Math.round((appState.config.maxHoldNoPumpSec || 900) / 60)
+                    });
                     syncV8SettingsInputs(data.config);
                 }
 
@@ -811,28 +1485,29 @@
             }
         }
 
-        function updatePythonBridgeBadge(connected, aiActive, aiModel = "gemini-3.8-flash", tgActive = false) {
+        function updatePythonBridgeBadge(connected, aiActive, aiModel = "gemini", tgActive = false) {
+            appState.bridge = { aiActive, aiModel, tgActive };
             const badge = document.getElementById("pythonBridgeBadge");
             const dot = document.getElementById("pythonBridgeDot");
             const text = document.getElementById("pythonBridgeText");
             const tgBadge = document.getElementById("telegramBadge");
+            const modelLabel = String(aiModel || "gemini").replace("gemini-", "").toUpperCase();
 
             if (tgBadge) {
-                tgBadge.className = tgActive
-                    ? "text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40"
-                    : "text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700";
-                tgBadge.innerText = tgActive ? "📱 TG: ON" : "📱 TG: OFF";
+                tgBadge.className = `pill ${tgActive ? "live" : ""}`;
+                tgBadge.innerText = tgActive ? t("cmd.tgOn") : t("cmd.tgOff");
             }
 
             if (connected) {
-                badge.className = "text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-sol-green/15 text-sol-green border border-sol-green/40 flex items-center gap-1.5";
-                dot.className = "w-1.5 h-1.5 rounded-full bg-sol-green animate-ping";
-                text.innerText = aiActive ? `🐍 PYTHON + ${aiModel.toUpperCase()}: SPOJENO` : "🐍 PYTHON SQLITE: SPOJENO";
-                document.getElementById("agent2Badge").innerText = (aiModel || "GEMINI").replace("gemini-", "").toUpperCase();
+                badge.className = "pill live";
+                dot.className = "dot";
+                text.innerText = aiActive ? t("cmd.bridgeOnline", { ai: modelLabel }) : t("cmd.bridgeSqlite");
+                const agent2 = document.getElementById("agent2Badge");
+                if (agent2) agent2.innerText = modelLabel;
             } else {
-                badge.className = "text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/40 flex items-center gap-1.5";
-                dot.className = "w-1.5 h-1.5 rounded-full bg-amber-400";
-                text.innerText = "STANDALONE MOD (Pokreni python research_bot.py)";
+                badge.className = "pill warn";
+                dot.className = "dot";
+                text.innerText = t("cmd.bridgeOffline");
             }
         }
 
@@ -949,7 +1624,7 @@
             if (!saBox) return;
             const list = appState.sourceAnalytics || [];
             if (!list.length) {
-                saBox.innerHTML = `<span>Nema završenih trejdova po izvorima.</span>`;
+                saBox.innerHTML = `<span>${escHtml(t("equity.sourceEmpty"))}</span>`;
                 return;
             }
             saBox.innerHTML = list.map(s => `
@@ -968,27 +1643,34 @@
             const banner = document.getElementById("breakerBanner");
             if (!badge) return;
             if (!cb) {
-                badge.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
+                badge.className = "pill";
                 badge.innerText = "N/A";
                 banner.classList.add("hidden");
                 return;
             }
-            badge.className = cb.tripped
-                ? "text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold"
-                : "text-[10px] font-mono px-2 py-0.5 rounded bg-sol-green/15 text-sol-green border border-sol-green/30";
-            badge.innerText = cb.tripped ? "TRIPPED" : "ARMED · OK";
+            badge.className = cb.tripped ? "pill offline" : "pill live";
+            badge.innerText = cb.tripped ? t("breaker.tripped") : t("breaker.armed");
             const pct = Number(cb.dailyPnlPct || 0);
             document.getElementById("breakerStops").innerText = `${cb.losingStopsToday}/${cb.maxDailyStopLosses}`;
             const dd = document.getElementById("breakerDd");
             dd.innerText = `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}% / -${cb.maxDailyDrawdownPct}%`;
-            dd.className = `font-bold ${pct >= 0 ? "text-sol-green" : "text-rose-400"}`;
+            dd.className = `v ${pct >= 0 ? "text-sol-green" : "text-rose-400"}`;
             document.getElementById("breakerTrades").innerText = `${cb.tradesToday}/${cb.maxDailyTrades}`;
-            document.getElementById("breakerResets").innerText = `Day ${cb.day} (${cb.timezone}) · resets ${cb.resetsAt}${cb.manualResetAt ? ` · manual reset at ${cb.manualResetAt} UTC` : ""}`;
+            document.getElementById("breakerResets").innerText =
+                t("breaker.resets", { day: cb.day, tz: cb.timezone, at: cb.resetsAt }) +
+                (cb.manualResetAt ? t("breaker.manualReset", { at: cb.manualResetAt }) : "");
             if (cb.tripped) {
                 banner.classList.remove("hidden");
                 document.getElementById("breakerBannerReasons").innerText = (cb.reasons || []).join(" · ");
-                document.getElementById("breakerBannerMeta").innerText =
-                    `Losing stops ${cb.losingStopsToday}/${cb.maxDailyStopLosses} · day P&L ${cb.dailyPnlSol >= 0 ? "+" : ""}${Number(cb.dailyPnlSol || 0).toFixed(3)} SOL (${pct.toFixed(2)}%) · trades ${cb.tradesToday}/${cb.maxDailyTrades} · auto-reset ${cb.resetsAt}`;
+                document.getElementById("breakerBannerMeta").innerText = t("breaker.meta", {
+                    stops: cb.losingStopsToday,
+                    maxStops: cb.maxDailyStopLosses,
+                    pnl: `${cb.dailyPnlSol >= 0 ? "+" : ""}${Number(cb.dailyPnlSol || 0).toFixed(3)}`,
+                    pct: pct.toFixed(2),
+                    trades: cb.tradesToday,
+                    maxTrades: cb.maxDailyTrades,
+                    at: cb.resetsAt
+                });
             } else {
                 banner.classList.add("hidden");
             }
@@ -1000,10 +1682,14 @@
             if (!box) return;
             const list = appState.pendingConfirmations || [];
             badge.innerText = String(list.length);
-            badge.className = list.length
-                ? "text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                : "text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
-            if (!list.length) { box.innerHTML = `<div class="text-slate-500">No pending entries. Signals wait ${appState.config.entryConfirmSec ?? 20}s and must hold within -${appState.config.entryConfirmMaxDropPct ?? 4}% before opening.</div>`; return; }
+            badge.className = list.length ? "pill live" : "pill";
+            if (!list.length) {
+                box.innerHTML = `<div class="text-slate-500">${escHtml(t("pending.emptyLong", {
+                    sec: appState.config.entryConfirmSec ?? 20,
+                    drop: appState.config.entryConfirmMaxDropPct ?? 4
+                }))}</div>`;
+                return;
+            }
             const nowMs = Date.now() + (appState.serverOffsetMs || 0);
             box.innerHTML = list.map(p => {
                 const left = Math.max(0, Math.ceil((p.dueAtMs - nowMs) / 1000));
@@ -1012,7 +1698,7 @@
                     <span>signal $${formatPrice(p.signalPriceUsd)}</span>
                     <span>${p.sizePreviewSol != null ? Number(p.sizePreviewSol).toFixed(3) + " SOL" : ""} ${escHtml(p.conviction || "")}</span>
                     <span class="text-cyan-300 font-bold">${left}s</span>
-                    <button onclick="cancelPendingEntry('${escHtml(p.mint)}')" class="text-rose-300 hover:underline">cancel</button>
+                    <button type="button" onclick="cancelPendingEntry('${escHtml(p.mint)}')" class="text-rose-300 hover:underline">${escHtml(t("pending.cancel"))}</button>
                 </div>`;
             }).join("");
         }
@@ -1030,26 +1716,24 @@
                 const last = s.lastSize;
                 document.getElementById("sizingLast").innerText = last
                     ? `$${last.symbol} ${Number(last.sizeSol).toFixed(3)} SOL (${(last.reasons || []).join(" · ")}) @ ${last.at} UTC`
-                    : "none since start";
+                    : t("sizing.none");
             }
             const gb = document.getElementById("entryGateBadge");
             if (g) {
-                gb.className = g.ok
-                    ? "text-[10px] font-mono px-2 py-0.5 rounded bg-sol-green/15 text-sol-green border border-sol-green/30"
-                    : "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold";
-                gb.innerText = g.ok ? "ENTRIES OPEN" : g.rule;
-                document.getElementById("entryGateReason").innerText = g.ok ? "nothing; entries allowed" : g.reason;
+                gb.className = g.ok ? "pill live" : "pill warn";
+                gb.innerText = g.ok ? t("gate.open") : g.rule;
+                document.getElementById("entryGateReason").innerText = g.ok ? t("gate.allowed") : g.reason;
             }
             const lb = appState.lastEntryBlock;
-            document.getElementById("lastEntryBlock").innerText = lb ? `$${lb.symbol || "?"} [${lb.rule}] ${lb.reason} @ ${lb.at} UTC` : "none since start";
+            document.getElementById("lastEntryBlock").innerText = lb ? `$${lb.symbol || "?"} [${lb.rule}] ${lb.reason} @ ${lb.at} UTC` : t("sizing.none");
         }
 
         async function resetCircuitBreaker() {
             if (!appState.pythonConnected) return;
-            if (!confirm("Reset the circuit breaker manually?")) return;
+            if (!confirm(t("confirm.resetBreaker"))) return;
             try {
                 await fetchFromPythonBridge("/api/breaker/reset", { method: "POST" });
-                logAgent("RISK MGR", "Circuit breaker reset manually from the dashboard.", "warn");
+                logAgent("RISK MGR", t("log.breakerReset"), "warn");
             } catch (e) {}
             await syncWithPythonBackend();
         }
@@ -1070,6 +1754,7 @@
             if (!appState.pythonConnected) return;
             try {
                 const data = await fetchFromPythonBridge("/api/equity");
+                appState.data.equity = data;
                 renderEquityCurve(data);
             } catch (e) {}
         }
@@ -1078,7 +1763,7 @@
             const box = document.getElementById("equityChart");
             const stats = document.getElementById("equityStats");
             const pts = (data && data.points) || [];
-            if (pts.length < 2) { box.innerHTML = `<span class="text-slate-500">Not enough closed trades yet.</span>`; return; }
+            if (pts.length < 2) { box.innerHTML = `<span class="text-slate-500">${escHtml(t("equity.notEnough"))}</span>`; return; }
             const W = 700, H = 210, P = 28;
             const ys = pts.map(p => p.equity);
             const base = data.initialSol || ys[0];
@@ -1109,7 +1794,12 @@
                 ${dots}
             </svg>`;
             const net = last - base;
-            stats.innerHTML = `now <strong class="${net >= 0 ? "text-sol-green" : "text-rose-400"}">${Number(last).toFixed(4)} SOL (${net >= 0 ? "+" : ""}${net.toFixed(4)})</strong> · max DD ${(maxDd * 100).toFixed(2)}% · ${pts.filter(p => p.kind === "close").length} closed`;
+            const nowNode = `<strong class="${net >= 0 ? "text-sol-green" : "text-rose-400"}">${Number(last).toFixed(4)} SOL (${net >= 0 ? "+" : ""}${net.toFixed(4)})</strong>`;
+            stats.innerHTML = t("equity.stats", {
+                now: "@@NOW@@",
+                dd: (maxDd * 100).toFixed(2),
+                closed: pts.filter(p => p.kind === "close").length
+            }).replace("@@NOW@@", nowNode);
         }
 
         const JOURNAL_RULE_STYLES = {
@@ -1162,7 +1852,7 @@
                 SCANS: ["SKIP", "WATCH", "BUY"]
             };
             const rows = (appState.journal || []).filter(j => f === "ALL" || (groups[f] || []).includes(j.action));
-            if (!rows.length) { tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-500">No journal entries for this filter yet.</td></tr>`; return; }
+            if (!rows.length) { tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-500">${escHtml(t("journal.empty"))}</td></tr>`; return; }
             tbody.innerHTML = rows.map(j => {
                 const ruleCls = JOURNAL_RULE_STYLES[j.rule] || (EXIT_ICONS[j.rule] ? "bg-slate-800 text-slate-200 border-slate-600" : "bg-slate-800/60 text-slate-400 border-slate-700");
                 const icon = j.action === "EXIT" ? exitIcon(j.rule) + " " : "";
@@ -1188,20 +1878,26 @@
 
         function walletQualityBadge(address) {
             const q = walletQualityFor(address);
-            if (!q) return `<span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 border border-slate-700">quality N/A</span>`;
+            if (!q) return `<span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 border border-slate-700">${escHtml(t("whale.qualityNa"))}</span>`;
             const wr = q.recentWinRate == null ? "n/a" : `${Math.round(q.recentWinRate * 100)}%`;
             const cls = q.trusted ? "bg-sol-green/15 text-sol-green border-sol-green/30" : "bg-amber-500/15 text-amber-300 border-amber-500/30";
-            return `<span title="${escHtml(q.reason)}" class="text-[9px] font-mono px-1.5 py-0.5 rounded border ${cls}">${q.trusted ? "trusted" : "down-weighted"} · ${q.samples} tr · WR ${wr} · ${q.netPnlSol >= 0 ? "+" : ""}${Number(q.netPnlSol).toFixed(3)}</span>`;
+            const state = q.trusted ? t("whale.trusted") : t("whale.downweighted");
+            return `<span title="${escHtml(q.reason)}" class="text-[9px] font-mono px-1.5 py-0.5 rounded border ${cls}">${escHtml(t("whale.quality", {
+                state,
+                samples: q.samples,
+                wr,
+                pnl: `${q.netPnlSol >= 0 ? "+" : ""}${Number(q.netPnlSol).toFixed(3)}`
+            }))}</span>`;
         }
 
         function renderTrackedWallets() {
             const container = document.getElementById("trackedWalletsContainer");
             const count = appState.trackedWallets.length;
-            document.getElementById("whaleCountBadge").innerText = `${count} aktivna`;
+            document.getElementById("whaleCountBadge").innerText = t("whale.count", { count });
             document.getElementById("agent1Badge").innerText = `${count} WHALES`;
 
             if (count === 0) {
-                container.innerHTML = `<div class="text-[11px] text-slate-500 py-2 text-center">Nema praćenih novčanika. Dodaj adresu iznad.</div>`;
+                container.innerHTML = `<div class="text-[11px] text-slate-500 py-2 text-center">${escHtml(t("whale.none"))}</div>`;
                 return;
             }
 
@@ -1210,13 +1906,13 @@
                     <div class="min-w-0">
                         <div class="font-semibold text-white truncate flex items-center gap-1.5">
                             <span class="text-cyan-400">🐋</span>
-                            <span>${w.label}</span>
-                            ${w.signalsCount > 0 ? `<span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sol-green/20 text-sol-green">${w.signalsCount} hit</span>` : ''}
+                            <span>${escHtml(w.label)}</span>
+                            ${w.signalsCount > 0 ? `<span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-sol-green/20 text-sol-green">${escHtml(t("whale.hit", { count: w.signalsCount }))}</span>` : ''}
                         </div>
                         <div class="text-[10px] font-mono text-slate-400">${w.address.slice(0, 8)}...${w.address.slice(-6)}</div>
                         <div class="mt-0.5">${walletQualityBadge(w.address)}</div>
                     </div>
-                    <button onclick="removeSmartMoneyWallet('${w.address}')" class="text-slate-500 hover:text-rose-400 px-1.5 transition" title="Ukloni novčanik">
+                    <button type="button" onclick="removeSmartMoneyWallet('${w.address}')" class="text-slate-500 hover:text-rose-400 px-1.5 transition" title="${escHtml(t("whale.remove"))}">
                         <i class="fa-solid fa-trash-can text-[10px]"></i>
                     </button>
                 </div>
@@ -1227,10 +1923,10 @@
             const addrInput = document.getElementById("newWhaleAddr");
             const labelInput = document.getElementById("newWhaleLabel");
             const address = addrInput.value.trim();
-            const label = labelInput.value.trim() || `Whale ${address.slice(0, 5)}`;
+            const label = labelInput.value.trim() || t("whale.defaultLabel", { short: address.slice(0, 5) });
 
             if (address.length < 32) {
-                logAgent("WHALE TRACKER", "Unesi ispravnu Solana adresu novčanika (32-44 znaka).", "warn");
+                logAgent("WHALE TRACKER", t("log.badAddress"), "warn");
                 return;
             }
 
@@ -1267,7 +1963,7 @@
         async function triggerSimulatedWhaleSignal() {
             const btn = document.getElementById("simWhaleBtn");
             btn.disabled = true;
-            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>Whale kupuje...</span>`;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${escHtml(t("log.whaleBuying"))}</span>`;
             try {
                 if (appState.pythonConnected) {
                     const res = await fetchFromPythonBridge("/api/simulate_whale_buy", { method: "POST" });
@@ -1278,7 +1974,7 @@
                 }
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-water"></i> <span>Testiraj 🐋 Whale Signal</span>`;
+                btn.innerHTML = `<i class="fa-solid fa-water"></i> <span>${escHtml(t("cmd.testWhale"))}</span>`;
             }
         }
 
@@ -1309,7 +2005,7 @@
 
         function logAgent(agentName, message, type = "info") {
             const container = document.getElementById("terminalLogContainer");
-            const time = new Date().toLocaleTimeString("hr-HR", { hour12: false });
+            const time = new Date().toLocaleTimeString(UI.lang === "hr" ? "hr-HR" : "en-GB", { hour12: false });
             const colorMap = { info: "text-slate-300", success: "text-sol-green", warn: "text-amber-300", danger: "text-rose-400", ai: "text-sol-purple" };
             const badgeMap = {
                 "DISCOVERY": "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
@@ -1331,7 +2027,7 @@
 
         function clearTerminalLogs() {
             document.getElementById("terminalLogContainer").innerHTML = "";
-            logAgent("DISCOVERY", "Terminal očišćen. Sustav aktivan.", "info");
+            logAgent("DISCOVERY", t("terminal.cleared"), "info");
         }
 
         async function executePaperOrDryRunBuy(tokenObj) {
@@ -1348,11 +2044,15 @@
                     });
                     if (!res.ok) {
                         const r = res.result || {};
-                        logAgent("RISK MGR", `Manual buy of $${market.symbol} not opened [${r.rule || "ERROR"}]: ${r.reason || res.error || "unknown"}`, "warn");
+                        logAgent("RISK MGR", t("log.buyRefused", {
+                            symbol: market.symbol,
+                            rule: r.rule || "ERROR",
+                            reason: r.reason || res.error || "unknown"
+                        }), "warn");
                     }
                     await syncWithPythonBackend();
                 } catch (e) {
-                    logAgent("RISK MGR", `Manual buy of $${market.symbol} refused by the Python bot.`, "warn");
+                    logAgent("RISK MGR", t("log.buyRefusedShort", { symbol: market.symbol }), "warn");
                 }
             }
         }
@@ -1376,8 +2076,8 @@
         }
 
         async function resetPortfolio() {
-            if (!confirm("Reset the PAPER portfolio to 10 SOL? This clears paper positions, trade history and equity snapshots.")) return;
-            if (!confirm("Are you sure?")) return;
+            if (!confirm(t("positions.resetConfirm"))) return;
+            if (!confirm(t("positions.resetConfirm2"))) return;
             if (appState.pythonConnected) {
                 await fetchFromPythonBridge("/api/reset", { method: "POST" });
                 await syncWithPythonBackend();
@@ -1402,7 +2102,7 @@
         async function runDiscoveryCycle(manualTrigger = false) {
             const btn = document.getElementById("scanNowBtn");
             btn.disabled = true;
-            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>Skeniram...</span>`;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${escHtml(t("log.scanning"))}</span>`;
             try {
                 const synced = await syncWithPythonBackend();
                 if (synced && manualTrigger) {
@@ -1411,7 +2111,7 @@
                 }
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-radar"></i> <span>Skeniraj Odmah</span>`;
+                btn.innerHTML = `<i class="fa-solid fa-radar"></i> <span>${escHtml(t("cmd.scanNow"))}</span>`;
             }
         }
 
@@ -1419,7 +2119,7 @@
             const input = document.getElementById("manualMintInput");
             const mint = input.value.trim();
             if (!mint || mint.length < 30) {
-                logAgent("DISCOVERY", "Unesi ispravnu Solana Mint adresu (32-44 znaka).", "warn");
+                logAgent("DISCOVERY", t("log.badMint"), "warn");
                 return;
             }
             const res = await processCandidateMint(mint);
@@ -1434,7 +2134,7 @@
             if (!mint) return;
             const btn = document.getElementById("forceAiBtn");
             btn.disabled = true;
-            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>Gemini analizira...</span>`;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> <span>${escHtml(t("log.gemini"))}</span>`;
             try {
                 if (appState.pythonConnected) {
                     await fetchFromPythonBridge("/api/analyze", {
@@ -1446,7 +2146,7 @@
                 }
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> <span>Gemini AI Analiza</span>`;
+                btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> <span>${escHtml(t("forensics.runAi"))}</span>`;
             }
         }
 
@@ -1492,7 +2192,7 @@
             });
 
             if (filteredMints.length === 0) {
-                container.innerHTML = `<div class="text-center py-12 text-slate-400 text-xs">Nema tokena u ovom filteru.</div>`;
+                container.innerHTML = `<div class="text-center py-12 text-slate-400 text-xs">${escHtml(t("feed.empty"))}</div>`;
                 return;
             }
 
@@ -1546,7 +2246,7 @@
             const container = document.getElementById("researchInspectorContainer");
             const mint = appState.selectedMint;
             if (!mint || !appState.tokensMap[mint]) {
-                container.innerHTML = `<div class="text-center py-16 text-slate-500 text-xs">Čekam prvi skenirani token ili klikni "Skeniraj Odmah"...</div>`;
+                container.innerHTML = `<div class="text-center py-16 text-slate-500 text-xs">${escHtml(t("inspector.waiting"))}</div>`;
                 return;
             }
 
@@ -1559,8 +2259,8 @@
             const top10Label = top10Known ? `${top10Pct}%` : "N/A";
             const maxSinglePct = (security?.maxSingleHolderPct ?? null) === null ? "N/A" : `${security.maxSingleHolderPct}`;
             const isBundled = security?.isBundled ?? false;
-            const mintState = triState(security?.mintAuthorityRevoked ?? null, "UGAŠEN", "AKTIVAN!");
-            const freezeState = triState(security?.freezeAuthorityRevoked ?? null, "UGAŠEN", "AKTIVAN!");
+            const mintState = triState(security?.mintAuthorityRevoked ?? null, t("inspector.disabled"), t("inspector.active"));
+            const freezeState = triState(security?.freezeAuthorityRevoked ?? null, t("inspector.disabled"), t("inspector.active"));
 
             const decisionColor = verdict.decision === "BUY" ? "text-sol-green border-sol-green/40 bg-sol-green/10"
                 : (verdict.decision === "WATCH" ? "text-amber-300 border-amber-500/40 bg-amber-500/10" : "text-rose-400 border-rose-500/40 bg-rose-500/10");
@@ -1575,7 +2275,7 @@
                         </div>
                         <div class="flex items-center gap-2 mt-1">
                             <span class="text-[11px] font-mono text-slate-400">${market.mint.slice(0, 14)}...${market.mint.slice(-6)}</span>
-                            <button onclick="copyMintAddress('${market.mint}')" class="text-[11px] text-cyan-400 hover:underline font-mono"><i class="fa-regular fa-copy"></i> Kopiraj</button>
+                            <button onclick="copyMintAddress('${market.mint}')" class="text-[11px] text-cyan-400 hover:underline font-mono"><i class="fa-regular fa-copy"></i> ${escHtml(t("inspector.copy"))}</button>
                             <a href="${market.pairUrl}" target="_blank" class="text-[11px] text-sol-purple hover:underline font-mono ml-1">DexScreener <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i></a>
                         </div>
                     </div>
@@ -1583,7 +2283,7 @@
                     <div class="flex items-center gap-2">
                         <div class="px-3 py-1.5 rounded-xl border font-mono font-bold text-sm ${decisionColor}">${verdict.decision}</div>
                         <button onclick="manualBuySelected('${market.mint}')" class="px-3 py-1.5 rounded-xl bg-sol-green text-sol-dark font-bold text-xs hover:opacity-90 transition shadow">
-                            <i class="fa-solid fa-bolt mr-1"></i>Kupi (${appState.config.tradeSizeSol} SOL)
+                            <i class="fa-solid fa-bolt mr-1"></i>${escHtml(t("inspector.buy", { size: appState.config.tradeSizeSol }))}
                         </button>
                     </div>
                 </div>
@@ -1591,17 +2291,17 @@
                 <div class="p-3.5 rounded-xl bg-sol-dark/80 border border-cyan-500/30 space-y-2.5">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                            <i class="fa-solid fa-shield-cat"></i> On-Chain Top 10 Holder & Jito Bundle Forenzika
+                            <i class="fa-solid fa-shield-cat"></i> ${escHtml(t("inspector.topTitle"))}
                         </span>
                         <span class="text-[10px] font-mono px-2 py-0.5 rounded ${isBundled ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' : 'bg-sol-green/15 text-sol-green border border-sol-green/30'}">
-                            ${isBundled ? '⚠️ SUMNJA NA DEV BUNDLE' : '✅ ČISTA DISTRIBUCIJA'}
+                            ${isBundled ? escHtml(t("inspector.bundleRisk")) : escHtml(t("inspector.clean"))}
                         </span>
                     </div>
 
                     <div>
                         <div class="flex justify-between text-[11px] font-mono mb-1">
-                            <span class="text-slate-300">Top 10 Holdera (izvan LP-a): <strong class="${!top10Known ? 'text-amber-300' : (top10Pct > appState.config.maxTop10Pct ? 'text-rose-400' : 'text-sol-green')}">${top10Label}</strong> (Max prag: ${appState.config.maxTop10Pct}%)</span>
-                            <span class="text-slate-400">Najveći: <strong class="text-white">${maxSinglePct}${maxSinglePct === "N/A" ? "" : "%"}</strong></span>
+                            <span class="text-slate-300">${escHtml(t("inspector.top10"))} <strong class="${!top10Known ? 'text-amber-300' : (top10Pct > appState.config.maxTop10Pct ? 'text-rose-400' : 'text-sol-green')}">${top10Label}</strong> ${escHtml(t("inspector.maxThreshold", { pct: appState.config.maxTop10Pct }))}</span>
+                            <span class="text-slate-400">${escHtml(t("inspector.largest"))} <strong class="text-white">${maxSinglePct}${maxSinglePct === "N/A" ? "" : "%"}</strong></span>
                         </div>
                         <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden">
                             <div class="h-full ${top10Pct > appState.config.maxTop10Pct ? 'bg-rose-500' : (top10Pct > 25 ? 'bg-amber-400' : 'bg-sol-green')} rounded-full" style="width: ${Math.min(100, top10Pct)}%"></div>
@@ -1610,15 +2310,15 @@
 
                     <div class="grid grid-cols-3 gap-2 pt-1 text-[11px] font-mono">
                         <div class="px-2.5 py-1.5 rounded-lg bg-sol-dark border border-sol-border flex items-center justify-between">
-                            <span class="text-slate-400">Mint Auth:</span>
+                            <span class="text-slate-400">${escHtml(t("inspector.mintAuth"))}</span>
                             <span class="${mintState.cls} font-bold">${mintState.text}</span>
                         </div>
                         <div class="px-2.5 py-1.5 rounded-lg bg-sol-dark border border-sol-border flex items-center justify-between">
-                            <span class="text-slate-400">Freeze Auth:</span>
+                            <span class="text-slate-400">${escHtml(t("inspector.freezeAuth"))}</span>
                             <span class="${freezeState.cls} font-bold">${freezeState.text}</span>
                         </div>
                         <div class="px-2.5 py-1.5 rounded-lg bg-sol-dark border border-sol-border flex items-center justify-between">
-                            <span class="text-slate-400">Krivulja/LP:</span>
+                            <span class="text-slate-400">${escHtml(t("inspector.curve"))}</span>
                             <span class="text-cyan-300 font-bold">${market.bondingCurvePct}%</span>
                         </div>
                     </div>
@@ -1627,7 +2327,7 @@
                 <div class="grid grid-cols-2 gap-3">
                     <div class="p-3 rounded-xl bg-sol-dark/70 border border-sol-border">
                         <div class="flex justify-between text-xs mb-1">
-                            <span class="text-slate-400">🛡️ Sigurnost (Risk Score)</span>
+                            <span class="text-slate-400">${escHtml(t("inspector.riskScore"))}</span>
                             <span class="font-mono font-bold text-white">${verdict.riskScore}/100</span>
                         </div>
                         <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -1636,7 +2336,7 @@
                     </div>
                     <div class="p-3 rounded-xl bg-sol-dark/70 border border-sol-border">
                         <div class="flex justify-between text-xs mb-1">
-                            <span class="text-slate-400">🚀 Hype & Whale Score</span>
+                            <span class="text-slate-400">${escHtml(t("inspector.hypeScore"))}</span>
                             <span class="font-mono font-bold text-white">${verdict.hypeScore}/100</span>
                         </div>
                         <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -1646,21 +2346,21 @@
                 </div>
 
                 <div class="p-3.5 rounded-xl bg-sol-purple/10 border border-sol-purple/30">
-                    <div class="text-xs font-bold text-sol-purple mb-1 flex items-center gap-1.5"><i class="fa-solid fa-robot"></i> Obrazloženje Research Agenta:</div>
+                    <div class="text-xs font-bold text-sol-purple mb-1 flex items-center gap-1.5"><i class="fa-solid fa-robot"></i> ${escHtml(t("inspector.reasoning"))}</div>
                     <p class="text-xs text-slate-200 leading-relaxed">${verdict.summaryHr}</p>
                 </div>
 
                 <div class="p-3.5 rounded-xl bg-sol-dark/70 border border-sol-border space-y-2.5">
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-                        <div><span class="text-slate-400 block text-[10px]">CIJENA (USD)</span><span class="text-white font-bold">$${formatPrice(market.priceUsd)}</span></div>
-                        <div><span class="text-slate-400 block text-[10px]">LIKVIDNOST</span><span class="text-white font-bold">$${Math.round(market.liquidityUsd).toLocaleString()}</span></div>
-                        <div><span class="text-slate-400 block text-[10px]">FDV / MCAP</span><span class="text-white font-bold">$${Math.round(market.fdvUsd).toLocaleString()}</span></div>
-                        <div><span class="text-slate-400 block text-[10px]">VOLUMEN (5m)</span><span class="text-white font-bold">$${Math.round(market.volume5m).toLocaleString()}</span></div>
+                        <div><span class="text-slate-400 block text-[10px]">${escHtml(t("inspector.price"))}</span><span class="text-white font-bold">$${formatPrice(market.priceUsd)}</span></div>
+                        <div><span class="text-slate-400 block text-[10px]">${escHtml(t("inspector.liquidity"))}</span><span class="text-white font-bold">$${Math.round(market.liquidityUsd).toLocaleString()}</span></div>
+                        <div><span class="text-slate-400 block text-[10px]">${escHtml(t("inspector.fdv"))}</span><span class="text-white font-bold">$${Math.round(market.fdvUsd).toLocaleString()}</span></div>
+                        <div><span class="text-slate-400 block text-[10px]">${escHtml(t("inspector.volume"))}</span><span class="text-white font-bold">$${Math.round(market.volume5m).toLocaleString()}</span></div>
                     </div>
                     <div>
                         <div class="flex justify-between text-[11px] font-mono mb-1">
-                            <span class="text-sol-green">Kupnje (5m): ${market.buys5m} (${buyRatioPct}%)</span>
-                            <span class="text-rose-400">Prodaje (5m): ${market.sells5m} (${100 - buyRatioPct}%)</span>
+                            <span class="text-sol-green">${escHtml(t("inspector.buys", { n: market.buys5m, pct: buyRatioPct }))}</span>
+                            <span class="text-rose-400">${escHtml(t("inspector.sells", { n: market.sells5m, pct: 100 - buyRatioPct }))}</span>
                         </div>
                         <div class="w-full h-2 bg-rose-500/40 rounded-full overflow-hidden flex">
                             <div class="h-full bg-sol-green" style="width: ${buyRatioPct}%"></div>
@@ -1670,15 +2370,15 @@
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div class="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30">
-                        <h4 class="text-xs font-bold text-sol-green mb-1.5 flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> Green Flags</h4>
+                        <h4 class="text-xs font-bold text-sol-green mb-1.5 flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> ${escHtml(t("inspector.green"))}</h4>
                         <ul class="space-y-1 text-[11px] text-slate-300">
-                            ${(verdict.greenFlags.length ? verdict.greenFlags : ["Nema istaknutih pozitivnih signala"]).map(g => `<li class="flex items-start gap-1.5"><span class="text-sol-green">+</span> <span>${g}</span></li>`).join("")}
+                            ${(verdict.greenFlags.length ? verdict.greenFlags : [t("inspector.greenEmpty")]).map(g => `<li class="flex items-start gap-1.5"><span class="text-sol-green">+</span> <span>${g}</span></li>`).join("")}
                         </ul>
                     </div>
                     <div class="p-3 rounded-xl bg-rose-950/20 border border-rose-500/30">
-                        <h4 class="text-xs font-bold text-rose-400 mb-1.5 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation"></i> Red Flags & RugCheck</h4>
+                        <h4 class="text-xs font-bold text-rose-400 mb-1.5 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation"></i> ${escHtml(t("inspector.red"))}</h4>
                         <ul class="space-y-1 text-[11px] text-slate-300">
-                            ${(verdict.redFlags.length ? verdict.redFlags : ["Nema kritičnih on-chain upozorenja"]).map(r => `<li class="flex items-start gap-1.5"><span class="text-rose-400">-</span> <span>${r}</span></li>`).join("")}
+                            ${(verdict.redFlags.length ? verdict.redFlags : [t("inspector.redEmpty")]).map(r => `<li class="flex items-start gap-1.5"><span class="text-rose-400">-</span> <span>${r}</span></li>`).join("")}
                         </ul>
                     </div>
                 </div>
@@ -1710,7 +2410,7 @@
 
             const pnlEl = document.getElementById("kpiTotalPnl");
             pnlEl.innerText = `${totalPnlSol >= 0 ? '+' : ''}${totalPnlSol.toFixed(3)} SOL`;
-            pnlEl.className = `text-lg sm:text-xl font-bold font-mono ${totalPnlSol >= 0 ? 'text-sol-green' : 'text-rose-400'}`;
+            pnlEl.className = `kpi-value font-mono ${totalPnlSol >= 0 ? 'text-sol-green' : 'text-rose-400'}`;
 
             document.getElementById("kpiTotalPnlPct").innerText = `${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(2)}% ROI`;
             document.getElementById("kpiWinRate").innerText = `${winRate}%`;
@@ -1720,7 +2420,7 @@
         function renderPositionsTable() {
             const tbody = document.getElementById("positionsTableBody");
             if (appState.positions.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-slate-500 text-xs">Još nema otvorenih pozicija u <code>paper_portfolio.db</code>.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-slate-500 text-xs">${escHtml(t("positions.empty"))}</td></tr>`;
                 return;
             }
 
@@ -1731,11 +2431,11 @@
                 const netSolDiff = pos.status === "OPEN" ? (pos.realizedSol + currentValSol) - pos.investedSol : pos.realizedSol - pos.investedSol;
 
                 const icon = pos.exitIcon || exitIcon(pos.exitReason);
-                const staleBadge = pos.status === "OPEN" && pos.priceStale ? ` <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px]">STALE</span>` : "";
-                const beBadge = pos.status === "OPEN" && pos.breakevenArmed ? ` <span class="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px]">🛡️ FLOOR</span>` : "";
+                const staleBadge = pos.status === "OPEN" && pos.priceStale ? ` <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px]">${escHtml(t("positions.stale"))}</span>` : "";
+                const beBadge = pos.status === "OPEN" && pos.breakevenArmed ? ` <span class="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px]">🛡️ ${escHtml(t("positions.floor"))}</span>` : "";
                 const statusBadge = pos.status === "OPEN"
-                    ? `<span class="px-2 py-0.5 rounded bg-sol-green/20 text-sol-green border border-sol-green/30 text-[10px]">OPEN ${pos.tp1Hit ? '🌙 MOONBAG' : ''}</span>${staleBadge}${beBadge}`
-                    : `<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[10px]">${icon} CLOSED (${escHtml(pos.exitReason)})</span>`;
+                    ? `<span class="px-2 py-0.5 rounded bg-sol-green/20 text-sol-green border border-sol-green/30 text-[10px]">${escHtml(t("positions.open"))} ${pos.tp1Hit ? '🌙 ' + escHtml(t("positions.moonbag")) : ''}</span>${staleBadge}${beBadge}`
+                    : `<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[10px]">${icon} ${escHtml(t("positions.closed"))} (${escHtml(pos.exitReason)})</span>`;
                 const sig = pos.signalPriceUsd ?? pos.entryPriceUsd;
                 const slipBps = Number(pos.entrySlippageBps || 0);
 
@@ -1748,11 +2448,11 @@
                         <td class="py-3 px-3">${statusBadge}</td>
                         <td class="py-3 px-3">
                             <div class="text-white">${pos.investedSol.toFixed(2)} SOL</div>
-                            <div class="text-[10px] text-slate-400">Aktivno: ${Math.round(pos.remainingRatio * 100)}%</div>
+                            <div class="text-[10px] text-slate-400">${escHtml(t("positions.active", { pct: Math.round(pos.remainingRatio * 100) }))}</div>
                         </td>
                         <td class="py-3 px-3 text-slate-300">
                             <div>$${formatPrice(sig)} → <span class="text-white">$${formatPrice(pos.entryPriceUsd)}</span></div>
-                            <div class="text-[10px] text-slate-500">${slipBps > 0 ? `entry ${slipBps.toFixed(0)} bps` : 'legacy'}</div>
+                            <div class="text-[10px] text-slate-500">${slipBps > 0 ? escHtml(t("positions.entrySlip", { bps: slipBps.toFixed(0) })) : escHtml(t("positions.legacy"))}</div>
                         </td>
                         <td class="py-3 px-3">
                             <div class="text-white">$${formatPrice(pos.currentPriceUsd)}</div>
@@ -1764,10 +2464,10 @@
                         </td>
                         <td class="py-3 px-3">
                             <div class="text-cyan-300 text-[11px] max-w-[260px] truncate">${escHtml(pos.sizeReason || '-')}</div>
-                            <div class="text-[10px] text-slate-400">${pos.status === "OPEN" && pos.stopPriceUsd ? `Stop $${formatPrice(pos.stopPriceUsd)} · ` : ''}${escHtml(pos.source || pos.router)}</div>
+                            <div class="text-[10px] text-slate-400">${pos.status === "OPEN" && pos.stopPriceUsd ? `${escHtml(t("positions.stop"))} $${formatPrice(pos.stopPriceUsd)} · ` : ''}${escHtml(pos.source || pos.router)}</div>
                         </td>
                         <td class="py-3 px-3 text-right">
-                            ${pos.status === "OPEN" ? `<button onclick="manualSellPosition('${pos.mint}')" class="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 border border-rose-500/30 text-[11px] transition">Prodaj 100%</button>` : `<span class="text-[11px] text-slate-500">Završeno</span>`}
+                            ${pos.status === "OPEN" ? `<button onclick="manualSellPosition('${pos.mint}')" class="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 border border-rose-500/30 text-[11px] transition">${escHtml(t("positions.sell100"))}</button>` : `<span class="text-[11px] text-slate-500">${escHtml(t("positions.done"))}</span>`}
                         </td>
                     </tr>
                 `;
@@ -1813,20 +2513,44 @@
             if (appState.autoPilot) {
                 btn.className = "flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium text-xs bg-sol-green/15 text-sol-green border border-sol-green/40 hover:bg-sol-green/25 transition";
                 icon.className = "fa-solid fa-play";
-                label.innerText = "Sync: ON";
+                label.innerText = t("sync.on");
             } else {
                 btn.className = "flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium text-xs bg-slate-800 text-slate-400 border border-slate-700 hover:text-white transition";
                 icon.className = "fa-solid fa-pause";
-                label.innerText = "Sync: PAUSED";
+                label.innerText = t("sync.off");
             }
         }
 
         function copyMintAddress(mint) {
             navigator.clipboard.writeText(mint);
-            logAgent("DISCOVERY", `Mint adresa ${mint.slice(0, 10)}... kopirana u međuspremnik.`, "info");
+            logAgent("DISCOVERY", t("log.copied", { short: `${mint.slice(0, 10)}...` }), "info");
         }
 
         window.onload = async function () {
+            applyI18n();
+            renderPhase();
+            document.querySelectorAll("[data-lang]").forEach((btn) => {
+                btn.addEventListener("click", () => setLang(btn.dataset.lang));
+            });
+
+            document.getElementById("refreshBtn").addEventListener("click", async () => {
+                await syncWithPythonBackend();
+                await refreshJournal();
+                await refreshEquityCurve();
+                renderPortfolioKPIs();
+                renderPositionsTable();
+            });
+
+            document.getElementById("tokenBtn").addEventListener("click", () => {
+                const current = localStorage.getItem("agentictrade_token") || "";
+                const next = prompt(t("token.prompt"), current);
+                if (next === null) return;
+                if (next.trim()) localStorage.setItem("agentictrade_token", next.trim());
+                else localStorage.removeItem("agentictrade_token");
+                alert(t("token.saved"));
+                setTimeout(() => window.location.reload(), 400);
+            });
+
             renderPortfolioKPIs();
             renderPositionsTable();
             renderTrackedWallets();

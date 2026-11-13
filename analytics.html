@@ -1,559 +1,761 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="hr" class="dark">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AgenticTrade — Paper Ledger v10</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<title>AgenticTrade — Analytics</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<script>
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ["Inter", "sans-serif"],
+          mono: ["JetBrains Mono", "monospace"]
+        },
+        colors: {
+          sol: {
+            purple: "#9945FF",
+            green: "#14F195",
+            dark: "#0B0E14",
+            card: "#131822",
+            border: "#1E2638"
+          }
+        }
+      }
+    }
+  };
+</script>
 <style>
   :root {
-    --ink: #0a0a0b;
-    --ink-2: #101013;
-    --panel: #141416;
-    --panel-2: #19191c;
-    --line: rgba(227, 164, 82, 0.16);
-    --line-strong: rgba(227, 164, 82, 0.38);
-    --gold: #e3a452;
-    --gold-soft: #f0c78f;
-    --cream: #f1e9dc;
-    --muted: #8d877d;
-    --green: #7fd1a4;
-    --red: #e2725b;
-    --blue: #8aa9c9;
-    --radius: 2px;
-    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
-    --display: "Fraunces", Georgia, serif;
+    --sol-purple: #9945FF;
+    --sol-green: #14F195;
+    --sol-dark: #0B0E14;
+    --sol-card: #131822;
+    --sol-border: #1E2638;
   }
 
-  * { box-sizing: border-box; }
-
-  html, body { margin: 0; padding: 0; }
+  html { color-scheme: dark; }
 
   body {
-    min-height: 100vh;
-    color: var(--cream);
-    background:
-      radial-gradient(1200px 700px at 82% -12%, rgba(227, 164, 82, 0.13), transparent 60%),
-      radial-gradient(900px 600px at -10% 15%, rgba(138, 169, 201, 0.07), transparent 55%),
-      linear-gradient(180deg, #0b0b0d 0%, #0a0a0b 55%, #080809 100%);
-    font-family: var(--sans);
-    font-weight: 300;
-    -webkit-font-smoothing: antialiased;
-    letter-spacing: 0.01em;
-  }
-
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    opacity: 0.5;
+    background-color: #0B0E14;
+    color: #E2E8F0;
     background-image:
-      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px),
-      radial-gradient(circle at 20% 30%, rgba(255,255,255,0.02) 0, transparent 35%);
-    mix-blend-mode: screen;
+      radial-gradient(at 0% 0%, rgba(153, 69, 255, 0.10) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(20, 241, 149, 0.07) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, rgba(153, 69, 255, 0.05) 0px, transparent 60%);
+    background-attachment: fixed;
   }
 
-  a { color: inherit; }
-
-  .shell {
-    position: relative;
-    z-index: 1;
-    max-width: 1440px;
-    margin: 0 auto;
-    padding: 26px 34px 72px;
+  .glass-panel {
+    background: rgba(19, 24, 34, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(30, 38, 56, 0.9);
   }
 
-  /* ---------- top bar ---------- */
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 18px;
-    padding-bottom: 18px;
-    border-bottom: 1px solid var(--line);
+  .glass-inset {
+    background: rgba(11, 14, 20, 0.7);
+    border: 1px solid rgba(30, 38, 56, 0.75);
   }
 
-  .brand { display: flex; align-items: center; gap: 14px; }
-
-  .monogram {
-    width: 44px; height: 44px;
-    display: grid; place-items: center;
-    border: 1px solid var(--line-strong);
-    background: linear-gradient(145deg, rgba(227,164,82,0.16), rgba(227,164,82,0.02));
-    font-family: var(--display);
-    font-size: 20px;
-    color: var(--gold-soft);
-    letter-spacing: -0.04em;
+  .sol-gradient-text {
+    background: linear-gradient(90deg, #9945FF 0%, #14F195 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
-  .brand-name {
-    font-family: var(--mono);
-    font-size: 12px;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: var(--cream);
-  }
-
-  .brand-sub {
-    margin-top: 4px;
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  .top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-
-  .status {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 7px 11px;
-    border: 1px solid var(--line);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  .dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--muted);
-    box-shadow: 0 0 0 0 rgba(127, 209, 164, 0.4);
-  }
-
-  .dot.live { background: var(--green); animation: pulse 2.4s infinite; }
-  .dot.offline { background: var(--red); }
-
-  @keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(127, 209, 164, 0.35); }
-    70% { box-shadow: 0 0 0 8px rgba(127, 209, 164, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(127, 209, 164, 0); }
-  }
-
-  .btn {
-    appearance: none;
-    border: 1px solid var(--line);
-    background: transparent;
-    color: var(--cream);
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
-  }
-
-  .btn:hover { border-color: var(--line-strong); color: var(--gold-soft); background: rgba(227,164,82,0.05); }
-  .btn:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
-  .btn.gold { border-color: var(--line-strong); color: var(--gold-soft); }
-
-  /* ---------- hero ---------- */
-  .hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
-    gap: 28px;
-    padding: 46px 0 38px;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .eyebrow {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    color: var(--gold);
-    display: flex; align-items: center; gap: 10px;
-  }
-
-  .eyebrow::after {
-    content: "";
-    height: 1px; width: 54px;
-    background: linear-gradient(90deg, var(--line-strong), transparent);
-  }
-
-  .equity {
-    margin: 12px 0 6px;
-    font-family: var(--display);
-    font-weight: 300;
-    font-size: clamp(58px, 8.4vw, 118px);
-    line-height: 0.92;
-    letter-spacing: -0.045em;
-    color: var(--cream);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .equity .unit {
-    font-family: var(--mono);
-    font-size: 0.18em;
-    letter-spacing: 0.18em;
-    color: var(--muted);
-    margin-left: 0.5em;
-    vertical-align: 0.9em;
-  }
-
-  .hero-meta {
-    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-    font-family: var(--mono); font-size: 11px; color: var(--muted);
-  }
-
-  .chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 8px;
-    border: 1px solid var(--line);
-    font-size: 10px; letter-spacing: 0.1em;
-    color: var(--muted);
-    text-transform: uppercase;
-  }
-
-  .chip.pos { color: var(--green); border-color: rgba(127,209,164,0.28); }
-  .chip.neg { color: var(--red); border-color: rgba(226,114,91,0.28); }
-
-  .hero-right {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1px;
-    background: var(--line);
-    border: 1px solid var(--line);
-    align-self: end;
-  }
-
-  .stat {
-    background: var(--ink-2);
-    padding: 18px 18px 16px;
-    min-height: 98px;
-    display: flex; flex-direction: column; justify-content: space-between;
-  }
-
-  .stat .k {
-    font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em;
-    text-transform: uppercase; color: var(--muted);
-  }
-
-  .stat .v {
-    font-family: var(--mono); font-size: 21px; color: var(--cream);
-    letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
-  }
-
-  .stat .v small { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; }
-
-  /* ---------- layout ---------- */
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    gap: 18px;
-    margin-top: 26px;
-  }
-
-  .panel {
-    position: relative;
-    background: linear-gradient(180deg, rgba(20,20,22,0.88), rgba(15,15,17,0.94));
-    border: 1px solid var(--line);
-    padding: 20px 20px 18px;
-    min-width: 0;
-  }
-
-  .panel::before, .panel::after {
+  .sol-gradient-border { position: relative; }
+  .sol-gradient-border::after {
     content: "";
     position: absolute;
-    width: 7px; height: 7px;
-    border-color: var(--line-strong);
-    border-style: solid;
-    pointer-events: none;
-  }
-  .panel::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
-  .panel::after { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
-
-  .span-4 { grid-column: span 4; }
-  .span-5 { grid-column: span 5; }
-  .span-6 { grid-column: span 6; }
-  .span-7 { grid-column: span 7; }
-  .span-8 { grid-column: span 8; }
-  .span-12 { grid-column: span 12; }
-
-  .panel-head {
-    display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--line);
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #9945FF, #14F195);
   }
 
-  .panel-title {
-    font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em;
-    text-transform: uppercase; color: var(--cream);
-    display: flex; align-items: center; gap: 10px;
-  }
-
-  .panel-title .num { color: var(--gold); font-size: 9px; letter-spacing: 0.1em; }
-  .panel-note { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
-
-  /* ---------- metric grid ---------- */
-  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); }
-  .metric { background: var(--ink-2); padding: 14px 14px 12px; }
-  .metric .k { font-family: var(--mono); font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
-  .metric .v { margin-top: 6px; font-family: var(--mono); font-size: 18px; color: var(--cream); font-variant-numeric: tabular-nums; }
-  .metric .v.pos { color: var(--green); }
-  .metric .v.neg { color: var(--red); }
-
-  /* ---------- chart ---------- */
-  .chart-wrap { position: relative; height: 300px; }
-  .chart-wrap canvas { width: 100%; height: 100%; display: block; }
-
-  .chart-empty {
-    position: absolute; inset: 0; display: grid; place-items: center;
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
-    text-transform: uppercase; color: var(--muted); text-align: center; padding: 20px;
-  }
-
-  /* ---------- ledger rows ---------- */
-  .rows { display: flex; flex-direction: column; }
-  .row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+  /* shared controls */
+  .btn {
+    display: inline-flex;
     align-items: center;
-    gap: 12px;
-    padding: 11px 0;
-    border-bottom: 1px dashed rgba(227,164,82,0.10);
-    font-family: var(--mono); font-size: 11px;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #1E2638;
+    background: #0B0E14;
+    color: #E2E8F0;
+    font-size: 11px;
+    line-height: 1.2;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 160ms ease, color 160ms ease, background 160ms ease, opacity 160ms ease;
   }
-  .row:last-child { border-bottom: 0; }
-  .row .label { color: var(--cream); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .label small { color: var(--muted); font-size: 9px; letter-spacing: 0.08em; margin-left: 8px; text-transform: uppercase; }
-  .row .val { color: var(--muted); font-variant-numeric: tabular-nums; }
-  .row .val.pos { color: var(--green); }
-  .row .val.neg { color: var(--red); }
-
-  /* concentration bars */
-  .bar-row { padding: 9px 0; border-bottom: 1px dashed rgba(227,164,82,0.10); }
-  .bar-top { display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 10px; color: var(--muted); }
-  .bar-top .sym { color: var(--cream); letter-spacing: 0.06em; }
-  .bar-track { position: relative; height: 3px; margin-top: 7px; background: rgba(255,255,255,0.06); overflow: hidden; }
-  .bar-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--gold), var(--gold-soft)); }
-
-  /* ---------- audit ---------- */
-  .audit { display: flex; flex-direction: column; gap: 0; }
-  .audit-item {
-    display: grid; grid-template-columns: 74px 1fr; gap: 12px;
-    padding: 9px 0; border-bottom: 1px dashed rgba(227,164,82,0.10);
-    font-family: var(--mono); font-size: 10px;
+  .btn:hover { border-color: #9945FF; color: #fff; background: rgba(153, 69, 255, 0.10); }
+  .btn:focus-visible { outline: 2px solid #9945FF; outline-offset: 2px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary {
+    background: linear-gradient(90deg, #9945FF, #6D28D9);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 6px 18px -8px rgba(153, 69, 255, 0.8);
   }
+  .btn-primary:hover { background: linear-gradient(90deg, #a765ff, #7c3aed); color: #fff; }
+  .btn-green { background: rgba(20, 241, 149, 0.12); border-color: rgba(20, 241, 149, 0.40); color: #14F195; }
+  .btn-green:hover { background: rgba(20, 241, 149, 0.22); border-color: rgba(20, 241, 149, 0.6); color: #14F195; }
+  .btn-cyan { background: rgba(6, 182, 212, 0.12); border-color: rgba(6, 182, 212, 0.4); color: #67e8f9; }
+  .btn-cyan:hover { background: rgba(6, 182, 212, 0.22); color: #a5f3fc; }
+
+  .nav-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 11px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    color: #94a3b8;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+  }
+  .nav-tab:hover { color: #fff; background: rgba(153, 69, 255, 0.12); }
+  .nav-tab.active { color: #fff; background: rgba(153, 69, 255, 0.18); border-color: rgba(153, 69, 255, 0.45); }
+
+  .lang-btn {
+    padding: 5px 10px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    transition: background 160ms ease, color 160ms ease;
+  }
+  .lang-btn:hover { color: #fff; }
+  .lang-btn.active { background: #9945FF; color: #fff; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid #1E2638;
+    background: rgba(15, 23, 42, 0.8);
+    color: #94a3b8;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .pill .dot { width: 6px; height: 6px; border-radius: 999px; background: #64748b; display: inline-block; }
+  .pill.live { color: #14F195; border-color: rgba(20, 241, 149, 0.4); background: rgba(20, 241, 149, 0.10); }
+  .pill.live .dot { background: #14F195; box-shadow: 0 0 0 0 rgba(20, 241, 149, 0.5); animation: pulse 2.2s infinite; }
+  .pill.offline { color: #fb7185; border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.10); }
+  .pill.offline .dot { background: #fb7185; }
+
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(20, 241, 149, 0.45); }
+    70% { box-shadow: 0 0 0 7px rgba(20, 241, 149, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(20, 241, 149, 0); }
+  }
+
+  .kpi-card { display: flex; flex-direction: column; justify-content: space-between; min-height: 96px; }
+  .kpi-value { font-family: "JetBrains Mono", monospace; font-size: clamp(20px, 2.2vw, 26px); line-height: 1.1; color: #fff; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .kpi-value small { font-size: 11px; letter-spacing: 0.06em; color: #94a3b8; }
+  .kpi-sub { font-family: "JetBrains Mono", monospace; font-size: 11px; color: #94a3b8; }
+
+  .stat-tile { background: #0B0E14; border: 1px solid #1E2638; border-radius: 10px; padding: 10px 12px; min-width: 0; }
+  .stat-tile .k { font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #64748b; }
+  .stat-tile .v { margin-top: 5px; font-family: "JetBrains Mono", monospace; font-size: 17px; color: #fff; font-variant-numeric: tabular-nums; }
+  .stat-tile .v.pos { color: #14F195; }
+  .stat-tile .v.neg { color: #fb7185; }
+
+  .data-table { width: 100%; border-collapse: collapse; }
+  .data-table th {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid #1E2638;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    white-space: nowrap;
+  }
+  .data-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(30, 38, 56, 0.6);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: #E2E8F0;
+  }
+  .data-table tbody tr:hover { background: rgba(11, 14, 20, 0.55); }
+  .data-table td.pos { color: #14F195; }
+  .data-table td.neg { color: #fb7185; }
+  .data-table td.muted { color: #94a3b8; }
+
+  .row-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px dashed rgba(30, 38, 56, 0.85); font-family: "JetBrains Mono", monospace; font-size: 11px; }
+  .row-line:last-child { border-bottom: 0; }
+  .row-line .label { color: #E2E8F0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-line .val { color: #94a3b8; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .row-line .val.pos { color: #14F195; }
+  .row-line .val.neg { color: #fb7185; }
+
+  .bar-row { padding: 8px 0; border-bottom: 1px dashed rgba(30, 38, 56, 0.85); }
+  .bar-row:last-child { border-bottom: 0; }
+  .bar-top { display: flex; justify-content: space-between; gap: 10px; font-family: "JetBrains Mono", monospace; font-size: 10px; color: #94a3b8; }
+  .bar-top .sym { color: #fff; letter-spacing: 0.04em; }
+  .bar-track { position: relative; height: 5px; margin-top: 6px; background: rgba(148, 163, 184, 0.14); border-radius: 999px; overflow: hidden; }
+  .bar-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #9945FF, #14F195); border-radius: 999px; }
+
+  .audit-item { display: grid; grid-template-columns: 66px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px dashed rgba(30, 38, 56, 0.85); font-family: "JetBrains Mono", monospace; font-size: 10px; }
   .audit-item:last-child { border-bottom: 0; }
-  .audit-time { color: var(--gold); }
-  .audit-body { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .audit-body b { color: var(--cream); font-weight: 500; }
+  .audit-time { color: #a78bfa; }
+  .audit-body { color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .audit-body b { color: #fff; font-weight: 600; }
 
-  /* ---------- tables ---------- */
-  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; }
-  th {
-    text-align: left; font-weight: 500; color: var(--muted);
-    letter-spacing: 0.14em; text-transform: uppercase; font-size: 8px;
-    padding: 0 8px 8px 0; border-bottom: 1px solid var(--line);
+  .weight { display: grid; grid-template-columns: minmax(80px, 130px) minmax(0, 1fr) 54px; align-items: center; gap: 10px; font-family: "JetBrains Mono", monospace; font-size: 9px; color: #94a3b8; }
+  .weight-bar { height: 4px; border-radius: 999px; background: rgba(148, 163, 184, 0.14); position: relative; overflow: hidden; }
+  .weight-bar i { position: absolute; inset: 0 auto 0 0; background: #14F195; border-radius: 999px; }
+  .weight .val { text-align: right; color: #fff; }
+
+  .empty-state {
+    padding: 34px 14px;
+    text-align: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #64748b;
   }
-  th:last-child, td:last-child { text-align: right; padding-right: 0; }
-  td { padding: 9px 8px 9px 0; border-bottom: 1px dashed rgba(227,164,82,0.10); color: var(--cream); }
-  td.muted { color: var(--muted); }
-  td.pos { color: var(--green); }
-  td.neg { color: var(--red); }
 
-  /* ---------- ML ---------- */
-  .ml-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-  .ml-state { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-  .weights { display: flex; flex-direction: column; gap: 7px; }
-  .weight { display: grid; grid-template-columns: 130px 1fr 52px; align-items: center; gap: 10px; font-family: var(--mono); font-size: 9px; color: var(--muted); }
-  .weight-bar { height: 2px; background: rgba(255,255,255,0.06); position: relative; }
-  .weight-bar i { position: absolute; inset: 0 auto 0 0; background: var(--blue); }
-  .weight .val { text-align: right; color: var(--cream); }
-
-  /* ---------- misc ---------- */
-  .mini { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
-  .empty { padding: 26px 0; text-align: center; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-
-  .footer {
-    margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line);
-    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-    font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
-  }
+  .panel-note { font-family: "JetBrains Mono", monospace; font-size: 10px; color: #64748b; white-space: nowrap; }
+  .tiny-mono { font-family: "JetBrains Mono", monospace; font-size: 10px; color: #94a3b8; }
 
   .toast {
-    position: fixed; right: 22px; bottom: 22px; z-index: 10;
-    padding: 12px 14px; border: 1px solid var(--line-strong);
-    background: rgba(16,16,19,0.96); color: var(--cream);
-    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
-    opacity: 0; transform: translateY(8px); pointer-events: none;
-    transition: opacity 180ms ease, transform 180ms ease;
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 60;
     max-width: 420px;
+    padding: 11px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(153, 69, 255, 0.5);
+    background: rgba(19, 24, 34, 0.97);
+    color: #fff;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.9);
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+    transition: opacity 180ms ease, transform 180ms ease;
   }
   .toast.show { opacity: 1; transform: translateY(0); }
 
-  .reveal { opacity: 0; transform: translateY(10px); animation: rise 620ms cubic-bezier(.2,.7,.2,1) forwards; }
-  @keyframes rise { to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: rise 480ms cubic-bezier(.2, .7, .2, 1) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-  @media (max-width: 1080px) {
-    .hero { grid-template-columns: 1fr; }
-    .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
-    .hero-right { max-width: 560px; }
-  }
-
-  @media (max-width: 720px) {
-    .shell { padding: 18px 16px 54px; }
-    .topbar { align-items: flex-start; flex-direction: column; }
-    .top-actions { justify-content: flex-start; }
-    .metrics { grid-template-columns: repeat(2, 1fr); }
-    .hero-right { grid-template-columns: 1fr 1fr; }
-    .chart-wrap { height: 240px; }
-    .weight { grid-template-columns: 96px 1fr 44px; }
-  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0B0E14; }
+  ::-webkit-scrollbar-thumb { background: #1E2638; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #9945FF; }
 
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
-    .reveal { opacity: 1; transform: none; }
   }
 </style>
 </head>
-<body>
-<div class="shell">
-  <header class="topbar">
-    <div class="brand">
-      <div class="monogram">AT</div>
-      <div>
-        <div class="brand-name">AgenticTrade</div>
-        <div class="brand-sub">Paper ledger · v10.0 · Solana</div>
+<body class="min-h-screen font-sans antialiased selection:bg-sol-purple selection:text-white">
+
+  <!-- ============ SHARED TOP BAR (identical in command_center.html) ============ -->
+  <header class="glass-panel sticky top-0 z-40 sol-gradient-border">
+    <div class="max-w-[1600px] mx-auto px-4 lg:px-6 py-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <a href="/" class="flex items-center gap-3 min-w-0">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sol-purple to-sol-green p-[1px] flex items-center justify-center shadow-lg shrink-0">
+            <div class="w-full h-full bg-sol-dark rounded-[11px] flex items-center justify-center">
+              <i class="fa-solid fa-robot text-lg sol-gradient-text"></i>
+            </div>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h1 class="font-bold text-base sm:text-lg tracking-tight text-white">AgenticTrade</h1>
+              <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-sol-purple/20 text-sol-purple border border-sol-purple/40 font-semibold" data-i18n="app.version">v10 · paper</span>
+              <span id="connPill" class="pill"><i class="dot"></i><span id="connText" data-i18n="status.connecting">Connecting</span></span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-0.5 truncate" data-i18n="app.tagline">Solana paper trading · risk engine, forensics and analytics in one console</p>
+          </div>
+        </a>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex items-center rounded-lg border border-sol-border bg-sol-dark overflow-hidden" role="group" aria-label="Language">
+            <button type="button" class="lang-btn" data-lang="hr">HR</button>
+            <button type="button" class="lang-btn" data-lang="en">EN</button>
+          </div>
+          <button type="button" id="tokenBtn" class="btn" title="Set dashboard token">
+            <i class="fa-solid fa-key text-sol-purple"></i><span data-i18n="action.token">Token</span>
+          </button>
+          <button type="button" id="refreshBtn" class="btn">
+            <i class="fa-solid fa-rotate text-sol-green"></i><span data-i18n="action.refresh">Refresh</span>
+          </button>
+        </div>
       </div>
-    </div>
-    <div class="top-actions">
-      <span class="status"><i id="liveDot" class="dot"></i><span id="liveText">Connecting</span></span>
-      <button class="btn" id="tokenBtn" title="Set dashboard token">Token</button>
-      <button class="btn" id="refreshBtn">Refresh</button>
-      <a class="btn gold" href="/">Command Center</a>
+
+      <div class="flex flex-wrap items-center justify-between gap-2 mt-2.5 pt-2.5 border-t border-sol-border/60">
+        <nav class="flex items-center gap-1" aria-label="Main">
+          <a href="/" class="nav-tab" data-nav="command">
+            <i class="fa-solid fa-gauge-high"></i><span data-i18n="nav.command">Command Center</span>
+          </a>
+          <a href="/analytics" class="nav-tab active" data-nav="analytics" aria-current="page">
+            <i class="fa-solid fa-chart-line"></i><span data-i18n="nav.analytics">Analytics</span>
+          </a>
+        </nav>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="tiny-mono hidden sm:inline" data-i18n="action.autoRefresh">Auto-refresh</span>
+          <button type="button" id="autoBtn" class="btn btn-green" aria-pressed="true">
+            <i id="autoIcon" class="fa-solid fa-pause"></i><span id="autoLabel" data-i18n="sync.on">Sync: ON</span>
+          </button>
+          <button type="button" id="trainBtn" class="btn btn-cyan">
+            <i class="fa-solid fa-brain"></i><span data-i18n="action.train">Train model</span>
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 
-  <section class="hero">
-    <div>
-      <div class="eyebrow">Total equity / SOL</div>
-      <div class="equity" id="equityValue">0.0000<span class="unit">SOL</span></div>
-      <div class="hero-meta">
-        <span class="chip" id="equityDelta">+0.0000 realized</span>
-        <span class="mini" id="strategyLabel">profile —</span>
-        <span class="mini" id="cacheLabel">cache —</span>
-      </div>
-    </div>
-    <div class="hero-right">
-      <div class="stat"><span class="k">Realized PnL</span><span class="v" id="realizedPnl">+0.0000 <small>SOL</small></span></div>
-      <div class="stat"><span class="k">Open positions</span><span class="v" id="openPositions">0</span></div>
-      <div class="stat"><span class="k">Open exposure</span><span class="v" id="exposurePct">0.0<small>%</small></span></div>
-      <div class="stat"><span class="k">Circuit breaker</span><span class="v" id="breakerState">—</span></div>
-    </div>
-  </section>
+  <main class="max-w-[1600px] w-full mx-auto p-4 lg:p-6 space-y-5">
 
-  <div class="grid">
-    <article class="panel span-8 reveal" style="animation-delay: 40ms">
-      <div class="panel-head">
-        <div class="panel-title"><span class="num">01</span> Equity curve</div>
-        <div class="panel-note" id="equityNote">realized closes</div>
+    <!-- Row 1: equity hero + KPI cards -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div class="lg:col-span-5 glass-panel rounded-xl p-4 lg:p-5 flex flex-col justify-between fade-in">
+        <div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[10px] font-mono uppercase tracking-[0.18em] text-sol-purple" data-i18n="hero.equity">Total equity / SOL</span>
+            <span class="pill"><i class="dot"></i><span id="equityDelta">+0.0000</span></span>
+          </div>
+          <div class="mt-3 flex items-end gap-2">
+            <span id="equityValue" class="text-4xl sm:text-5xl lg:text-6xl font-mono font-bold text-white tracking-tight">0.0000</span>
+            <span class="text-sm font-mono text-slate-400 mb-1.5">SOL</span>
+          </div>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          <span class="pill" id="strategyLabel">profile —</span>
+          <span class="pill" id="cacheLabel">cache —</span>
+          <span class="pill" id="syncPill"><i class="dot"></i><span id="lastSync">—</span></span>
+        </div>
       </div>
-      <div class="chart-wrap">
-        <canvas id="equityChart"></canvas>
-        <div class="chart-empty" id="equityEmpty">No closed trades yet — the line appears after the first exit.</div>
-      </div>
-    </article>
 
-    <article class="panel span-4 reveal" style="animation-delay: 90ms">
-      <div class="panel-head">
-        <div class="panel-title"><span class="num">02</span> Risk ledger</div>
-        <div class="panel-note">portfolio</div>
+      <div class="lg:col-span-7 grid grid-cols-2 xl:grid-cols-4 gap-3">
+        <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span data-i18n="hero.realized">Realized PnL</span>
+            <i class="fa-solid fa-coins text-sol-green"></i>
+          </div>
+          <div class="mt-2">
+            <div class="kpi-value" id="realizedPnl">+0.0000 <small>SOL</small></div>
+            <div class="kpi-sub" data-i18n="hero.realizedSub">closed trades</div>
+          </div>
+        </div>
+        <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span data-i18n="hero.openPositions">Open positions</span>
+            <i class="fa-solid fa-layer-group text-cyan-400"></i>
+          </div>
+          <div class="mt-2">
+            <div class="kpi-value" id="openPositions">0</div>
+            <div class="kpi-sub" id="openPositionsSub" data-i18n="hero.openPositionsSub">in the book</div>
+          </div>
+        </div>
+        <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span data-i18n="hero.exposure">Open exposure</span>
+            <i class="fa-solid fa-scale-balanced text-sol-purple"></i>
+          </div>
+          <div class="mt-2">
+            <div class="kpi-value" id="exposurePct">0.0<small>%</small></div>
+            <div class="kpi-sub" data-i18n="hero.exposureSub">of equity</div>
+          </div>
+        </div>
+        <div class="glass-panel rounded-xl p-3.5 kpi-card fade-in">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span data-i18n="hero.breaker">Circuit breaker</span>
+            <i class="fa-solid fa-plug-circle-xmark text-amber-300"></i>
+          </div>
+          <div class="mt-2">
+            <div class="kpi-value" id="breakerState">—</div>
+            <div class="kpi-sub" data-i18n="hero.breakerSub">daily guard</div>
+          </div>
+        </div>
       </div>
-      <div class="metrics">
-        <div class="metric"><div class="k">Win rate</div><div class="v" id="mWinRate">0.0%</div></div>
-        <div class="metric"><div class="k">Profit factor</div><div class="v" id="mProfitFactor">—</div></div>
-        <div class="metric"><div class="k">Expectancy</div><div class="v" id="mExpectancy">0.0000</div></div>
-        <div class="metric"><div class="k">Max drawdown</div><div class="v" id="mMaxDD">0.00%</div></div>
-        <div class="metric"><div class="k">VaR 95</div><div class="v" id="mVar">0.0000</div></div>
-        <div class="metric"><div class="k">Shortfall 95</div><div class="v" id="mES">0.0000</div></div>
-      </div>
-      <div class="rows" style="margin-top: 14px">
-        <div class="row"><span class="label">HHI concentration</span><span class="val" id="mHhi">0.00</span></div>
-        <div class="row"><span class="label">Top position</span><span class="val" id="mTop">—</span></div>
-        <div class="row"><span class="label">Realized trades</span><span class="val" id="mTrades">0</span></div>
-      </div>
-    </article>
+    </section>
 
-    <article class="panel span-4 reveal" style="animation-delay: 130ms">
-      <div class="panel-head">
-        <div class="panel-title"><span class="num">03</span> Concentration</div>
-        <div class="panel-note">open book</div>
-      </div>
-      <div id="concentration"><div class="empty">No open positions</div></div>
-    </article>
+    <!-- Row 2: equity curve + risk ledger -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <article class="lg:col-span-8 glass-panel rounded-xl p-4 lg:p-5 fade-in">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-chart-line text-sol-green"></i><span data-i18n="panel.equity">Equity curve</span>
+            <span class="text-[10px] font-mono text-slate-500">01</span>
+          </h2>
+          <span class="panel-note" id="equityNote" data-i18n="panel.equityNote">realized closes</span>
+        </div>
+        <div class="relative w-full h-[240px] sm:h-[280px] glass-inset rounded-lg overflow-hidden">
+          <div id="equityChart" class="w-full h-full flex items-center justify-center text-[11px] font-mono text-slate-500" data-i18n="empty.equity">No closed trades yet — the line appears after the first exit.</div>
+        </div>
+      </article>
 
-    <article class="panel span-4 reveal" style="animation-delay: 170ms">
-      <div class="panel-head">
-        <div class="panel-title"><span class="num">04</span> Exit anatomy</div>
-        <div class="panel-note">realized replay</div>
-      </div>
-      <div id="exitTable"><div class="empty">No exits recorded</div></div>
-    </article>
+      <article class="lg:col-span-4 glass-panel rounded-xl p-4 fade-in">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-shield-halved text-amber-300"></i><span data-i18n="panel.risk">Risk ledger</span>
+            <span class="text-[10px] font-mono text-slate-500">02</span>
+          </h2>
+          <span class="panel-note" data-i18n="panel.riskNote">portfolio</span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div class="stat-tile"><div class="k" data-i18n="metric.winRate">Win rate</div><div class="v" id="mWinRate">0.0%</div></div>
+          <div class="stat-tile"><div class="k" data-i18n="metric.profitFactor">Profit factor</div><div class="v" id="mProfitFactor">—</div></div>
+          <div class="stat-tile"><div class="k" data-i18n="metric.expectancy">Expectancy</div><div class="v" id="mExpectancy">0.0000</div></div>
+          <div class="stat-tile"><div class="k" data-i18n="metric.maxDd">Max drawdown</div><div class="v" id="mMaxDD">0.00%</div></div>
+          <div class="stat-tile"><div class="k" data-i18n="metric.var">VaR 95</div><div class="v" id="mVar">0.0000</div></div>
+          <div class="stat-tile"><div class="k" data-i18n="metric.es">Shortfall 95</div><div class="v" id="mES">0.0000</div></div>
+        </div>
+        <div class="mt-3">
+          <div class="row-line"><span class="label" data-i18n="risk.hhi">HHI concentration</span><span class="val" id="mHhi">0.00</span></div>
+          <div class="row-line"><span class="label" data-i18n="risk.top">Top position</span><span class="val" id="mTop">—</span></div>
+          <div class="row-line"><span class="label" data-i18n="risk.trades">Realized trades</span><span class="val" id="mTrades">0</span></div>
+        </div>
+      </article>
+    </section>
 
-    <article class="panel span-4 reveal" style="animation-delay: 210ms">
-      <div class="panel-head">
-        <div class="panel-title"><span class="num">05</span> Daily PnL</div>
-        <div class="panel-note">last 30 days</div>
-      </div>
-      <div class="chart-wrap" style="height: 190px">
-        <canvas id="dailyChart"></canvas>
-        <div class="chart-empty" id="dailyEmpty">Waiting for closed trades</div>
-      </div>
-    </article>
+    <!-- Row 3: concentration / exits / daily -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <article class="lg:col-span-4 glass-panel rounded-xl p-4 fade-in">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-chart-pie text-cyan-400"></i><span data-i18n="panel.concentration">Concentration</span>
+            <span class="text-[10px] font-mono text-slate-500">03</span>
+          </h2>
+          <span class="panel-note" data-i18n="panel.concentrationNote">open book</span>
+        </div>
+        <div id="concentration"><div class="empty-state" data-i18n="empty.concentration">No open positions</div></div>
+      </article>
 
-    <article class="panel span-6 reveal" style="animation-delay: 250ms">
-      <div class="panel-head">
-        <div class="panel-title"><span class="num">06</span> ML advisory</div>
-        <div class="panel-note">never auto-trades</div>
-      </div>
-      <div class="ml-head">
-        <span class="ml-state" id="mlState">not trained</span>
-        <button class="btn" id="trainBtn">Train model</button>
-      </div>
-      <div class="rows">
-        <div class="row"><span class="label">Training samples</span><span class="val" id="mlSamples">0</span></div>
-        <div class="row"><span class="label">Accuracy</span><span class="val" id="mlAccuracy">—</span></div>
-        <div class="row"><span class="label">Log loss</span><span class="val" id="mlLogLoss">—</span></div>
-      </div>
-      <div class="weights" id="mlWeights" style="margin-top: 14px"></div>
-    </article>
+      <article class="lg:col-span-4 glass-panel rounded-xl p-4 fade-in">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-right-from-bracket text-rose-400"></i><span data-i18n="panel.exits">Exit anatomy</span>
+            <span class="text-[10px] font-mono text-slate-500">04</span>
+          </h2>
+          <span class="panel-note" data-i18n="panel.exitsNote">realized replay</span>
+        </div>
+        <div id="exitTable" class="overflow-x-auto"><div class="empty-state" data-i18n="empty.exits">No exits recorded</div></div>
+      </article>
 
-    <article class="panel span-6 reveal" style="animation-delay: 290ms">
-      <div class="panel-head">
-        <div class="panel-title"><span class="num">07</span> Execution audit</div>
-        <div class="panel-note">last 8 events</div>
+      <article class="lg:col-span-4 glass-panel rounded-xl p-4 fade-in">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-chart-column text-sol-purple"></i><span data-i18n="panel.daily">Daily PnL</span>
+            <span class="text-[10px] font-mono text-slate-500">05</span>
+          </h2>
+          <span class="panel-note" data-i18n="panel.dailyNote">last 30 days</span>
+        </div>
+        <div class="relative w-full h-[190px] glass-inset rounded-lg overflow-hidden">
+          <div id="dailyChart" class="w-full h-full flex items-center justify-center text-[11px] font-mono text-slate-500" data-i18n="empty.daily">Waiting for closed trades</div>
+        </div>
+      </article>
+    </section>
+
+    <!-- Row 4: ML advisory + audit -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <article class="lg:col-span-6 glass-panel rounded-xl p-4 lg:p-5 fade-in">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-brain text-sol-purple"></i><span data-i18n="panel.ml">ML advisory</span>
+            <span class="text-[10px] font-mono text-slate-500">06</span>
+          </h2>
+          <span class="pill" id="mlStatePill"><i class="dot"></i><span id="mlState" data-i18n="ml.notTrained">not trained</span></span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div class="stat-tile"><div class="k" data-i18n="ml.samples">Training samples</div><div class="v" id="mlSamples">0</div></div>
+          <div class="stat-tile"><div class="k" data-i18n="ml.accuracy">Accuracy</div><div class="v" id="mlAccuracy">—</div></div>
+          <div class="stat-tile"><div class="k" data-i18n="ml.logLoss">Log loss</div><div class="v" id="mlLogLoss">—</div></div>
+        </div>
+        <div class="mt-3 flex items-center justify-between gap-2">
+          <span class="tiny-mono" data-i18n="ml.neverTrades">Advisory only — never auto-trades.</span>
+          <span class="tiny-mono" data-i18n="ml.weights">Top weights</span>
+        </div>
+        <div id="mlWeights" class="mt-2 flex flex-col gap-2"></div>
+      </article>
+
+      <article class="lg:col-span-6 glass-panel rounded-xl p-4 lg:p-5 fade-in">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 class="text-sm font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-clipboard-list text-cyan-300"></i><span data-i18n="panel.audit">Execution audit</span>
+            <span class="text-[10px] font-mono text-slate-500">07</span>
+          </h2>
+          <span class="panel-note" data-i18n="panel.auditNote">last 8 events</span>
+        </div>
+        <div id="auditList" class="glass-inset rounded-lg px-3 py-1"><div class="empty-state" data-i18n="empty.audit">No audit events</div></div>
+      </article>
+    </section>
+
+    <!-- Row 5: recent trades -->
+    <section class="glass-panel rounded-xl p-4 lg:p-5 fade-in">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h2 class="text-sm font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-list-ul text-sol-green"></i><span data-i18n="panel.trades">Recent trades</span>
+          <span class="text-[10px] font-mono text-slate-500">08</span>
+        </h2>
+        <span class="panel-note" data-i18n="panel.tradesNote">latest 25</span>
       </div>
-      <div class="audit" id="auditList"><div class="empty">No audit events</div></div>
-    </article>
+      <div id="tradeTable" class="overflow-x-auto"><div class="empty-state" data-i18n="empty.trades">No trades yet</div></div>
+    </section>
 
-    <article class="panel span-12 reveal" style="animation-delay: 330ms">
-      <div class="panel-head">
-        <div class="panel-title"><span class="num">08</span> Recent trades</div>
-        <div class="panel-note">latest 100</div>
-      </div>
-      <div id="tradeTable"><div class="empty">No trades yet</div></div>
-    </article>
-  </div>
+    <footer class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-sol-border/70 text-[10px] font-mono uppercase tracking-wider text-slate-500">
+      <span data-i18n="footer.paper">Paper mode · live trading requires explicit env confirmation</span>
+      <span><span data-i18n="footer.auth">auth</span>: <span id="authLabel">off</span> · <span data-i18n="footer.sync">sync</span>: <span id="footerSync">—</span></span>
+    </footer>
+  </main>
 
-  <div class="footer">
-    <span>Paper mode · live trading requires explicit env confirmation</span>
-    <span>sync <span id="lastSync">—</span> · <span id="authLabel">auth off</span></span>
-  </div>
-</div>
-
-<div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
+  /* ============================ i18n ============================ */
+  const LANG_KEY = "agentictrade_lang";
+  const I18N = {
+    hr: {
+      "app.version": "v10 · paper",
+      "app.tagline": "Solana paper trading · risk engine, forenzika i analitika u jednom konzolu",
+      "nav.command": "Command Center",
+      "nav.analytics": "Analitika",
+      "action.token": "Token",
+      "action.refresh": "Osvježi",
+      "action.train": "Treniraj model",
+      "action.autoRefresh": "Auto-osvježavanje",
+      "sync.on": "Sync: ON",
+      "sync.off": "Sync: PAUZA",
+      "status.connecting": "Spajam se",
+      "status.live": "Live sync",
+      "status.offline": "Offline",
+      "footer.paper": "Paper mode · live trgovanje traži eksplicitnu env potvrdu",
+      "footer.auth": "auth",
+      "footer.sync": "sync",
+
+      "hero.equity": "Ukupna vrijednost / SOL",
+      "hero.realized": "Realizirani PnL",
+      "hero.realizedSub": "zatvoreni trejdovi",
+      "hero.openPositions": "Otvorene pozicije",
+      "hero.openPositionsSub": "u knjizi",
+      "hero.exposure": "Izloženost",
+      "hero.exposureSub": "udjela u kapitalu",
+      "hero.breaker": "Circuit breaker",
+      "hero.breakerSub": "dnevna zaštita",
+
+      "panel.equity": "Krivulja kapitala",
+      "panel.equityNote": "realizirani izlazi",
+      "panel.risk": "Rizik portfelja",
+      "panel.riskNote": "portfelj",
+      "panel.concentration": "Koncentracija",
+      "panel.concentrationNote": "otvorena knjiga",
+      "panel.exits": "Anatomija izlaza",
+      "panel.exitsNote": "replay realiziranih",
+      "panel.daily": "Dnevni PnL",
+      "panel.dailyNote": "zadnjih 30 dana",
+      "panel.ml": "ML savjetnik",
+      "panel.audit": "Revizija izvršenja",
+      "panel.auditNote": "zadnjih 8 događaja",
+      "panel.trades": "Nedavni trejdovi",
+      "panel.tradesNote": "zadnjih 25",
+
+      "metric.winRate": "Win rate",
+      "metric.profitFactor": "Profit faktor",
+      "metric.expectancy": "Očekivanje",
+      "metric.maxDd": "Maks. drawdown",
+      "metric.var": "VaR 95",
+      "metric.es": "Manjak 95",
+
+      "risk.hhi": "HHI koncentracija",
+      "risk.top": "Najveća pozicija",
+      "risk.trades": "Realizirani trejdovi",
+
+      "empty.equity": "Još nema zatvorenih trejdova — linija se pojavljuje nakon prvog izlaza.",
+      "empty.concentration": "Nema otvorenih pozicija",
+      "empty.exits": "Nema zabilježenih izlaza",
+      "empty.daily": "Čekam zatvorene trejdove",
+      "empty.audit": "Nema revizijskih događaja",
+      "empty.trades": "Još nema trejdova",
+
+      "ml.notTrained": "nije treniran",
+      "ml.samples": "Uzorci za trening",
+      "ml.accuracy": "Točnost",
+      "ml.logLoss": "Log loss",
+      "ml.neverTrades": "Samo savjeti — nikad ne trguje automatski.",
+      "ml.weights": "Top težine",
+      "ml.needTrades": "Treniraj nakon ~12 označenih trejdova.",
+      "ml.trained": "treniran",
+
+      "table.reason": "Razlog",
+      "table.trades": "Trejdovi",
+      "table.win": "Win",
+      "table.netSol": "Neto SOL",
+      "table.symbol": "Simbol",
+      "table.closed": "Zatvoreno",
+      "table.source": "Izvor",
+      "table.exit": "Izlaz",
+      "table.pnlSol": "PnL SOL",
+      "table.equity": "Equity",
+
+      "profile": "profil",
+      "cache": "cache",
+      "toast.tokenSaved": "Token spremljen. Osvježavam…",
+      "toast.unauthorized": "Neovlašteno: postavi dashboard token",
+      "toast.trained": "Model treniran · {samples} uzoraka · {accuracy} točnost",
+      "toast.trainFail": "Trening nije uspio",
+      "toast.syncFail": "Sinkronizacija nije uspjela"
+    },
+    en: {
+      "app.version": "v10 · paper",
+      "app.tagline": "Solana paper trading · risk engine, forensics and analytics in one console",
+      "nav.command": "Command Center",
+      "nav.analytics": "Analytics",
+      "action.token": "Token",
+      "action.refresh": "Refresh",
+      "action.train": "Train model",
+      "action.autoRefresh": "Auto-refresh",
+      "sync.on": "Sync: ON",
+      "sync.off": "Sync: PAUSED",
+      "status.connecting": "Connecting",
+      "status.live": "Live sync",
+      "status.offline": "Offline",
+      "footer.paper": "Paper mode · live trading requires explicit env confirmation",
+      "footer.auth": "auth",
+      "footer.sync": "sync",
+
+      "hero.equity": "Total equity / SOL",
+      "hero.realized": "Realized PnL",
+      "hero.realizedSub": "closed trades",
+      "hero.openPositions": "Open positions",
+      "hero.openPositionsSub": "in the book",
+      "hero.exposure": "Open exposure",
+      "hero.exposureSub": "of equity",
+      "hero.breaker": "Circuit breaker",
+      "hero.breakerSub": "daily guard",
+
+      "panel.equity": "Equity curve",
+      "panel.equityNote": "realized closes",
+      "panel.risk": "Risk ledger",
+      "panel.riskNote": "portfolio",
+      "panel.concentration": "Concentration",
+      "panel.concentrationNote": "open book",
+      "panel.exits": "Exit anatomy",
+      "panel.exitsNote": "realized replay",
+      "panel.daily": "Daily PnL",
+      "panel.dailyNote": "last 30 days",
+      "panel.ml": "ML advisory",
+      "panel.audit": "Execution audit",
+      "panel.auditNote": "last 8 events",
+      "panel.trades": "Recent trades",
+      "panel.tradesNote": "latest 25",
+
+      "metric.winRate": "Win rate",
+      "metric.profitFactor": "Profit factor",
+      "metric.expectancy": "Expectancy",
+      "metric.maxDd": "Max drawdown",
+      "metric.var": "VaR 95",
+      "metric.es": "Shortfall 95",
+
+      "risk.hhi": "HHI concentration",
+      "risk.top": "Top position",
+      "risk.trades": "Realized trades",
+
+      "empty.equity": "No closed trades yet — the line appears after the first exit.",
+      "empty.concentration": "No open positions",
+      "empty.exits": "No exits recorded",
+      "empty.daily": "Waiting for closed trades",
+      "empty.audit": "No audit events",
+      "empty.trades": "No trades yet",
+
+      "ml.notTrained": "not trained",
+      "ml.samples": "Training samples",
+      "ml.accuracy": "Accuracy",
+      "ml.logLoss": "Log loss",
+      "ml.neverTrades": "Advisory only — never auto-trades.",
+      "ml.weights": "Top weights",
+      "ml.needTrades": "Train after ~12 labelled trades.",
+      "ml.trained": "trained",
+
+      "table.reason": "Reason",
+      "table.trades": "Trades",
+      "table.win": "Win",
+      "table.netSol": "Net SOL",
+      "table.symbol": "Symbol",
+      "table.closed": "Closed",
+      "table.source": "Source",
+      "table.exit": "Exit",
+      "table.pnlSol": "PnL SOL",
+      "table.equity": "Equity",
+
+      "profile": "profile",
+      "cache": "cache",
+      "toast.tokenSaved": "Token saved. Reloading…",
+      "toast.unauthorized": "Unauthorized: set the dashboard token",
+      "toast.trained": "Model trained · {samples} samples · {accuracy} accuracy",
+      "toast.trainFail": "Training failed",
+      "toast.syncFail": "Sync failed"
+    }
+  };
+
+  const state = {
+    lang: "hr",
+    auto: true,
+    busy: false,
+    timer: null,
+    data: {}
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function t(key, vars) {
+    const table = I18N[state.lang] || I18N.hr;
+    let text = table[key] ?? I18N.hr[key] ?? key;
+    if (vars) {
+      for (const [name, value] of Object.entries(vars)) {
+        text = text.replaceAll(`{${name}}`, String(value));
+      }
+    }
+    return text;
+  }
+
+  function applyI18n(root = document) {
+    root.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    root.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
+    root.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+    document.documentElement.lang = state.lang;
+    document.title = state.lang === "hr" ? "AgenticTrade — Analitika" : "AgenticTrade — Analytics";
+    document.querySelectorAll("[data-lang]").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.lang === state.lang);
+      btn.setAttribute("aria-pressed", String(btn.dataset.lang === state.lang));
+    });
+  }
+
+  function setLang(lang) {
+    state.lang = I18N[lang] ? lang : "hr";
+    try { localStorage.setItem(LANG_KEY, state.lang); } catch (err) { /* ignore */ }
+    applyI18n();
+    render(state.data);
+  }
+
+  /* ============================ helpers ============================ */
   const TOKEN = (() => {
     try {
       const params = new URL(window.location.href).searchParams;
@@ -569,9 +771,19 @@
   })();
 
   const AUTH = TOKEN ? { "X-Auth-Token": TOKEN } : {};
-  const state = { auto: true, busy: false, timer: null, data: {} };
 
-  const $ = (id) => document.getElementById(id);
+  try {
+    const stored = localStorage.getItem(LANG_KEY);
+    if (I18N[stored]) state.lang = stored;
+  } catch (err) { /* ignore */ }
+
+  // Keep the shared nav working when the file is opened directly (file://).
+  if (window.location.protocol === "file:") {
+    document.querySelectorAll("[data-nav]").forEach((link) => {
+      const page = link.dataset.nav;
+      link.href = page === "analytics" ? "analytics.html" : "command_center.html";
+    });
+  }
 
   function toast(message) {
     const node = $("toast");
@@ -609,14 +821,16 @@
       cache: "no-store",
       headers: { ...(options.headers || {}), ...AUTH }
     });
-    if (response.status === 401) throw new Error("Unauthorized: set the dashboard token");
+    if (response.status === 401) throw new Error(t("toast.unauthorized"));
     if (!response.ok) throw new Error(`${path} → HTTP ${response.status}`);
     return response.json();
   }
 
   function setConnection(ok) {
-    $("liveDot").className = `dot ${ok ? "live" : "offline"}`;
-    $("liveText").textContent = ok ? "Live sync" : "Offline";
+    const pill = $("connPill");
+    pill.classList.toggle("live", ok);
+    pill.classList.toggle("offline", !ok);
+    $("connText").textContent = ok ? t("status.live") : t("status.offline");
   }
 
   function setText(id, value, className) {
@@ -626,6 +840,7 @@
     if (className !== undefined) node.className = className;
   }
 
+  /* ============================ data ============================ */
   async function loadAll() {
     if (state.busy) return;
     state.busy = true;
@@ -643,10 +858,11 @@
       render(state.data);
       setConnection(Boolean(state.data.app));
       $("lastSync").textContent = new Date().toLocaleTimeString();
-      $("authLabel").textContent = TOKEN ? "token set" : "auth off";
+      $("footerSync").textContent = new Date().toLocaleTimeString();
+      $("authLabel").textContent = TOKEN ? "token" : "off";
     } catch (err) {
       setConnection(false);
-      toast(err.message || "Sync failed");
+      toast(err.message || t("toast.syncFail"));
     } finally {
       state.busy = false;
       $("refreshBtn").disabled = false;
@@ -663,23 +879,30 @@
     const ml = (data.ml || {}).model || { trained: false };
 
     const equity = wallet.equity_sol ?? wallet.equitySol ?? (risk.equityNowSol ?? 0);
-    $("equityValue").innerHTML = `${fmtSol(equity, 4)}<span class="unit">SOL</span>`;
+    $("equityValue").textContent = fmtSol(equity, 4);
 
     const realized = wallet.realized_pnl_sol ?? wallet.realizedPnlSol ?? risk.netRealizedPnlSol ?? 0;
-    setText("realizedPnl", `${fmtSol(realized, 4, true)} SOL`, `v ${signedClass(realized)}`);
-    $("realizedPnl").innerHTML = `${fmtSol(realized, 4, true)} <small>SOL</small>`;
+    const realizedNode = $("realizedPnl");
+    realizedNode.innerHTML = `${fmtSol(realized, 4, true)} <small>SOL</small>`;
+    realizedNode.className = `kpi-value ${signedClass(realized)}`;
+
+    const delta = $("equityDelta");
+    delta.textContent = `${fmtSol(realized, 4, true)} SOL`;
+    delta.parentElement.className = `pill ${signedClass(realized)}`;
 
     setText("openPositions", String(wallet.open_positions ?? wallet.openPositions ?? risk.openPositions ?? 0));
     $("exposurePct").innerHTML = `${Number(risk.openExposurePct ?? 0).toFixed(1)}<small>%</small>`;
 
     const breaker = app.circuitBreaker || {};
     const tripped = Boolean(breaker.tripped);
-    setText("breakerState", tripped ? "TRIPPED" : breaker.day ? "OK" : "—", `v ${tripped ? "neg" : "pos"}`);
-    setText("equityDelta", `${fmtSol(realized, 4, true)} realized`, `chip ${signedClass(realized)}`);
-    setText("strategyLabel", `profile ${(app.strategyProfile || {}).name || "balanced"}`);
+    setText("breakerState", tripped ? "TRIPPED" : breaker.day ? "OK" : "—", `kpi-value ${tripped ? "text-rose-400" : "text-sol-green"}`);
+    setText("strategyLabel", `${t("profile")} ${(app.strategyProfile || {}).name || "balanced"}`);
+    setText("equityNote", backtest && backtest.trades && backtest.trades.length
+      ? `${backtest.trades.length} ${t("panel.tradesNote")}`
+      : t("panel.equityNote"));
 
     const cache = app.priceCache || {};
-    setText("cacheLabel", `cache ${(Number(cache.hitRate || 0) * 100).toFixed(0)}% · ${cache.entries || 0} keys`);
+    setText("cacheLabel", `${t("cache")} ${(Number(cache.hitRate || 0) * 100).toFixed(0)}% · ${cache.entries || 0} keys`);
 
     const merged = summary || {
       trades: metrics.totalTrades || 0,
@@ -712,16 +935,17 @@
     renderTrades(backtest);
   }
 
+  /* ============================ panels ============================ */
   function renderConcentration(map) {
     const entries = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 6);
     const host = $("concentration");
     if (!entries.length) {
-      host.innerHTML = '<div class="empty">No open positions</div>';
+      host.innerHTML = `<div class="empty-state">${escapeHtml(t("empty.concentration"))}</div>`;
       return;
     }
     const max = Math.max(...entries.map(([, value]) => value), 0.0001);
     host.innerHTML = entries.map(([symbol, value]) => {
-      const width = Math.max(2, (value / max) * 100);
+      const width = Math.max(3, (value / max) * 100);
       return `<div class="bar-row">
         <div class="bar-top"><span class="sym">${escapeHtml(symbol)}</span><span>${fmtPct(value * 100)}</span></div>
         <div class="bar-track"><i class="bar-fill" style="width:${width}%"></i></div>
@@ -734,15 +958,20 @@
     const groups = report ? report.byExitReason : null;
     const entries = groups ? Object.entries(groups) : [];
     if (!entries.length) {
-      host.innerHTML = '<div class="empty">No exits recorded</div>';
+      host.innerHTML = `<div class="empty-state">${escapeHtml(t("empty.exits"))}</div>`;
       return;
     }
-    host.innerHTML = `<table><thead><tr><th>Reason</th><th>Trades</th><th>Win</th><th>Net SOL</th></tr></thead><tbody>
+    host.innerHTML = `<table class="data-table"><thead><tr>
+        <th>${escapeHtml(t("table.reason"))}</th>
+        <th>${escapeHtml(t("table.trades"))}</th>
+        <th>${escapeHtml(t("table.win"))}</th>
+        <th class="text-right">${escapeHtml(t("table.netSol"))}</th>
+      </tr></thead><tbody>
       ${entries.map(([reason, stats]) => `<tr>
         <td>${escapeHtml(reason)}</td>
         <td class="muted">${stats.trades}</td>
         <td class="muted">${fmtPct((stats.winRate || 0) * 100)}</td>
-        <td class="${signedClass(stats.netPnlSol)}">${fmtSol(stats.netPnlSol, 4, true)}</td>
+        <td class="${signedClass(stats.netPnlSol)} text-right">${fmtSol(stats.netPnlSol, 4, true)}</td>
       </tr>`).join("")}
     </tbody></table>`;
   }
@@ -751,24 +980,35 @@
     const host = $("tradeTable");
     const trades = report && report.trades ? [...report.trades].reverse().slice(0, 25) : [];
     if (!trades.length) {
-      host.innerHTML = '<div class="empty">No trades yet</div>';
+      host.innerHTML = `<div class="empty-state">${escapeHtml(t("empty.trades"))}</div>`;
       return;
     }
-    host.innerHTML = `<table><thead><tr><th>Symbol</th><th>Closed</th><th>Source</th><th>Exit</th><th>PnL SOL</th><th>Equity</th></tr></thead><tbody>
-      ${trades.map((t) => `<tr>
-        <td>${escapeHtml(t.symbol || "?")}</td>
-        <td class="muted">${escapeHtml((t.closedAt || "").replace("T", " ").slice(0, 16))}</td>
-        <td class="muted">${escapeHtml(t.source || "—")}</td>
-        <td class="muted">${escapeHtml(t.exitReason || "—")}</td>
-        <td class="${signedClass(t.pnlSol)}">${fmtSol(t.pnlSol, 4, true)}</td>
-        <td class="muted">${fmtSol(t.equitySol, 4)}</td>
+    host.innerHTML = `<table class="data-table"><thead><tr>
+        <th>${escapeHtml(t("table.symbol"))}</th>
+        <th>${escapeHtml(t("table.closed"))}</th>
+        <th>${escapeHtml(t("table.source"))}</th>
+        <th>${escapeHtml(t("table.exit"))}</th>
+        <th>${escapeHtml(t("table.pnlSol"))}</th>
+        <th class="text-right">${escapeHtml(t("table.equity"))}</th>
+      </tr></thead><tbody>
+      ${trades.map((trade) => `<tr>
+        <td>${escapeHtml(trade.symbol || "?")}</td>
+        <td class="muted">${escapeHtml((trade.closedAt || "").replace("T", " ").slice(0, 16))}</td>
+        <td class="muted">${escapeHtml(trade.source || "—")}</td>
+        <td class="muted">${escapeHtml(trade.exitReason || "—")}</td>
+        <td class="${signedClass(trade.pnlSol)}">${fmtSol(trade.pnlSol, 4, true)}</td>
+        <td class="muted text-right">${fmtSol(trade.equitySol, 4)}</td>
       </tr>`).join("")}
     </tbody></table>`;
   }
 
   function renderMl(model) {
     const trained = Boolean(model && model.trained);
-    setText("mlState", trained ? `trained ${model.trainedAt ? new Date(model.trainedAt).toLocaleDateString() : ""}` : (model.reason || "not trained"));
+    const stateEl = $("mlState");
+    stateEl.textContent = trained
+      ? `${t("ml.trained")}${model.trainedAt ? ` ${new Date(model.trainedAt).toLocaleDateString()}` : ""}`
+      : (model.reason || t("ml.notTrained"));
+    $("mlStatePill").className = `pill ${trained ? "live" : ""}`;
     setText("mlSamples", String(model.samples || 0));
     setText("mlAccuracy", trained ? fmtPct((model.accuracy || 0) * 100) : "—");
     setText("mlLogLoss", trained ? Number(model.logLoss || 0).toFixed(3) : "—");
@@ -776,15 +1016,16 @@
     const weights = trained && model.topWeights ? model.topWeights : [];
     const host = $("mlWeights");
     if (!weights.length) {
-      host.innerHTML = '<div class="mini">Train after ~12 labelled trades.</div>';
+      host.innerHTML = `<div class="tiny-mono">${escapeHtml(t("ml.needTrades"))}</div>`;
       return;
     }
     const max = Math.max(...weights.map((w) => Math.abs(w.weight)), 0.0001);
     host.innerHTML = weights.map((w) => {
-      const width = Math.max(2, (Math.abs(w.weight) / max) * 100);
+      const width = Math.max(3, (Math.abs(w.weight) / max) * 100);
+      const negative = w.weight < 0;
       return `<div class="weight">
         <span>${escapeHtml(w.feature)}</span>
-        <span class="weight-bar"><i style="width:${width}%;${w.weight < 0 ? "background:var(--red)" : ""}"></i></span>
+        <span class="weight-bar"><i style="width:${width}%;${negative ? "background:#fb7185" : ""}"></i></span>
         <span class="val">${Number(w.weight).toFixed(3)}</span>
       </div>`;
     }).join("");
@@ -794,7 +1035,7 @@
     const events = audit.events || [];
     const host = $("auditList");
     if (!events.length) {
-      host.innerHTML = '<div class="empty">No audit events</div>';
+      host.innerHTML = `<div class="empty-state">${escapeHtml(t("empty.audit"))}</div>`;
       return;
     }
     host.innerHTML = events.map((event) => {
@@ -810,132 +1051,137 @@
     }).join("");
   }
 
-  function setupCanvas(canvas) {
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
-    const ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return { ctx, width: rect.width, height: rect.height };
-  }
-
+  /* ============================ charts ============================ */
   function renderEquity(equity) {
-    const points = equity.points || [];
-    $("equityEmpty").style.display = points.length > 1 ? "none" : "grid";
-    $("equityNote").textContent = points.length ? `${points.length} points · ${fmtSol(points[points.length - 1].equity, 4)} SOL` : "realized closes";
-    drawEquity(points);
-  }
-
-  function drawEquity(points) {
-    const canvas = $("equityChart");
-    if (!canvas) return;
-    const { ctx, width, height } = setupCanvas(canvas);
-    ctx.clearRect(0, 0, width, height);
-    if (points.length < 2) return;
-
-    const values = points.map((p) => Number(p.equity));
-    let min = Math.min(...values);
-    let max = Math.max(...values);
-    const pad = Math.max((max - min) * 0.12, 0.05);
-    min -= pad; max += pad;
-    const left = 46, right = 12, top = 12, bottom = 24;
-    const plotW = width - left - right;
-    const plotH = height - top - bottom;
-
-    ctx.font = "9px 'IBM Plex Mono', monospace";
-    ctx.fillStyle = "rgba(141,135,125,0.85)";
-    ctx.strokeStyle = "rgba(227,164,82,0.10)";
-    ctx.lineWidth = 1;
-
-    for (let i = 0; i <= 3; i += 1) {
-      const y = top + (plotH / 3) * i;
-      ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotW, y); ctx.stroke();
-      const value = max - ((max - min) / 3) * i;
-      ctx.fillText(value.toFixed(2), 4, y + 3);
+    const points = (equity.points || []).map((point) => ({ t: point.t, equity: Number(point.equity) }));
+    const host = $("equityChart");
+    if (points.length < 2) {
+      host.className = "w-full h-full flex items-center justify-center text-[11px] font-mono text-slate-500";
+      host.textContent = t("empty.equity");
+      $("equityNote").textContent = t("panel.equityNote");
+      return;
     }
 
-    const xFor = (index) => left + (plotW * index) / (points.length - 1);
-    const yFor = (value) => top + plotH - ((value - min) / (max - min)) * plotH;
+    const W = 720;
+    const H = 280;
+    const padL = 46;
+    const padR = 16;
+    const padT = 18;
+    const padB = 26;
 
-    const gradient = ctx.createLinearGradient(0, top, 0, top + plotH);
-    gradient.addColorStop(0, "rgba(227,164,82,0.24)");
-    gradient.addColorStop(1, "rgba(227,164,82,0)");
+    const values = points.map((p) => p.equity);
+    const base = Number(equity.initialSol ?? values[0]);
+    let lo = Math.min(...values, base);
+    let hi = Math.max(...values, base);
+    if (hi - lo < 1e-9) { hi += 0.1; lo -= 0.1; }
+    const pad = (hi - lo) * 0.14;
+    lo -= pad;
+    hi += pad;
 
-    ctx.beginPath();
-    points.forEach((point, index) => {
-      const x = xFor(index), y = yFor(Number(point.equity));
-      if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.lineTo(left + plotW, top + plotH);
-    ctx.lineTo(left, top + plotH);
-    ctx.closePath();
-    ctx.fillStyle = gradient;
-    ctx.fill();
+    const x = (i) => padL + (i * (W - padL - padR)) / (points.length - 1);
+    const y = (v) => H - padB - ((v - lo) * (H - padT - padB)) / (hi - lo);
+    const path = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.equity).toFixed(1)}`).join(" ");
+    const area = `${path} L${x(points.length - 1).toFixed(1)},${(H - padB).toFixed(1)} L${x(0).toFixed(1)},${(H - padB).toFixed(1)} Z`;
+    const last = values[values.length - 1];
+    const color = last >= base ? "#14F195" : "#fb7185";
 
-    ctx.beginPath();
-    points.forEach((point, index) => {
-      const x = xFor(index), y = yFor(Number(point.equity));
-      if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = "#e3a452";
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
+    let peak = -Infinity;
+    let maxDd = 0;
+    for (const value of values) {
+      peak = Math.max(peak, value);
+      maxDd = Math.max(maxDd, peak > 0 ? (peak - value) / peak : 0);
+    }
 
-    const last = points[points.length - 1];
-    const lx = xFor(points.length - 1), ly = yFor(Number(last.equity));
-    ctx.beginPath(); ctx.arc(lx, ly, 3.2, 0, Math.PI * 2);
-    ctx.fillStyle = "#f0c78f"; ctx.fill();
-
-    ctx.fillStyle = "rgba(141,135,125,0.9)";
+    const dots = points.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.equity).toFixed(1)}" r="3.2" fill="${color}" stroke="#0B0E14" stroke-width="1.4"><title>${escapeHtml(`${p.t || ""} · ${Number(p.equity).toFixed(4)} SOL`)}</title></circle>`).join("");
     const startLabel = String(points[0].t || "").slice(0, 10);
-    const endLabel = String(last.t || "").slice(0, 10);
-    ctx.fillText(startLabel, left, height - 6);
-    const endWidth = ctx.measureText(endLabel).width;
-    ctx.fillText(endLabel, left + plotW - endWidth, height - 6);
+    const endLabel = String(points[points.length - 1].t || "").slice(0, 10);
+
+    host.className = "w-full h-full";
+    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="w-full h-full" role="img" aria-label="equity curve">
+      <defs>
+        <linearGradient id="eqFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${color}" stop-opacity="0.22"/>
+          <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      ${[0, 1, 2, 3].map((i) => {
+        const gy = padT + ((H - padT - padB) / 3) * i;
+        const gv = hi - ((hi - lo) / 3) * i;
+        return `<line x1="${padL}" x2="${W - padR}" y1="${gy.toFixed(1)}" y2="${gy.toFixed(1)}" stroke="#1E2638" stroke-width="1"/>
+        <text x="${padL - 8}" y="${(gy + 3).toFixed(1)}" fill="#64748b" font-size="10" text-anchor="end" font-family="JetBrains Mono">${gv.toFixed(2)}</text>`;
+      }).join("")}
+      <line x1="${padL}" x2="${W - padR}" y1="${y(base).toFixed(1)}" y2="${y(base).toFixed(1)}" stroke="#475569" stroke-dasharray="4 4" stroke-width="1"/>
+      <path d="${area}" fill="url(#eqFill)"/>
+      <path d="${path}" fill="none" stroke="${color}" stroke-width="2"/>
+      ${dots}
+      <text x="${padL}" y="${H - 8}" fill="#64748b" font-size="10" font-family="JetBrains Mono">${escapeHtml(startLabel)}</text>
+      <text x="${W - padR}" y="${H - 8}" fill="#64748b" font-size="10" text-anchor="end" font-family="JetBrains Mono">${escapeHtml(endLabel)}</text>
+    </svg>`;
+
+    const net = last - base;
+    $("equityNote").textContent = `${points.length} pts · ${fmtSol(last, 4)} SOL · max DD ${(maxDd * 100).toFixed(2)}%${net !== 0 ? ` · ${net >= 0 ? "+" : ""}${net.toFixed(4)}` : ""}`;
   }
 
   function renderDaily(report) {
     const daily = report && report.dailyPnl ? Object.entries(report.dailyPnl).slice(-30) : [];
-    $("dailyEmpty").style.display = daily.length ? "none" : "grid";
-    drawDaily(daily);
-  }
+    const host = $("dailyChart");
+    if (!daily.length) {
+      host.className = "w-full h-full flex items-center justify-center text-[11px] font-mono text-slate-500";
+      host.textContent = t("empty.daily");
+      return;
+    }
 
-  function drawDaily(daily) {
-    const canvas = $("dailyChart");
-    if (!canvas) return;
-    const { ctx, width, height } = setupCanvas(canvas);
-    ctx.clearRect(0, 0, width, height);
-    if (!daily.length) return;
-
+    const W = 420;
+    const H = 190;
+    const padL = 8;
+    const padR = 8;
+    const padT = 12;
+    const padB = 22;
     const values = daily.map(([, value]) => Number(value));
-    const maxAbs = Math.max(...values.map(Math.abs), 0.01);
-    const left = 4, right = 4, top = 8, bottom = 18;
-    const plotW = width - left - right;
-    const plotH = height - top - bottom;
-    const mid = top + plotH / 2;
-    const barW = Math.max(2, plotW / daily.length - 3);
+    const maxAbs = Math.max(...values.map(Math.abs), 0.001);
+    const mid = padT + (H - padT - padB) / 2;
+    const slot = (W - padL - padR) / daily.length;
+    const barW = Math.max(3, slot - 4);
 
-    ctx.strokeStyle = "rgba(227,164,82,0.16)";
-    ctx.beginPath(); ctx.moveTo(left, mid); ctx.lineTo(left + plotW, mid); ctx.stroke();
-
-    daily.forEach(([, value], index) => {
+    const bars = daily.map(([day, value], index) => {
       const n = Number(value);
-      const h = Math.max(1, (Math.abs(n) / maxAbs) * (plotH / 2));
-      const x = left + index * (plotW / daily.length) + 1;
-      ctx.fillStyle = n >= 0 ? "rgba(127,209,164,0.85)" : "rgba(226,114,91,0.85)";
-      ctx.fillRect(x, n >= 0 ? mid - h : mid, barW, h);
-    });
+      const h = Math.max(1.5, (Math.abs(n) / maxAbs) * ((H - padT - padB) / 2));
+      const bx = padL + index * slot + (slot - barW) / 2;
+      const by = n >= 0 ? mid - h : mid;
+      const fill = n >= 0 ? "rgba(20,241,149,0.85)" : "rgba(251,113,133,0.85)";
+      return `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${fill}"><title>${escapeHtml(`${day} · ${n >= 0 ? "+" : ""}${n.toFixed(4)} SOL`)}</title></rect>`;
+    }).join("");
+
+    host.className = "w-full h-full";
+    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="w-full h-full" role="img" aria-label="daily pnl">
+      <line x1="${padL}" x2="${W - padR}" y1="${mid.toFixed(1)}" y2="${mid.toFixed(1)}" stroke="#1E2638" stroke-width="1"/>
+      ${bars}
+      <text x="${padL}" y="${H - 6}" fill="#64748b" font-size="9" font-family="JetBrains Mono">${escapeHtml(String(daily[0][0]).slice(5))}</text>
+      <text x="${W - padR}" y="${H - 6}" fill="#64748b" font-size="9" text-anchor="end" font-family="JetBrains Mono">${escapeHtml(String(daily[daily.length - 1][0]).slice(5))}</text>
+    </svg>`;
   }
 
+  /* ============================ controls ============================ */
   function schedule() {
     clearInterval(state.timer);
-    if (state.auto) state.timer = setInterval(() => {
-      if (!document.hidden) loadAll();
-    }, 5000);
+    if (state.auto) {
+      state.timer = setInterval(() => {
+        if (!document.hidden) loadAll();
+      }, 5000);
+    }
   }
 
   $("refreshBtn").addEventListener("click", () => loadAll());
+
+  $("autoBtn").addEventListener("click", () => {
+    state.auto = !state.auto;
+    const btn = $("autoBtn");
+    btn.className = state.auto ? "btn btn-green" : "btn";
+    btn.setAttribute("aria-pressed", String(state.auto));
+    $("autoIcon").className = state.auto ? "fa-solid fa-pause" : "fa-solid fa-play";
+    $("autoLabel").textContent = state.auto ? t("sync.on") : t("sync.off");
+    schedule();
+  });
 
   $("tokenBtn").addEventListener("click", () => {
     const current = localStorage.getItem("agentictrade_token") || "";
@@ -943,7 +1189,7 @@
     if (next === null) return;
     if (next.trim()) localStorage.setItem("agentictrade_token", next.trim());
     else localStorage.removeItem("agentictrade_token");
-    toast("Token saved. Reloading…");
+    toast(t("toast.tokenSaved"));
     setTimeout(() => window.location.reload(), 400);
   });
 
@@ -951,24 +1197,29 @@
     $("trainBtn").disabled = true;
     try {
       const result = await api("/api/ml/train", { method: "POST" });
-      toast(`Model trained · ${result.model.samples} samples · ${fmtPct(result.model.accuracy * 100)} accuracy`);
+      toast(t("toast.trained", {
+        samples: result.model.samples,
+        accuracy: fmtPct(result.model.accuracy * 100)
+      }));
       await loadAll();
     } catch (err) {
-      toast(err.message || "Training failed");
+      toast(err.message || t("toast.trainFail"));
     } finally {
       $("trainBtn").disabled = false;
     }
   });
 
-  window.addEventListener("resize", () => {
-    if (state.data.equity) renderEquity(state.data.equity);
-    if (state.data.backtest) renderDaily(state.data.backtest.report);
+  document.querySelectorAll("[data-lang]").forEach((btn) => {
+    btn.addEventListener("click", () => setLang(btn.dataset.lang));
   });
+
+  window.addEventListener("resize", () => render(state.data));
 
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) loadAll();
   });
 
+  applyI18n();
   loadAll();
   schedule();
 </script>
