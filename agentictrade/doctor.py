@@ -25,6 +25,7 @@ from typing import Dict, List, Mapping, Optional, Sequence
 
 from agentictrade import validate as validation
 from agentictrade.llm import LLMConfig, probe as probe_llm
+from agentictrade.live_readiness import check_environment
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 REQUIRED_PACKAGES = ("aiohttp", "pydantic", "python-dotenv")
@@ -198,6 +199,43 @@ def check_timezone(name: Optional[str]) -> Check:
     return Check("timezone", "ok", name)
 
 
+def check_live_readiness(values: Mapping[str, str]) -> Check:
+    """Summarise live-execution readiness without importing the bot or a socket.
+
+    The full guard harness lives in ``python -m agentictrade.live_readiness``;
+    this check only reports whether the configuration is paper, armed, or
+    ambiguous, so ``doctor`` stays fast and read-only.
+    """
+    report = check_environment(values)
+    if report["liveTradingEnabled"]:
+        if report["fails"]:
+            return Check(
+                "live_readiness",
+                "warn",
+                f"live trading is ON with {report['fails']} blocker(s); run "
+                "python -m agentictrade.live_readiness before arming",
+            )
+        return Check(
+            "live_readiness",
+            "warn",
+            "live trading is ON and the pre-flight checks pass; run "
+            "python -m agentictrade.live_readiness --probe before arming",
+        )
+    if report["fails"]:
+        return Check(
+            "live_readiness",
+            "warn",
+            f"{report['fails']} readiness issue(s) make the execution mode ambiguous; "
+            "run python -m agentictrade.live_readiness",
+        )
+    return Check(
+        "live_readiness",
+        "info",
+        "paper mode; on-chain orders are disabled. "
+        "Run: python -m agentictrade.live_readiness",
+    )
+
+
 def check_llm(values: Mapping[str, str]) -> Check:
     """Report which LLM backend the research agent will use, and if it is up."""
     try:
@@ -283,6 +321,7 @@ def run_checks(
             checks.append(check_port(resolved_host, resolved_port))
 
     checks.append(check_timezone(values.get("BOT_TIMEZONE")))
+    checks.append(check_live_readiness(values))
     checks.append(check_llm(values))
     return checks
 

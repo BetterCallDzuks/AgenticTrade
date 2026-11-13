@@ -89,6 +89,15 @@ All notable changes to AgenticTrade are documented here. The format follows
   per-strategy aggregate, stability, break-even and uplift, plus a deterministic
   `ranking` and `winner`. The ranking key is objective score, then break-even
   multiplier, then stability, then strategy name.
+- Live-execution readiness audit: `agentictrade/live_readiness.py` and
+  `python -m agentictrade.live_readiness [--json] [--probe]`. It reports
+  `PAPER`/`READY`/`BLOCKED` (exit 0/0/1), drives the real
+  `SolanaExecutionAgent.execute_buy` against a session that refuses every
+  request, and verifies paper `DRY_RUN_READY`, live-unconfirmed `BLOCKED`,
+  live-over-cap `BLOCKED` and live-without-key `ERROR` with zero network calls.
+  The private key is never printed; `--probe` is the only path that uses the
+  network (`getHealth` plus a Jupiter quote). `doctor` gains a
+  `live_readiness` summary line.
 
 ### Changed
 
@@ -104,6 +113,11 @@ All notable changes to AgenticTrade are documented here. The format follows
 - `--stress-costs` is a third mode, mutually exclusive with `--optimize`: it
   sweeps the whole series instead of the walk-forward windows and refuses to
   combine with `--walk-forward` rather than silently ignoring it.
+- `SolanaExecutionAgent` accepts `live_trading_confirmed` and
+  `max_live_trade_sol` as constructor arguments (env fallback unchanged), and
+  an explicit empty `private_key_b58` now means "no key" instead of silently
+  reading `SOLANA_PRIVATE_KEY`. This lets the readiness harness exercise the
+  guards without loading a real key.
 - `ResearchAgent.get_market_data()` now falls back to a Pump.fun bonding-curve
   quote when DexScreener has no pair, instead of returning `None`. Freshness,
   hard filters and the fail-closed `STALE_PRICE` path are unchanged.

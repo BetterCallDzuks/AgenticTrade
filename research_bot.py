@@ -1056,9 +1056,17 @@ class SolanaExecutionAgent:
         live_trading_enabled: Optional[bool] = None,
         slippage_bps: Optional[int] = None,
         priority_fee_sol: Optional[float] = None,
+        live_trading_confirmed: Optional[bool] = None,
+        max_live_trade_sol: Optional[float] = None,
     ):
         self.rpc_url = rpc_url or os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
-        self.private_key_b58 = private_key_b58 or os.environ.get("SOLANA_PRIVATE_KEY")
+        # ``""`` means "no key" (it must not silently fall back to the env), while
+        # ``None`` keeps the historical env lookup.
+        self.private_key_b58 = (
+            private_key_b58
+            if private_key_b58 is not None
+            else os.environ.get("SOLANA_PRIVATE_KEY")
+        )
         
         if live_trading_enabled is None:
             self.live_trading_enabled = env_bool("LIVE_TRADING_ENABLED", False)
@@ -1067,8 +1075,16 @@ class SolanaExecutionAgent:
 
         self.slippage_bps = slippage_bps or int(os.environ.get("SLIPPAGE_BPS", "500"))
         self.priority_fee_sol = priority_fee_sol or float(os.environ.get("PRIORITY_FEE_SOL", "0.0015"))
-        self.live_trading_confirmed = env_bool("LIVE_TRADING_CONFIRMED", False)
-        self.max_live_trade_sol = float(os.environ.get("MAX_LIVE_TRADE_SOL", "0.05"))
+        self.live_trading_confirmed = (
+            env_bool("LIVE_TRADING_CONFIRMED", False)
+            if live_trading_confirmed is None
+            else bool(live_trading_confirmed)
+        )
+        self.max_live_trade_sol = (
+            float(os.environ.get("MAX_LIVE_TRADE_SOL", "0.05"))
+            if max_live_trade_sol is None
+            else float(max_live_trade_sol)
+        )
         self.keypair = None
 
         if self.private_key_b58 and SOLDERS_AVAILABLE:

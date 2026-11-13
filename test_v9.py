@@ -2816,6 +2816,160 @@ def test_v12_strategy_comparison():
     print("  v12 strategy comparison: OK")
 
 
+def test_v12_live_readiness():
+    import contextlib
+    import io
+    import json
+    import unittest.mock
+
+    from agentictrade import doctor as doctor_module
+    from agentictrade import live_readiness as lr
+
+    # Paper defaults are unambiguous: no fails and no private key reported.
+    paper = lr.check_environment({})
+    assert paper["mode"] == "paper"
+    assert paper["liveTradingEnabled"] is False
+    assert paper["liveTradingConfirmed"] is False
+    assert paper["fails"] == 0
+    assert paper["privateKeyPresent"] is False
+
+    # Unset booleans are defaults, not parse errors; typos are fails.
+    assert lr.check_environment({"LIVE_TRADING_ENABLED": ""})["fails"] == 0
+    typo = lr.check_environment({"LIVE_TRADING_ENABLED": "ture"})
+    assert typo["mode"] == "paper" and typo["fails"] == 1
+    assert any(issue["key"] == "LIVE_TRADING_ENABLED" for issue in typo["issues"])
+
+    live_env = {
+        "LIVE_TRADING_ENABLED": "true",
+        "LIVE_TRADING_CONFIRMED": "true",
+        "SOLANA_PRIVATE_KEY": "SECRET_SENTINEL_VALUE_DO_NOT_LEAK",
+        "MAX_LIVE_TRADE_SOL": "0.05",
+        "SOLANA_RPC_URL": "http://127.0.0.1:8899",
+    }
+    live = lr.check_environment(live_env)
+    assert live["mode"] == "live"
+    assert live["fails"] == 0
+    assert live["privateKeyPresent"] is True
+    assert live["rpcLoopback"] is True
+    # The key value must never appear in the report.
+    assert "SECRET_SENTINEL_VALUE_DO_NOT_LEAK" not in json.dumps(live)
+    assert "SECRET_SENTINEL_VALUE_DO_NOT_LEAK" not in lr.render_report(
+        {"status": lr.STATUS_READY, "environment": live, "guards": {"scenarios": []}}
+    )
+
+    for broken, key in (
+        ({"LIVE_TRADING_ENABLED": "true", "LIVE_TRADING_CONFIRMED": "false"}, "LIVE_TRADING_CONFIRMED"),
+        ({"LIVE_TRADING_ENABLED": "true", "LIVE_TRADING_CONFIRMED": "true"}, "SOLANA_PRIVATE_KEY"),
+        (
+            {
+                "LIVE_TRADING_ENABLED": "true",
+                "LIVE_TRADING_CONFIRMED": "true",
+                "SOLANA_PRIVATE_KEY": "x",
+                "MAX_LIVE_TRADE_SOL": "0",
+            },
+            "MAX_LIVE_TRADE_SOL",
+        ),
+    ):
+        report = lr.check_environment(broken)
+        assert report["fails"] >= 1
+        assert any(issue["key"] == key and issue["level"] == "fail" for issue in report["issues"])
+
+    # The guard harness drives the real execute_buy with a session that refuses
+    # every request, so it must pass with zero network calls.
+    before_audit = rb.AUDIT_LOG_PATH
+    guards = lr.audit_guards()
+    assert rb.AUDIT_LOG_PATH == before_audit, "readiness must restore the audit path"
+    assert guards["ok"] is True
+    assert guards["failed"] == 0
+    assert guards["networkCalls"] == 0
+    observed = {item["name"]: item["observed"] for item in guards["scenarios"]}
+    assert observed == {
+        "paper_pumpfun": "DRY_RUN_READY",
+        "live_unconfirmed": "BLOCKED",
+        "live_over_max": "BLOCKED",
+        "live_missing_key": "ERROR",
+    }
+    for item in guards["scenarios"]:
+        assert item["networkCalls"] == 0
+        assert item["passed"] is True
+
+    # Status matrix.
+    assert lr.run_readiness({})["status"] == lr.STATUS_PAPER
+    assert (
+        lr.run_readiness(
+            {"LIVE_TRADING_ENABLED": "true", "LIVE_TRADING_CONFIRMED": "false"}
+        )["status"]
+        == lr.STATUS_BLOCKED
+    )
+    ready = lr.run_readiness(dict(live_env))
+    assert ready["status"] == lr.STATUS_READY
+    assert ready["probes"] is None and ready["networkUsed"] is False
+    assert ready["guards"]["networkCalls"] == 0
+
+    markdown = lr.render_report(lr.run_readiness({}))
+    assert "# Live-execution readiness" in markdown
+    assert "**PAPER**" in markdown
+    assert "## Guard scenarios" in markdown
+    assert "4 passed, 0 failed, 0 network call(s)." in markdown
+
+    # The execution agent accepts explicit guard values, and an explicit empty
+    # key no longer falls back to the process environment.
+    with unittest.mock.patch.dict(
+        os.environ, {"SOLANA_PRIVATE_KEY": "ENV_SENTINEL_VALUE"}, clear=False
+    ):
+        agent = rb.SolanaExecutionAgent(
+            private_key_b58="",
+            live_trading_enabled=True,
+            live_trading_confirmed=False,
+            max_live_trade_sol=0.01,
+        )
+        assert agent.private_key_b58 == ""
+        assert agent.live_trading_confirmed is False
+        assert agent.max_live_trade_sol == 0.01
+
+    # Doctor reports the same mode without importing the bot or opening a socket.
+    doctor_check = doctor_module.check_live_readiness({})
+    assert doctor_check.name == "live_readiness"
+    assert doctor_check.status == "info"
+    assert doctor_module.check_live_readiness(
+        {"LIVE_TRADING_ENABLED": "true", "LIVE_TRADING_CONFIRMED": "false"}
+    ).status in ("warn", "fail")
+    assert doctor_module.check_live_readiness(dict(live_env)).status == "warn"
+
+    # CLI: PAPER exits 0, BLOCKED exits 1, and the JSON stays parseable (the
+    # research_bot import banner must not leak into stdout).
+    with unittest.mock.patch.dict(
+        os.environ,
+        {"LIVE_TRADING_ENABLED": "false", "LIVE_TRADING_CONFIRMED": "false"},
+        clear=False,
+    ):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = lr.main(["--json", "--env-file", "/nonexistent"])
+        assert code == 0
+        payload = json.loads(buffer.getvalue())
+        assert payload["status"] == lr.STATUS_PAPER
+        assert payload["guards"]["networkCalls"] == 0
+        assert "SECRET_SENTINEL_VALUE" not in buffer.getvalue()
+
+    with unittest.mock.patch.dict(
+        os.environ,
+        {"LIVE_TRADING_ENABLED": "true", "LIVE_TRADING_CONFIRMED": "false"},
+        clear=False,
+    ):
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert lr.main(["--json", "--env-file", "/nonexistent"]) == 1
+
+    with contextlib.redirect_stderr(io.StringIO()):
+        try:
+            lr.main(["--not-a-flag"])
+            raise AssertionError("argparse must reject unknown flags")
+        except SystemExit as exit_error:
+            assert exit_error.code == 2
+
+    print("  v12 live-execution readiness: OK")
+
+
 def main():
     print("Running AgenticTrade v11.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
@@ -2834,6 +2988,7 @@ def main():
         test_v12_cost_stress()
         test_v12_rolling_windows()
         test_v12_strategy_comparison()
+        test_v12_live_readiness()
         test_exit_rules()
         test_flow_exit()
         test_whale_exit()

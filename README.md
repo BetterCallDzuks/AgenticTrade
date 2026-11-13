@@ -145,6 +145,20 @@ The doctor validates numbers, live-trading guards, the dashboard token, the
 database schema, the audit log path, the timezone and (optionally) whether the
 port is free. It is read-only and never sends an order.
 
+Before changing `LIVE_TRADING_ENABLED`, run the live-execution readiness audit.
+It drives the real `execute_buy` guards with a session that refuses every
+request, so it verifies the fail-closed paths without a key or a socket:
+
+```powershell
+python -m agentictrade.live_readiness
+python -m agentictrade.live_readiness --json
+python -m agentictrade.live_readiness --probe   # opt-in network probes
+```
+
+It prints `PAPER` (exit 0), `READY` (exit 0, live is armed and the guards
+passed) or `BLOCKED` (exit 1) with the failing configuration keys. It never
+places an order and never prints the private key.
+
 5. Run the bot and open the dashboard:
 
 ```powershell
@@ -226,6 +240,7 @@ AgenticTrade/
 │   ├── optimizer.py      # walk-forward param search + rolling stability (v12)
 │   ├── cost_stress.py    # cost multiplier sweep + break-even (v12)
 │   ├── compare.py        # out-of-sample strategy ranking (v12)
+│   ├── live_readiness.py # read-only live-execution guard audit (v12)
 │   ├── validate.py       # environment validation rules (v11)
 │   ├── doctor.py         # read-only pre-flight CLI (v11)
 │   ├── timeutils.py      # UTC/local day helpers, extracted from the monolith (v11)
@@ -319,6 +334,7 @@ The project is being migrated incrementally from the original monolith into a sm
 - `agentictrade/optimizer.py` — walk-forward parameter grid search with fixed/anchored/rolling windows, stability scoring and baseline uplift (v12)
 - `agentictrade/cost_stress.py` — cost multiplier sweep and interpolated break-even (v12)
 - `agentictrade/compare.py` — optimize, cost-stress and rank several strategies in one report (v12)
+- `agentictrade/live_readiness.py` — read-only live-execution readiness audit with a no-network guard harness (v12)
 
 `research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
 
@@ -621,6 +637,7 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 - Walk-forward segments reset the bankroll. `--walk-forward` compares one fixed parameter set out of sample; `--optimize` re-selects parameters per window, so it measures the selection process, not hindsight. Neither guarantees future profit.
 - Cost stress assumes costs scale linearly with the multiplier and interpolates break-even between sweep points; it does not re-derive liquidity, MEV or congestion from the market. Treat the break-even multiplier as a sensitivity estimate, not a precise threshold.
 - Strategy comparison ranks only the strategies you pass it on one candle series. It cannot tell you a strategy is good in absolute terms, only which candidate held up best under the same windows and costs; the ranking is deterministic but not statistically significant.
+- The live-execution readiness audit proves the fail-closed guards and configuration are in place; it cannot prove a venue will fill, that a transaction will land, or that a live run is safe. `READY` means "armed with working guards", not "recommended".
 - Strategy profiles only fill environment variables that are not set explicitly; change `.env` values to override them.
 
 ## License
