@@ -87,10 +87,17 @@ def _issue(level: str, key: str, message: str) -> Dict[str, str]:
     return {"level": level, "key": key, "message": message}
 
 
-def check_environment(env: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
+def check_environment(
+    env: Optional[Mapping[str, str]] = None,
+    solders_available: Optional[bool] = None,
+) -> Dict[str, Any]:
     """Summarise the live-trading configuration without touching the network.
 
     Never returns or logs the private key; only its presence is reported.
+
+    ``solders_available`` overrides the import probe so tests stay deterministic
+    on machines and CI images where the optional signing package is not
+    installed. Callers leave it unset to inspect the real environment.
     """
     values = dict(os.environ if env is None else env)
     issues: List[Dict[str, str]] = []
@@ -125,7 +132,7 @@ def check_environment(env: Optional[Mapping[str, str]] = None) -> Dict[str, Any]
     rpc_url = str(values.get("SOLANA_RPC_URL") or DEFAULT_RPC_URL).strip() or DEFAULT_RPC_URL
     slippage_bps = _as_float(values.get("SLIPPAGE_BPS"), 500.0)
     priority_fee_sol = _as_float(values.get("PRIORITY_FEE_SOL"), 0.0015)
-    solders = _solders_available()
+    solders = _solders_available() if solders_available is None else bool(solders_available)
 
     if live:
         if not confirmed:

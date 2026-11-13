@@ -2846,11 +2846,17 @@ def test_v12_live_readiness():
         "MAX_LIVE_TRADE_SOL": "0.05",
         "SOLANA_RPC_URL": "http://127.0.0.1:8899",
     }
-    live = lr.check_environment(live_env)
+    live = lr.check_environment(live_env, solders_available=True)
     assert live["mode"] == "live"
     assert live["fails"] == 0
     assert live["privateKeyPresent"] is True
     assert live["rpcLoopback"] is True
+
+    # A live config without the optional signing package is a hard fail.
+    missing_signer = lr.check_environment(live_env, solders_available=False)
+    assert missing_signer["fails"] == 1
+    assert any(issue["key"] == "solders" and issue["level"] == "fail" for issue in missing_signer["issues"])
+
     # The key value must never appear in the report.
     assert "SECRET_SENTINEL_VALUE_DO_NOT_LEAK" not in json.dumps(live)
     assert "SECRET_SENTINEL_VALUE_DO_NOT_LEAK" not in lr.render_report(
