@@ -31,6 +31,7 @@ Examples:
     python -m agentictrade.ohlcv --csv candles.csv --strategy momentum
     python -m agentictrade.ohlcv --json candles.json --walk-forward 3
     python -m agentictrade.ohlcv --csv candles.csv --optimize --objective sharpe
+    python -m agentictrade.ohlcv --csv candles.csv --stress-costs
     python -m agentictrade.ohlcv --pool <pool-address> --timeframe hour
 """
 
@@ -933,10 +934,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--walk-forward", type=int, default=0, help="number of out-of-sample segments")
     parser.add_argument("--train-ratio", type=float, default=0.6)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--optimize",
         action="store_true",
         help="walk-forward parameter optimization (grid-search each train slice)",
+    )
+    mode.add_argument(
+        "--stress-costs",
+        action="store_true",
+        help="sweep the modelled costs and report the break-even multiplier",
     )
     parser.add_argument(
         "--objective",
@@ -951,6 +958,18 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--slow-grid", default="", help="e.g. 13,21,34 (empty uses the default grid)")
     parser.add_argument("--lookback-grid", default="", help="e.g. 10,20,30,55 (empty uses the default grid)")
     parser.add_argument("--threshold-grid", default="", help="e.g. 0.0,0.5,1.0 (empty uses the default grid)")
+    parser.add_argument(
+        "--cost-multipliers",
+        default="",
+        help="comma-separated cost multipliers for --stress-costs "
+        "(default: 0,0.25,0.5,0.75,1,1.5,2,3,5,10)",
+    )
+    parser.add_argument(
+        "--cost-baseline",
+        type=float,
+        default=1.0,
+        help="multiplier treated as the reference cost level (default: 1.0)",
+    )
     parser.add_argument("--output", choices=("markdown", "json"), default="markdown")
     parser.add_argument("--save", help="also write the JSON result to this path")
     return parser
@@ -1003,6 +1022,40 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.strategy == "breakout":
             return BreakoutStrategy(lookback=args.lookback, threshold_pct=args.threshold_pct)
         return EmaCrossStrategy(fast=args.fast, slow=args.slow)
+
+    if args.stress_costs:
+        if args.walk_forward > 0:
+            print(
+                "--stress-costs sweeps the whole series and does not combine with --walk-forward.",
+                file=sys.stderr,
+            )
+            return 2
+        # Imported lazily: the stress module imports this module.
+        from agentictrade.cost_stress import parse_multipliers as parse_cost_multipliers
+        from agentictrade.cost_stress import render_report as render_cost_report
+        from agentictrade.cost_stress import stress_costs
+
+        try:
+            multipliers = parse_cost_multipliers(args.cost_multipliers)
+        except ValueError as error:
+            print(error, file=sys.stderr)
+            return 2
+        stress = stress_costs(
+            candles,
+            factory(),
+            config,
+            multipliers=multipliers,
+            baseline_multiplier=args.cost_baseline,
+        )
+        payload = {"costStress": stress}
+        if args.output == "json":
+            text = json.dumps(payload, indent=2, default=str)
+        else:
+            text = render_cost_report(stress)
+        print(text)
+        if args.save:
+            Path(args.save).write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        return 0
 
     if args.optimize:
         # Imported lazily: the optimizer imports this module.

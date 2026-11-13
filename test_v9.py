@@ -2182,6 +2182,230 @@ def test_v12_walk_forward_optimizer():
     print("  v12 walk-forward optimizer: OK")
 
 
+def test_v12_cost_stress():
+    import json
+    import math
+
+    from agentictrade.cost_stress import (
+        DEFAULT_MULTIPLIERS,
+        parse_multipliers,
+        render_report,
+        scaled_config,
+        stress_costs,
+    )
+    from agentictrade.ohlcv import BacktestConfig, EmaCrossStrategy, run_backtest
+
+    class _NoTradeStrategy:
+        name = "no_trade"
+
+        def generate(self, history):
+            return None
+
+    # Multiplier parsing is sorted, de-duplicated and fail-closed.
+    assert parse_multipliers("") == list(DEFAULT_MULTIPLIERS)
+    assert parse_multipliers("2,0.5, 1,1,0") == [0.0, 0.5, 1.0, 2.0]
+    for bad in ("abc", "-1", "nan", "inf", ","):
+        try:
+            parse_multipliers(bad)
+            raise AssertionError(f"multiplier {bad!r} should raise")
+        except ValueError:
+            pass
+
+    # The scaled config touches only cost knobs.
+    base = BacktestConfig(
+        initial_sol=10.0,
+        trade_size_sol=0.5,
+        fee_bps=25.0,
+        slippage_bps=50.0,
+        exit_slippage_bps=80.0,
+        impact_coeff=0.5,
+        priority_fee_sol=0.0015,
+        failed_tx_prob=0.4,
+        liquidity_usd=25_000.0,
+    )
+    doubled = scaled_config(base, 2.0)
+    assert doubled.fee_bps == 50.0
+    assert doubled.slippage_bps == 100.0
+    assert doubled.exit_slippage_bps == 160.0
+    assert doubled.impact_coeff == 1.0
+    assert doubled.priority_fee_sol == 0.003
+    assert doubled.failed_tx_prob == 0.8
+    assert doubled.trade_size_sol == base.trade_size_sol
+    assert scaled_config(base, 10.0).failed_tx_prob == 1.0
+    try:
+        scaled_config(base, -1.0)
+        raise AssertionError("negative multiplier should raise")
+    except ValueError:
+        pass
+
+    closes = []
+    price = 1.0
+    for index in range(600):
+        price *= 1.0 + 0.012 * math.sin(index / 6.0) + 0.0015
+        closes.append(max(0.05, price))
+    candles = _synthetic_candles(closes)
+    strategy = EmaCrossStrategy(fast=5, slow=13)
+    base_config = BacktestConfig(
+        initial_sol=10.0,
+        trade_size_sol=1.0,
+        fee_bps=200.0,
+        slippage_bps=100.0,
+        exit_slippage_bps=200.0,
+    )
+
+    report = stress_costs(candles, EmaCrossStrategy(fast=5, slow=13), base_config)
+    again = stress_costs(candles, EmaCrossStrategy(fast=5, slow=13), base_config)
+    assert json.dumps(report, sort_keys=True, default=str) == json.dumps(again, sort_keys=True, default=str)
+
+    assert report["multipliers"] == list(DEFAULT_MULTIPLIERS)
+    assert [point["multiplier"] for point in report["points"]] == list(DEFAULT_MULTIPLIERS)
+    free = report["points"][0]
+    assert free["feeBps"] == 0.0 and free["priorityFeeSol"] == 0.0
+    assert free["feesPaidSol"] == 0.0 and abs(free["costsPaidSol"]) < 1e-12
+    assert abs(report["grossEdgeSol"] - free["netPnlSol"]) < 1e-12
+
+    # The baseline point is exactly a normal backtest with the original config.
+    direct = run_backtest(candles, EmaCrossStrategy(fast=5, slow=13), base_config)
+    assert abs(report["baseline"]["netPnlSol"] - direct.summary["netPnlSol"]) < 1e-12
+    assert report["baseline"]["trades"] == direct.summary["trades"]
+
+    # Costs rise and the edge shrinks across the sweep.
+    assert report["points"][-1]["costsPaidSol"] > free["costsPaidSol"]
+    assert report["points"][-1]["netPnlSol"] < free["netPnlSol"]
+
+    # Break-even is interpolated inside the crossing bracket.
+    assert report["status"] == "break-even", report["status"]
+    break_even = report["breakEvenMultiplier"]
+    assert break_even is not None and 0.0 < break_even < 10.0
+    points = report["points"]
+    crossing = next(
+        index for index, point in enumerate(points) if float(point["netPnlSol"]) <= 0.0
+    )
+    assert points[crossing - 1]["multiplier"] <= break_even <= points[crossing]["multiplier"]
+    assert report["headroomPct"] is not None
+    assert abs(report["headroomPct"] - (break_even - 1.0) * 100.0) < 1e-9
+
+    # A costlier baseline pushes break-even below 1.0: no headroom left.
+    stressed_config = BacktestConfig(
+        initial_sol=10.0,
+        trade_size_sol=1.0,
+        fee_bps=400.0,
+        slippage_bps=200.0,
+        exit_slippage_bps=400.0,
+    )
+    stressed = stress_costs(candles, EmaCrossStrategy(fast=5, slow=13), stressed_config)
+    assert stressed["status"] == "break-even"
+    assert stressed["breakEvenMultiplier"] is not None and stressed["breakEvenMultiplier"] < 1.0
+    assert stressed["headroomPct"] is not None and stressed["headroomPct"] < 0
+    assert stressed["baseline"]["netPnlSol"] < 0.0
+
+    # Default multipliers can themselves be overridden and a custom baseline honoured.
+    custom = stress_costs(
+        candles,
+        EmaCrossStrategy(fast=5, slow=13),
+        base_config,
+        multipliers=[0.0, 1.0, 2.0],
+        baseline_multiplier=2.0,
+    )
+    assert custom["multipliers"] == [0.0, 1.0, 2.0]
+    assert custom["baseline"]["multiplier"] == 2.0
+    assert custom["breakEvenMultiplier"] is not None
+    assert (
+        abs(custom["headroomPct"] - (custom["breakEvenMultiplier"] / 2.0 - 1.0) * 100.0) < 1e-9
+    )
+    try:
+        stress_costs(candles, strategy, base_config, multipliers=[0.0, 0.5], baseline_multiplier=1.0)
+        raise AssertionError("baseline outside the sweep should raise")
+    except ValueError:
+        pass
+
+    # A sweep that never visits 0x cannot claim a gross edge.
+    no_zero = stress_costs(
+        candles, EmaCrossStrategy(fast=5, slow=13), base_config, multipliers=[0.5, 1.0], baseline_multiplier=1.0
+    )
+    assert no_zero["grossEdgeSol"] is None
+
+    # A strategy with no gross edge has no break-even to report.
+    flat = stress_costs(candles, _NoTradeStrategy(), base_config)
+    assert flat["status"] == "unprofitable-at-zero-cost"
+    assert flat["breakEvenMultiplier"] is None and flat["headroomPct"] is None
+    assert flat["grossEdgeSol"] == 0.0
+
+    # Zero-configured costs make every point identical; the edge never breaks.
+    free_config = BacktestConfig(
+        initial_sol=10.0,
+        trade_size_sol=1.0,
+        fee_bps=0.0,
+        slippage_bps=0.0,
+        exit_slippage_bps=0.0,
+        priority_fee_sol=0.0,
+        failed_tx_prob=0.0,
+    )
+    never = stress_costs(candles, EmaCrossStrategy(fast=5, slow=13), free_config)
+    assert never["status"] == "profitable-at-max-multiplier"
+    assert never["breakEvenMultiplier"] is None
+    assert len({round(point["netPnlSol"], 12) for point in never["points"]}) == 1
+
+    markdown = render_report(report)
+    assert "Cost stress" in markdown
+    assert "Verdict" in markdown
+    assert "break-even" in markdown.lower()
+
+    # The CLI exposes the sweep, refuses bad multipliers and incompatible flags.
+    from agentictrade import ohlcv as ohlcv_module
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+        json.dump(
+            [
+                {
+                    "ts": candle.ts,
+                    "open": candle.open,
+                    "high": candle.high,
+                    "low": candle.low,
+                    "close": candle.close,
+                    "volume": candle.volume,
+                }
+                for candle in candles
+            ],
+            handle,
+        )
+        candle_path = handle.name
+    try:
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = ohlcv_module.main(
+                ["--json", candle_path, "--stress-costs", "--cost-multipliers", "0,1,2", "--output", "json"]
+            )
+        assert code == 0
+        payload = json.loads(buffer.getvalue())
+        assert payload["costStress"]["multipliers"] == [0.0, 1.0, 2.0]
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            assert ohlcv_module.main(["--json", candle_path, "--stress-costs", "--cost-multipliers", "x"]) == 2
+        assert "invalid cost multiplier" in stderr.getvalue()
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            assert ohlcv_module.main(["--json", candle_path, "--stress-costs", "--walk-forward", "2"]) == 2
+
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                ohlcv_module.main(["--json", candle_path, "--stress-costs", "--optimize"])
+            raise AssertionError("--stress-costs and --optimize are mutually exclusive")
+        except SystemExit as exit_error:
+            assert exit_error.code == 2
+    finally:
+        try:
+            os.remove(candle_path)
+        except OSError:
+            pass
+
+    print("  v12 cost stress and break-even: OK")
+
+
 def main():
     print("Running AgenticTrade v11.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
@@ -2197,6 +2421,7 @@ def main():
         test_v12_pending_persistence()
         test_v12_pumpfun_curve_quote()
         test_v12_walk_forward_optimizer()
+        test_v12_cost_stress()
         test_exit_rules()
         test_flow_exit()
         test_whale_exit()

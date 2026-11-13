@@ -71,12 +71,20 @@ All notable changes to AgenticTrade are documented here. The format follows
   ineligible, a slice with no eligible candidate is reported as skipped, and
   the report compares the out-of-sample aggregate against the unoptimized
   `--fast/--slow/--lookback/--threshold` baseline (`upliftSol`).
+- Cost stress and break-even analysis: `agentictrade/cost_stress.py` replays one
+  strategy across a multiplier sweep and reports the cost level at which the
+  edge disappears. `--stress-costs`, `--cost-multipliers` and `--cost-baseline`
+  expose it in the CLI; the report includes the gross edge (costs removed), the
+  interpolated `breakEvenMultiplier`, `headroomPct` and per-point fees/costs.
 
 ### Changed
 
 - `python -m agentictrade.ohlcv --optimize` reuses the `--walk-forward` segment
   count (default 3 when it is 0) and `--train-ratio`; the plain
   `--walk-forward` path still evaluates one fixed parameter set.
+- `--stress-costs` is a third mode, mutually exclusive with `--optimize`: it
+  sweeps the whole series instead of the walk-forward windows and refuses to
+  combine with `--walk-forward` rather than silently ignoring it.
 - `ResearchAgent.get_market_data()` now falls back to a Pump.fun bonding-curve
   quote when DexScreener has no pair, instead of returning `None`. Freshness,
   hard filters and the fail-closed `STALE_PRICE` path are unchanged.

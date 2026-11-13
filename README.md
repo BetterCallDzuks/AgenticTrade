@@ -224,6 +224,7 @@ AgenticTrade/
 │   ├── shutdown.py       # SIGINT/SIGTERM controller (v11)
 │   ├── ohlcv.py          # candle backtester + strategies + CLI (v11)
 │   ├── optimizer.py      # walk-forward parameter grid search (v12)
+│   ├── cost_stress.py    # cost multiplier sweep + break-even (v12)
 │   ├── validate.py       # environment validation rules (v11)
 │   ├── doctor.py         # read-only pre-flight CLI (v11)
 │   ├── timeutils.py      # UTC/local day helpers, extracted from the monolith (v11)
@@ -315,6 +316,7 @@ The project is being migrated incrementally from the original monolith into a sm
 - `agentictrade/costs.py` — one shared transaction-cost model with depth decay (v11)
 - `agentictrade/llm.py` — provider-neutral LLM client: Gemini or local OpenAI-compatible servers (v11)
 - `agentictrade/optimizer.py` — walk-forward parameter grid search with out-of-sample scoring and baseline uplift (v12)
+- `agentictrade/cost_stress.py` — cost multiplier sweep and interpolated break-even (v12)
 
 `research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
 
@@ -520,6 +522,29 @@ produced at least `--min-trades` trades on the train slice; a slice with no
 eligible candidate is reported as skipped instead of being filled with an
 untested winner.
 
+### Cost stress and break-even
+
+`--stress-costs` replays one parameter set across a sweep of cost multipliers
+and reports where the edge disappears. Multiplier `0` removes every modelled
+cost (gross edge), `1` is the normal cost level, and larger values stress a
+busier pool or a worse slot:
+
+```bash
+python -m agentictrade.ohlcv --csv candles.csv --stress-costs
+python -m agentictrade.ohlcv --csv candles.csv --stress-costs \
+  --cost-multipliers 0,0.5,1,2,4,8 --cost-baseline 1
+python -m agentictrade.ohlcv --strategy breakout --csv candles.csv --stress-costs --output json
+```
+
+The report scales the AMM fee, entry/exit slippage, impact coefficient and
+priority fee linearly, clamps `failed_tx_prob` to `[0, 1]`, and interpolates the
+**break-even multiplier** between the adjacent points where net PnL crosses
+zero. `headroomPct` is the margin between the baseline and break-even: negative
+means the current cost assumptions already erase the edge. A strategy that is
+already unprofitable with zero costs is reported as `unprofitable-at-zero-cost`,
+never given a break-even. `--stress-costs` is mutually exclusive with
+`--optimize` and does not combine with `--walk-forward`.
+
 This engine ships with a momentum (EMA cross) and a breakout strategy. It is a research tool: a positive backtest is not a promise of future profit.
 
 ## Known limitations
@@ -536,6 +561,7 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 - The OHLCV backtester uses close-based signals and gap-aware high/low exit checks; it cannot model order-book depth, MEV or partial fills. When a candle contains both a stop and take profit, the stop is used and the trade is marked `ambiguousBar`.
 - The OHLCV engine sells `tp1_fraction` at take profit and trails the rest on the stop ladder, matching the paper book; the same `ExitPolicy` drives both.
 - Walk-forward segments reset the bankroll. `--walk-forward` compares one fixed parameter set out of sample; `--optimize` re-selects parameters per window, so it measures the selection process, not hindsight. Neither guarantees future profit.
+- Cost stress assumes costs scale linearly with the multiplier and interpolates break-even between sweep points; it does not re-derive liquidity, MEV or congestion from the market. Treat the break-even multiplier as a sensitivity estimate, not a precise threshold.
 - Strategy profiles only fill environment variables that are not set explicitly; change `.env` values to override them.
 
 ## License
