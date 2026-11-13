@@ -33,12 +33,22 @@ This repository never ships credentials. `.env` is gitignored; only
 - Paper trading is the default. `LIVE_TRADING_ENABLED=false` and the code
   requires both `LIVE_TRADING_ENABLED=true` and `LIVE_TRADING_CONFIRMED=true`
   before it can send a swap.
-- The dashboard binds `0.0.0.0:8080` for historical reasons. Set
-  `COMMAND_CENTER_HOST=127.0.0.1` for loopback-only access, and always set
-  `DASHBOARD_TOKEN` when the port is reachable from other machines.
+- The dashboard binds `127.0.0.1:8080` by default. Binding any other
+  interface requires `DASHBOARD_TOKEN`; the bot refuses to start and
+  `python -m agentictrade.doctor` exits non-zero otherwise. The only override
+  is `ALLOW_INSECURE_DASHBOARD=true`, which is logged and warned about.
+- Mutating API routes (`POST`/`PUT`/`PATCH`/`DELETE`) reject cross-site
+  browser requests unless the origin is allowlisted (`ALLOWED_ORIGINS` or
+  localhost), even when no token is configured.
+- Rate limiting runs before token auth, and `X-Forwarded-For` is ignored
+  unless `TRUST_PROXY_HEADERS=true`, so clients cannot spoof their address to
+  bypass the limiter.
 - `GET /metrics` and `GET /ready` are protected by the same token as `/api/*`.
 - `python -m agentictrade.doctor` reports unsafe configuration (missing token,
-  live mode without confirmation, broken limits) before the bot starts.
+  live mode without confirmation, broken limits, unrecognised boolean values)
+  before the bot starts.
+- Keep `.env` mode `0600`; `doctor` warns on POSIX when it is readable by
+  group or others, and `backup.sh --no-secrets` excludes it from archives.
 
 ## Scope
 

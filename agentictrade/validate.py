@@ -28,6 +28,21 @@ class Issue:
 
 _TRUTHY = ("1", "true", "yes", "on")
 _FALSY = ("0", "false", "no", "off", "")
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+# Booleans parsed with env_bool(): an unrecognised value silently means False,
+# which can disable a sell rule, so any typo is a hard failure.
+_BOOLEAN_KEYS = (
+    "FLOW_EXIT_ENABLED",
+    "WHALE_EXIT_ENABLED",
+    "TIME_STOP_ENABLED",
+    "MOVE_STOP_TO_BREAKEVEN_AFTER_TP1",
+    "PRICE_CACHE_ENABLED",
+    "JSON_LOGS",
+    "CORS_ALLOW_ALL",
+    "TRUST_PROXY_HEADERS",
+    "ALLOW_INSECURE_DASHBOARD",
+)
 
 
 def _raw(env: Mapping[str, str], key: str) -> Optional[str]:
@@ -230,6 +245,7 @@ def validate_env(env: Mapping[str, str]) -> List[Issue]:
     # ---- flow exit / wallet quality -----------------------------------
     c.numeric(env, "FLOW_EXIT_MIN_SELLS", minimum=1, maximum=10_000, integer=True)
     c.numeric(env, "FLOW_EXIT_SELL_RATIO", minimum=0.1, maximum=100.0)
+    c.numeric(env, "WHALE_EVENT_TTL_SEC", minimum=1.0, maximum=604_800.0)
     c.numeric(env, "WALLET_QUALITY_MIN_SAMPLES", minimum=1, maximum=10_000, integer=True)
     c.numeric(env, "WALLET_QUALITY_MIN_WIN_RATE", minimum=0.0, maximum=1.0)
     c.numeric(env, "WALLET_QUALITY_WINDOW", minimum=1, maximum=1_000, integer=True)
@@ -240,14 +256,30 @@ def validate_env(env: Mapping[str, str]) -> List[Issue]:
     c.numeric(env, "ALERT_COOLDOWN_SEC", minimum=0.0, maximum=86_400.0, allow_zero=True)
 
     token = _raw(env, "DASHBOARD_TOKEN")
+    host = _raw(env, "COMMAND_CENTER_HOST") or "127.0.0.1"
+    allow_insecure = parse_bool(_raw(env, "ALLOW_INSECURE_DASHBOARD")) is True
     if not token:
-        c.warn(
-            "DASHBOARD_TOKEN",
-            "empty token; the API is unauthenticated (set COMMAND_CENTER_HOST=127.0.0.1 "
-            "or configure a token)",
-        )
+        if host in _LOOPBACK_HOSTS:
+            c.warn("DASHBOARD_TOKEN", "empty token; the dashboard is loopback-only, which is fine for local use")
+        elif allow_insecure:
+            c.warn(
+                "DASHBOARD_TOKEN",
+                f"empty token with COMMAND_CENTER_HOST={host!r}; ALLOW_INSECURE_DASHBOARD=true "
+                "accepts an unauthenticated API on the network",
+            )
+        else:
+            c.fail(
+                "DASHBOARD_TOKEN",
+                f"empty token with COMMAND_CENTER_HOST={host!r}: the trading API would be reachable "
+                "without authentication. Set DASHBOARD_TOKEN or bind 127.0.0.1",
+            )
     elif len(token) < 12:
         c.warn("DASHBOARD_TOKEN", "shorter than 12 characters; use a long random token")
+
+    for key in _BOOLEAN_KEYS:
+        text = _raw(env, key)
+        if text is not None and parse_bool(text) is None:
+            c.fail(key, f"expected true/false, got {text!r}; an unrecognised value silently means false")
 
     if parse_bool(_raw(env, "CORS_ALLOW_ALL")):
         c.warn("CORS_ALLOW_ALL", "every browser origin is allowed; prefer ALLOWED_ORIGINS")

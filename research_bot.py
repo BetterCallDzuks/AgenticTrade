@@ -94,7 +94,6 @@ from agentictrade.timeutils import (  # noqa: E402
 # Fill model and exit metadata are now provided by agentictrade.fills.
 from agentictrade.fills import (  # noqa: E402
     EXIT_ICONS as EXIT_ICONS,
-    FAST_EXIT_REASONS,
     LOSING_EXIT_REASONS,
     exit_icon,
     paper_fill,
@@ -116,9 +115,11 @@ TELEGRAM = TelegramNotifier()
 
 # Optional dashboard protection (disabled when DASHBOARD_TOKEN is empty).
 from agentictrade.security import (
+    MUTATING_METHODS,
     RateLimiter,
     client_ip,
     is_authorized,
+    is_mutation_allowed,
     is_origin_allowed,
     parse_allowed_origins,
 )
@@ -127,9 +128,12 @@ from agentictrade.prometheus import MetricsRegistry
 from agentictrade.shutdown import ShutdownController
 
 DASHBOARD_TOKEN = (os.environ.get("DASHBOARD_TOKEN") or "").strip()
-# v11: bind address is configurable, defaulting to the historical 0.0.0.0.
-COMMAND_CENTER_HOST = (os.environ.get("COMMAND_CENTER_HOST") or "0.0.0.0").strip()
+# v11: loopback by default. A non-loopback bind requires DASHBOARD_TOKEN (or an
+# explicit ALLOW_INSECURE_DASHBOARD=true opt-out) or startup is refused.
+COMMAND_CENTER_HOST = (os.environ.get("COMMAND_CENTER_HOST") or "127.0.0.1").strip()
 COMMAND_CENTER_PORT = env_int("COMMAND_CENTER_PORT", 8080)
+LOOPBACK_BIND_HOSTS = {"127.0.0.1", "localhost", "::1"}
+TRUST_PROXY_HEADERS = env_bool("TRUST_PROXY_HEADERS", False)
 API_RATE_LIMIT_PER_MIN = env_int("API_RATE_LIMIT_PER_MIN", 240)
 API_RATE_LIMITER = RateLimiter(max_requests=API_RATE_LIMIT_PER_MIN, window_seconds=60.0)
 AUDIT_LOG_PATH = os.environ.get("AUDIT_LOG_PATH") or str(BASE_DIR / "bot_audit.jsonl")
@@ -947,13 +951,13 @@ class SolanaExecutionAgent:
         self.private_key_b58 = private_key_b58 or os.environ.get("SOLANA_PRIVATE_KEY")
         
         if live_trading_enabled is None:
-            self.live_trading_enabled = os.environ.get("LIVE_TRADING_ENABLED", "false").lower() == "true"
+            self.live_trading_enabled = env_bool("LIVE_TRADING_ENABLED", False)
         else:
             self.live_trading_enabled = live_trading_enabled
 
         self.slippage_bps = slippage_bps or int(os.environ.get("SLIPPAGE_BPS", "500"))
         self.priority_fee_sol = priority_fee_sol or float(os.environ.get("PRIORITY_FEE_SOL", "0.0015"))
-        self.live_trading_confirmed = os.environ.get("LIVE_TRADING_CONFIRMED", "false").lower() == "true"
+        self.live_trading_confirmed = env_bool("LIVE_TRADING_CONFIRMED", False)
         self.max_live_trade_sol = float(os.environ.get("MAX_LIVE_TRADE_SOL", "0.05"))
         self.keypair = None
 
@@ -1192,6 +1196,7 @@ class PaperTradingManager:
         self.flow_exit_min_sells = env_int("FLOW_EXIT_MIN_SELLS", 3)
         self.flow_exit_sell_ratio = env_float("FLOW_EXIT_SELL_RATIO", 1.3)
         self.whale_exit_enabled = env_bool("WHALE_EXIT_ENABLED", True)
+        self.whale_event_ttl_sec = env_float("WHALE_EVENT_TTL_SEC", 1800.0)
         self.max_daily_stop_losses = env_int("MAX_DAILY_STOP_LOSSES", 2)
         self.max_daily_drawdown_pct = env_float("MAX_DAILY_DRAWDOWN_PCT", 5.0)
         self.max_daily_trades = env_int("MAX_DAILY_TRADES", 8)
@@ -2121,6 +2126,10 @@ class PaperTradingManager:
         if fetched is None:
             return False, "quote has no timestamp"
         age = self.now_ts() - float(fetched)
+        # A backward clock step makes age negative; treat it as stale rather
+        # than letting an arbitrarily old quote pass as fresh.
+        if age < 0:
+            return False, f"quote timestamp is {-age:.0f}s in the future (clock skew)"
         if age > self.stale_price_sec:
             return False, f"quote is {age:.0f}s old (> {self.stale_price_sec:.0f}s)"
         return True, "fresh"
@@ -2421,14 +2430,14 @@ class PaperTradingManager:
         c = conn.cursor()
         c.execute("""
             SELECT symbol, entry_price_usd, current_price_usd, highest_price_usd, invested_sol, remaining_ratio,
-                   tp1_hit, realized_sol, opened_at, liquidity_usd
+                   tp1_hit, realized_sol, opened_at, liquidity_usd, whale_wallet
             FROM positions WHERE mint = ? AND status = 'OPEN'
         """, (mint,))
         row = c.fetchone()
         conn.close()
         if not row:
             return None
-        symbol, entry, last_px, highest, invested, rem, tp1_hit, realized, opened_at, stored_liq = row
+        symbol, entry, last_px, highest, invested, rem, tp1_hit, realized, opened_at, stored_liq, whale_wallet = row
 
         fresh, why = self.is_market_fresh(market)
         flow = None
@@ -2449,7 +2458,13 @@ class PaperTradingManager:
         ev = WHALE_SELL_EVENTS.get(mint)
         opened_dt = self._parse_ts(opened_at)
         if ev and opened_dt:
-            if ev.get("ts", 0) >= opened_dt.replace(tzinfo=timezone.utc).timestamp():
+            ev_ts = float(ev.get("ts") or 0)
+            ev_age = self.now_ts() - ev_ts
+            # Only the whale this position followed counts, only after entry,
+            # and only while the signal is still recent.
+            same_whale = bool(whale_wallet) and str(ev.get("wallet") or "") == str(whale_wallet)
+            if same_whale and ev_ts > opened_dt.replace(tzinfo=timezone.utc).timestamp() \
+                    and 0 <= ev_age <= self.whale_event_ttl_sec:
                 whale_evt = ev
 
         return self._apply_price_update_and_rules(
@@ -2490,7 +2505,9 @@ class PaperTradingManager:
         meta = c.fetchone() or (None,) * 11
         opened_at, sig_px, entry_fill, prev_slip_sol, size_reason, conviction, whale_wallet, whale_label, tp1_flag, stored_liq, src_val = meta
         liq = liquidity_usd if liquidity_usd is not None else stored_liq
-        bps = self.paper_exit_slippage_bps if exit_reason in FAST_EXIT_REASONS else self.paper_slippage_bps
+        # Every SELL leg pays exit slippage: TP1, TIME_STOP, trailing and manual
+        # exits all cross the same spread as a stop.
+        bps = self.paper_exit_slippage_bps
         exit_fill, slip = paper_fill(current_price, "SELL", current_value_sol, liq, bps, self.paper_impact_coeff, self.paper_sol_price_usd)
         proceeds = current_value_sol * (1.0 - slip)
         slip_sol_total = (prev_slip_sol or 0.0) + (current_value_sol - proceeds)
@@ -2583,7 +2600,7 @@ class PaperTradingManager:
         elif fresh and not tp1_hit and pnl_pct >= self.tp1_pct:
             sell_value_sol = current_value_sol * 0.5
             tp_fill, slip = paper_fill(current_price, "SELL", sell_value_sol, liquidity_usd,
-                                       self.paper_slippage_bps, self.paper_impact_coeff, self.paper_sol_price_usd)
+                                       self.paper_exit_slippage_bps, self.paper_impact_coeff, self.paper_sol_price_usd)
             proceeds = sell_value_sol * (1.0 - slip)
             new_rem_ratio = rem_ratio * 0.5
             new_realized = realized_sol + proceeds
@@ -3073,6 +3090,17 @@ def _is_protected_path(path: str) -> bool:
     return path.startswith("/api/") or path in ("/metrics", "/ready")
 
 
+def dashboard_bind_error(host: str, token: str, allow_insecure: bool) -> Optional[str]:
+    """Return a message when the dashboard would be exposed without auth."""
+    if host in LOOPBACK_BIND_HOSTS or token or allow_insecure:
+        return None
+    return (
+        f"refusing to start: COMMAND_CENTER_HOST={host!r} exposes the trading API on the network "
+        "while DASHBOARD_TOKEN is empty. Set DASHBOARD_TOKEN, bind 127.0.0.1, or set "
+        "ALLOW_INSECURE_DASHBOARD=true only if you really mean it."
+    )
+
+
 @web.middleware
 async def metrics_middleware(request: web.Request, handler):
     """Record request counts and latency before any auth decision is made."""
@@ -3127,13 +3155,13 @@ async def cors_middleware(request: web.Request, handler):
 
 @web.middleware
 async def security_middleware(request: web.Request, handler):
-    """Optional token auth plus a simple per-IP rate limit for protected routes."""
+    """Rate limit, optional token auth, and CSRF protection for mutating routes."""
     if request.method == "OPTIONS" or not _is_protected_path(request.path):
         return await handler(request)
-    token = request.headers.get("X-Auth-Token") or request.query.get("token")
-    if not is_authorized(token, DASHBOARD_TOKEN):
-        return web.json_response({"ok": False, "error": "unauthorized", "hint": "Send X-Auth-Token or ?token="}, status=401)
-    ip = client_ip(dict(request.headers), request.remote)
+
+    # Rate limit first: otherwise an unauthenticated caller can brute-force the
+    # token without ever being throttled.
+    ip = client_ip(dict(request.headers), request.remote, trust_forwarded=TRUST_PROXY_HEADERS)
     allowed, retry_after = API_RATE_LIMITER.allow(ip)
     if not allowed:
         response = web.json_response(
@@ -3142,6 +3170,20 @@ async def security_middleware(request: web.Request, handler):
         )
         response.headers["Retry-After"] = str(int(retry_after) + 1)
         return response
+
+    token = request.headers.get("X-Auth-Token") or request.query.get("token")
+    if not is_authorized(token, DASHBOARD_TOKEN):
+        return web.json_response({"ok": False, "error": "unauthorized", "hint": "Send X-Auth-Token or ?token="}, status=401)
+
+    # Defense in depth: reject cross-site state changes even when auth is off.
+    if request.method in MUTATING_METHODS and not is_mutation_allowed(
+        dict(request.headers), ALLOWED_ORIGINS, CORS_ALLOW_ALL
+    ):
+        return web.json_response(
+            {"ok": False, "error": "cross_origin_blocked", "hint": "Send X-Auth-Token from a local client."},
+            status=403,
+        )
+
     return await handler(request)
 
 
@@ -3153,6 +3195,16 @@ async def start_command_center_server(
     session: aiohttp.ClientSession,
     port: int = 8080
 ):
+    # SystemExit is not caught by the caller's ``except Exception``, so an
+    # insecure bind stops the process instead of silently degrading to
+    # terminal-only trading with the API still unprotected.
+    bind_error = dashboard_bind_error(
+        COMMAND_CENTER_HOST, DASHBOARD_TOKEN, env_bool("ALLOW_INSECURE_DASHBOARD", False)
+    )
+    if bind_error:
+        print(f"🛑 [SECURITY] {bind_error}")
+        raise SystemExit(bind_error)
+
     app = web.Application(
         middlewares=[metrics_middleware, cors_middleware, security_middleware]
     )

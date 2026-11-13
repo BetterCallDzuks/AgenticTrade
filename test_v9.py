@@ -228,7 +228,11 @@ def test_flow_exit():
 
 
 def test_whale_exit():
+    from datetime import timedelta
+
     db_path = make_temp_db()
+    mint = "WhaleMint11111111111111111111111111111111"
+    wallet = "Wallet1111111111111111111111111111111111"
     try:
         portfolio = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
         portfolio.cluster_cooldown_sec = 0
@@ -237,8 +241,8 @@ def test_whale_exit():
         portfolio.max_daily_stop_losses = 100
         portfolio.max_daily_trades = 100
         portfolio.whale_exit_enabled = True
+        portfolio.whale_event_ttl_sec = 1800.0
         now_ts = portfolio.now_ts()
-        mint = "WhaleMint11111111111111111111111111111111"
         market = {
             "mint": mint,
             "symbol": "WHALE",
@@ -248,15 +252,41 @@ def test_whale_exit():
             "dex_id": "raydium",
             "fetched_at": now_ts,
             "whale_signal": "SmartWhale",
-            "whale_wallet": "Wallet1111111111111111111111111111111111",
+            "whale_wallet": wallet,
         }
         assert portfolio.open_virtual_position(market, conviction="manual", source="TEST") is True
-        rb.record_whale_sell(mint, "Wallet1111111111111111111111111111111111", "SmartWhale")
+        # Push the entry a few seconds back so "after entry" is unambiguous.
+        conn = portfolio._conn()
+        conn.execute(
+            "UPDATE positions SET opened_at = ? WHERE mint = ?",
+            (rb.fmt_utc(portfolio.now() - timedelta(seconds=5)), mint),
+        )
+        conn.commit()
+        conn.close()
         tick_market = dict(market, fetched_at=portfolio.now_ts(), price_usd="1.0")
+
+        # A different tracked whale selling this mint must not close the position.
+        rb.WHALE_SELL_EVENTS.pop(mint, None)
+        rb.record_whale_sell(mint, "OtherWallet999", "OtherWhale")
+        assert portfolio.process_position_tick(mint, tick_market) is None
+        print("  whale exit ignores other wallets: OK")
+
+        # A stale sell event must not close it either.
+        rb.record_whale_sell(
+            mint, wallet, "SmartWhale",
+            ts=portfolio.now_ts() - portfolio.whale_event_ttl_sec - 60,
+        )
+        assert portfolio.process_position_tick(mint, tick_market) is None
+        print("  whale exit ignores stale events: OK")
+
+        # Only the whale this position followed, selling after entry, triggers it.
+        rb.record_whale_sell(mint, wallet, "SmartWhale")
+        tick_market = dict(tick_market, fetched_at=portfolio.now_ts())
         action = portfolio.process_position_tick(mint, tick_market)
         assert action == "WHALE_EXIT", action
         print("  whale exit: OK")
     finally:
+        rb.WHALE_SELL_EVENTS.pop(mint, None)
         cleanup_db(db_path)
 
 
@@ -457,14 +487,31 @@ def test_v10_risk_and_backtest():
 
 
 def test_v10_security():
-    from agentictrade.security import RateLimiter, client_ip, is_authorized
+    from agentictrade.security import RateLimiter, client_ip, is_authorized, is_mutation_allowed
 
     assert is_authorized(None, "") is True
     assert is_authorized("abc", "abc") is True
     assert is_authorized("abc", "xyz") is False
     assert is_authorized(None, "xyz") is False
-    assert client_ip({"X-Forwarded-For": "1.2.3.4, 5.6.7.8"}, "9.9.9.9") == "1.2.3.4"
+
+    # X-Forwarded-For is spoofable unless a trusted proxy is declared.
+    assert client_ip({"X-Forwarded-For": "1.2.3.4, 5.6.7.8"}, "9.9.9.9") == "9.9.9.9"
+    assert client_ip({"X-Forwarded-For": "1.2.3.4, 5.6.7.8"}, "9.9.9.9", trust_forwarded=True) == "1.2.3.4"
     assert client_ip({}, "9.9.9.9") == "9.9.9.9"
+
+    # CSRF: non-browser clients (no Origin) and same-origin fetches pass;
+    # genuine cross-site mutations are rejected unless explicitly allowed.
+    allowed = {"http://localhost:8080"}
+    assert is_mutation_allowed({}, allowed) is True
+    assert is_mutation_allowed({"Sec-Fetch-Site": "same-origin"}, allowed) is True
+    assert is_mutation_allowed({"Sec-Fetch-Site": "none"}, allowed) is True
+    assert is_mutation_allowed({"Origin": "http://localhost:8080"}, allowed) is True
+    assert is_mutation_allowed({"Origin": "http://127.0.0.1:9000"}, allowed) is True
+    assert is_mutation_allowed({"Origin": "http://evil.example"}, allowed) is False
+    assert is_mutation_allowed(
+        {"Origin": "http://evil.example", "Sec-Fetch-Site": "cross-site"}, allowed
+    ) is False
+    assert is_mutation_allowed({"Origin": "http://evil.example"}, allowed, allow_all=True) is True
 
     limiter = RateLimiter(max_requests=3, window_seconds=60.0)
     assert limiter.allow("ip", now=0.0) == (True, 0.0)
@@ -478,6 +525,110 @@ def test_v10_security():
     limiter.reset()
     assert limiter.remaining("ip", now=61.5) == 3
     print("  v10 security auth/rate-limit: OK")
+
+
+def test_v11_phase0_hardening():
+    """Phase 0: fail-closed bind, honest exits, stale-quote and boolean guards."""
+    from agentictrade.validate import summarize, validate_env
+
+    # Bind guard: loopback or a token is required for a network bind.
+    assert rb.dashboard_bind_error("127.0.0.1", "", False) is None
+    assert rb.dashboard_bind_error("localhost", "", False) is None
+    assert rb.dashboard_bind_error("::1", "", False) is None
+    assert rb.dashboard_bind_error("0.0.0.0", "long-enough-token", False) is None
+    assert rb.dashboard_bind_error("0.0.0.0", "", False) is not None
+    assert rb.dashboard_bind_error("0.0.0.0", "", True) is None
+    print("  dashboard bind guard: OK")
+
+    from agentictrade.doctor import check_exposure, check_env_permissions
+    assert check_exposure("0.0.0.0", "").status == "fail"
+    assert check_exposure("0.0.0.0", "", allow_insecure=True).status == "warn"
+    assert check_exposure("127.0.0.1", "").status == "warn"
+    assert check_exposure("0.0.0.0", "long-enough-token").status == "ok"
+    with tempfile.TemporaryDirectory() as tmp:
+        perm_path = Path(tmp) / "perm.env"
+        perm_path.write_text("X=1\n", encoding="utf-8")
+        if os.name != "nt":
+            os.chmod(perm_path, 0o644)
+            assert check_env_permissions(perm_path).status == "warn"
+            os.chmod(perm_path, 0o600)
+            assert check_env_permissions(perm_path).status == "ok"
+        assert check_env_permissions(Path(tmp) / "missing.env").status == "info"
+    print("  doctor exposure gate: OK")
+
+    # A quote timestamp in the future is clock skew, not a fresh quote.
+    db_path = make_temp_db()
+    try:
+        portfolio = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
+        fresh, why = portfolio.is_market_fresh(
+            {"price_usd": "1.0", "fetched_at": portfolio.now_ts() + 60}
+        )
+        assert fresh is False and "future" in why, (fresh, why)
+        print("  negative quote age rejected: OK")
+
+        # Every sell leg pays exit slippage. With entry slippage 0 and 800 bps
+        # on exit, a flat TIME_STOP must return 92% of the position value.
+        portfolio.cluster_cooldown_sec = 0
+        portfolio.stop_loss_cooldown_sec = 0
+        portfolio.min_seconds_between_entries = 0
+        portfolio.max_daily_stop_losses = 100
+        portfolio.max_daily_trades = 100
+        portfolio.paper_slippage_bps = 0.0
+        portfolio.paper_exit_slippage_bps = 800.0
+        portfolio.paper_impact_coeff = 0.0
+        portfolio.time_stop_enabled = True
+        portfolio.max_hold_no_pump_sec = 0
+        portfolio.time_stop_min_profit_pct = 1_000_000.0
+        now_ts = portfolio.now_ts()
+        time_mint = "TimeSlipMint11111111111111111111111111111"
+        time_market = {
+            "mint": time_mint,
+            "symbol": "TSLIP",
+            "name": "Time Slip",
+            "price_usd": "1.0",
+            "liquidity_usd": 100000.0,
+            "dex_id": "raydium",
+            "fetched_at": now_ts,
+        }
+        assert portfolio.open_virtual_position(time_market, conviction="manual", source="TEST") is True
+        action = portfolio.process_position_tick(time_mint, dict(time_market, fetched_at=portfolio.now_ts()))
+        assert action == "TIME_STOP", action
+        conn = portfolio._conn()
+        row = conn.execute(
+            "SELECT returned_sol, invested_sol, exit_reason FROM trade_history WHERE mint = ?",
+            (time_mint,),
+        ).fetchone()
+        conn.close()
+        returned, invested, reason = row
+        assert reason == "TIME_STOP"
+        assert abs(returned - invested * 0.92) < 1e-9, (returned, invested)
+        print("  exit slippage on TIME_STOP: OK")
+
+        # TP1 must charge the same exit slippage on the half sold.
+        tp_mint = "TpSlipMint1111111111111111111111111111111"
+        tp_market = dict(time_market, mint=tp_mint, symbol="TPSLIP", price_usd="1.0")
+        assert portfolio.open_virtual_position(tp_market, conviction="manual", source="TEST") is True
+        action = portfolio.process_position_tick(
+            tp_mint, dict(tp_market, price_usd="1.8", fetched_at=portfolio.now_ts())
+        )
+        assert action == "TAKE_PROFIT_1", action
+        conn = portfolio._conn()
+        invested_tp, realized = conn.execute(
+            "SELECT invested_sol, realized_sol FROM positions WHERE mint = ?", (tp_mint,)
+        ).fetchone()
+        conn.close()
+        expected = invested_tp * 0.5 * 1.8 * 0.92  # half the position at +80%, minus 800 bps
+        assert abs(realized - expected) < 1e-9, (realized, expected)
+        print("  exit slippage on TP1: OK")
+    finally:
+        cleanup_db(db_path)
+
+    # A typo in a boolean sell flag is a hard config failure, not silent False.
+    fails, _, _ = summarize(validate_env({"FLOW_EXIT_ENABLED": "ture", "WHALE_EXIT_ENABLED": "flase"}))
+    assert fails >= 2, fails
+    fails, _, _ = summarize(validate_env({"FLOW_EXIT_ENABLED": "off", "WHALE_EXIT_ENABLED": "0"}))
+    assert fails == 0, fails
+    print("  boolean typo validation: OK")
 
 
 def test_v10_observability():
@@ -1079,6 +1230,7 @@ def main():
         test_v10_schema_and_metrics()
         test_v10_risk_and_backtest()
         test_v10_security()
+        test_v11_phase0_hardening()
         test_v10_observability()
         test_v10_strategy_profiles()
         test_v10_ml_advisory()

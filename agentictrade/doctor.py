@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import socket
+import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -143,14 +144,41 @@ def check_port(host: str, port: int) -> Check:
     return Check("port", "ok", f"{host}:{port} is free")
 
 
-def check_exposure(host: str, token: str) -> Check:
+def check_env_permissions(path: Path) -> Check:
+    """Warn when a .env file with potential secrets is readable by others."""
+    if not path.exists():
+        return Check("env_file_mode", "info", "no .env file to check")
+    if os.name == "nt":
+        return Check("env_file_mode", "info", "permission checks are skipped on Windows")
+    try:
+        mode = stat.S_IMODE(path.stat().st_mode)
+    except OSError as exc:
+        return Check("env_file_mode", "warn", f"cannot stat {path}: {exc}")
+    if mode & 0o077:
+        return Check(
+            "env_file_mode",
+            "warn",
+            f"{path} is mode {mode:04o}; it may contain tokens. Run: chmod 600 {path}",
+        )
+    return Check("env_file_mode", "ok", f"{path} is mode {mode:04o}")
+
+
+def check_exposure(host: str, token: str, allow_insecure: bool = False) -> Check:
     if not token:
         if host in LOOPBACK_HOSTS:
             return Check("dashboard_auth", "warn", "no token, but the dashboard is loopback-only")
+        if allow_insecure:
+            return Check(
+                "dashboard_auth",
+                "warn",
+                f"no DASHBOARD_TOKEN and the server binds {host}; ALLOW_INSECURE_DASHBOARD=true "
+                "accepts an unauthenticated API",
+            )
         return Check(
             "dashboard_auth",
-            "warn",
-            f"no DASHBOARD_TOKEN and the server binds {host}; the API is unauthenticated",
+            "fail",
+            f"no DASHBOARD_TOKEN and the server binds {host}; the trading API would be "
+            "unauthenticated. Set a token or bind 127.0.0.1",
         )
     if len(token) < 12:
         return Check("dashboard_auth", "warn", "DASHBOARD_TOKEN is shorter than 12 characters")
@@ -188,6 +216,7 @@ def run_checks(
             checks = [Check("env_file", "ok", f"{env_file} ({len(file_values)} keys)")]
         # File values win: this mirrors python-dotenv's override=True usage.
         values.update(file_values)
+        checks.append(check_env_permissions(env_file))
     else:
         checks = [Check("env_file", "ok", "using the process environment")]
 
@@ -212,8 +241,15 @@ def run_checks(
     resolved_audit = audit_path or Path(values.get("AUDIT_LOG_PATH") or "bot_audit.jsonl")
     checks.append(check_audit_log(resolved_audit))
 
-    resolved_host = host or values.get("COMMAND_CENTER_HOST") or "0.0.0.0"
-    checks.append(check_exposure(resolved_host, str(values.get("DASHBOARD_TOKEN") or "").strip()))
+    resolved_host = host or values.get("COMMAND_CENTER_HOST") or "127.0.0.1"
+    checks.append(
+        check_exposure(
+            resolved_host,
+            str(values.get("DASHBOARD_TOKEN") or "").strip(),
+            allow_insecure=str(values.get("ALLOW_INSECURE_DASHBOARD") or "").strip().lower()
+            in ("1", "true", "yes", "on"),
+        )
+    )
 
     try:
         resolved_port = int(port if port is not None else values.get("COMMAND_CENTER_PORT") or 8080)
@@ -252,7 +288,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-file", default=".env", help="path to the .env file (default: .env)")
     parser.add_argument("--db", help="portfolio database path (default: PAPER_DB_PATH or paper_portfolio.db)")
     parser.add_argument("--audit-log", help="audit log path (default: AUDIT_LOG_PATH or bot_audit.jsonl)")
-    parser.add_argument("--host", help="host the dashboard binds (default: COMMAND_CENTER_HOST or 0.0.0.0)")
+    parser.add_argument("--host", help="host the dashboard binds (default: COMMAND_CENTER_HOST or 127.0.0.1)")
     parser.add_argument("--port", type=int, help="dashboard port (default: COMMAND_CENTER_PORT or 8080)")
     parser.add_argument("--no-port-check", action="store_true", help="skip the TCP bind test")
     parser.add_argument("--no-info", action="store_true", help="hide informational checks")

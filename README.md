@@ -87,9 +87,11 @@ python -m agentictrade.doctor            # must print: Result: OK
 python research_bot.py
 ```
 
-Open **http://localhost:8080** — the header shows **v11.0**. To reach it from
-another machine, set `COMMAND_CENTER_HOST=0.0.0.0` **and** a `DASHBOARD_TOKEN`;
-the doctor warns when the API is exposed without authentication.
+Open **http://localhost:8080** — the header shows **v11.0**. The dashboard binds
+loopback (`127.0.0.1`) by default. To reach it from another machine, set
+`COMMAND_CENTER_HOST=0.0.0.0` **and** a `DASHBOARD_TOKEN`: the bot refuses to
+start on a non-loopback bind without a token (override with
+`ALLOW_INSECURE_DASHBOARD=true` only on trusted networks).
 
 Optional checks:
 
@@ -312,7 +314,16 @@ Build and run locally:
 docker compose up --build
 ```
 
-The container exposes port `8080`. Mount or provide:
+The container must bind `0.0.0.0` for the published port to work, so
+`docker-compose.yml` **requires** `DASHBOARD_TOKEN` — compose refuses to start
+without it (`${DASHBOARD_TOKEN:?…}`). Export it before building:
+
+```bash
+export DASHBOARD_TOKEN="$(openssl rand -hex 24)"
+docker compose up --build
+```
+
+Mount or provide:
 
 - `.env`
 - `paper_portfolio.db`
@@ -400,7 +411,7 @@ These additions are intentionally non-breaking: v9 behavior remains the default.
 - **Safer browser surface**: CORS is now an allowlist (`ALLOWED_ORIGINS`, localhost on any port by default) instead of `*`; responses carry `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a CSP for HTML pages. `CORS_ALLOW_ALL=true` restores the old behaviour.
 - **Dependency auditing**: `pip-audit` runs in CI on every push.
 - **Config validation**: `agentictrade/validate.py` checks numeric ranges, live-trading guards, token strength, profiles and timezones; `python -m agentictrade.doctor` adds package, database-schema, audit-path and port checks and exits non-zero on any `FAIL`.
-- **Bind control**: `COMMAND_CENTER_HOST` (default `0.0.0.0`) and `COMMAND_CENTER_PORT` (default `8080`) let you keep the dashboard loopback-only. `PAPER_DB_PATH` selects the portfolio database.
+- **Bind control**: `COMMAND_CENTER_HOST` (default `127.0.0.1`) and `COMMAND_CENTER_PORT` (default `8080`) keep the dashboard loopback-only out of the box. A non-loopback bind without `DASHBOARD_TOKEN` is refused at startup (doctor exits non-zero); `ALLOW_INSECURE_DASHBOARD=true` is the explicit escape hatch. `X-Forwarded-For` is only honoured when `TRUST_PROXY_HEADERS=true`. `PAPER_DB_PATH` selects the portfolio database.
 - **Supply chain**: Dependabot (pip + Actions), CodeQL (`security-and-quality`) and a `SECURITY.md` policy.
 - **Incremental extraction**: time helpers and the paper fill/exit model now live in `agentictrade/timeutils.py` and `agentictrade/fills.py`, re-exported by `research_bot.py` so existing imports keep working.
 
@@ -455,7 +466,7 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 - Tokens that exist only on the Pump.fun curve (no DexScreener quote yet) cannot pass confirmation or a manual buy, because no fresh price is available.
 - Wallet quality starts neutral and only becomes meaningful after a few closed trades per wallet.
 - Some older log and hard-filter messages are still in Croatian. The newer risk-engine messages are in English.
-- The web API is intended for local use. If you must expose port 8080 on a LAN, set `DASHBOARD_TOKEN` and keep the rate limit enabled. Do not expose it to the internet.
+- The web API is intended for local use and now binds `127.0.0.1` by default. A non-loopback bind requires `DASHBOARD_TOKEN` or startup is refused; `ALLOW_INSECURE_DASHBOARD=true` is an explicit opt-out. Keep the rate limit enabled and do not expose it to the internet.
 - The ML model is advisory only and never opens, blocks or resizes trades. The realized replay and the OHLCV backtester are research tools, not forecasts.
 - The OHLCV backtester uses close-based signals and conservative high/low exit checks; it cannot model order-book depth, MEV or partial fills.
 - Walk-forward segments reset the bankroll and do not re-optimize parameters; use it to compare strategies out of sample, not to tune them automatically.

@@ -4,6 +4,39 @@ All notable changes to AgenticTrade are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions use
 `MAJOR.MINOR.PATCH`.
 
+## [Unreleased]
+
+### Security
+
+- The dashboard now binds `127.0.0.1` by default. A non-loopback bind with an
+  empty `DASHBOARD_TOKEN` raises `SystemExit` instead of exposing an
+  unauthenticated trading API; `ALLOW_INSECURE_DASHBOARD=true` is the explicit
+  opt-out (doctor warns, never silently ignores it).
+- Mutating API routes (`POST`/`PUT`/`PATCH`/`DELETE`) reject cross-site
+  browser requests via `Sec-Fetch-Site`/`Origin`, even without a token.
+- Rate limiting runs before token auth, and `X-Forwarded-For` is trusted only
+  when `TRUST_PROXY_HEADERS=true`.
+- Boolean env vars parsed with `env_bool()` are validated at startup: a typo
+  (`ture`, `flase`) is now a hard `FAIL` in `doctor` instead of silently
+  meaning `false`.
+- `backup.sh --no-secrets` omits `.env`, and backups that contain it print a
+  warning.
+- `doctor` warns when `.env` is group/world-readable (POSIX) and tells you to
+  `chmod 600` it.
+- `docker-compose.yml` requires `DASHBOARD_TOKEN` (`${DASHBOARD_TOKEN:?…}`)
+  because the container must bind `0.0.0.0`.
+
+### Fixed
+
+- `WHALE_EXIT` now requires the sell to come from the whale the position
+  followed, after entry, within `WHALE_EVENT_TTL_SEC` (default 1800s).
+- Every sell leg pays `PAPER_EXIT_SLIPPAGE_BPS`; TP1, time-stop, trailing and
+  manual exits previously booked at the lower entry rate.
+- Quotes with a future timestamp are treated as stale (clock skew) instead of
+  passing the freshness check.
+- `LIVE_TRADING_ENABLED` and `LIVE_TRADING_CONFIRMED` use the shared
+  `env_bool()` parser, matching `validate.py` semantics.
+
 ## [11.0.0] - 2026-11-12
 
 ### Added

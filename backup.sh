@@ -4,6 +4,7 @@
 #
 #   ./backup.sh                          # -> ~/AgenticTradeBackup/<timestamp>/
 #   ./backup.sh /media/usb/at-backups    # custom destination root
+#   ./backup.sh --no-secrets             # omit .env (recommended when sharing)
 #
 # Mirrors backup.ps1, plus the SQLite -wal/-shm sidecars: copying only the .db
 # while the bot is running can capture a stale or torn snapshot.
@@ -14,13 +15,15 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 SRC_DIR="$PWD"
 DEST_ROOT=""
+INCLUDE_ENV=1
 
 for arg in "$@"; do
     case "$arg" in
         -h|--help)
-            sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
+        --no-secrets) INCLUDE_ENV=0 ;;
         -*) printf '[ERROR] unknown option: %s (try --help)\n' "$arg" >&2; exit 2 ;;
         *)
             [ -z "$DEST_ROOT" ] || { printf '[ERROR] only one destination may be given\n' >&2; exit 2; }
@@ -47,11 +50,19 @@ mkdir -p "$TARGET"
 
 copied=0
 for file in "${FILES[@]}"; do
+    if [ "$file" = ".env" ] && [ "$INCLUDE_ENV" -eq 0 ]; then
+        continue
+    fi
     if [ -f "$SRC_DIR/$file" ]; then
         cp -p "$SRC_DIR/$file" "$TARGET/"
         copied=$((copied + 1))
     fi
 done
+
+if [ -f "$SRC_DIR/.env" ] && [ "$INCLUDE_ENV" -eq 1 ]; then
+    printf '[WARN] .env was copied into the backup; it may contain DASHBOARD_TOKEN, API keys\n' >&2
+    printf '       or a GitHub token. Use --no-secrets to exclude it.\n' >&2
+fi
 
 if [ "$copied" -eq 0 ]; then
     rmdir "$TARGET" 2>/dev/null || true

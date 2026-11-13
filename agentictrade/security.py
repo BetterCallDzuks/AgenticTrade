@@ -1,8 +1,9 @@
 """Lightweight security helpers for the local Command Center API.
 
 The dashboard is meant for local use. These helpers add an optional shared
-token and a simple in-memory rate limit so exposing port 8080 on a LAN is not
-completely unsafe. Both features are opt-in / non-breaking by default.
+token, a simple in-memory rate limit, a CSRF gate for mutating routes and a
+spoof-resistant client address. Auth itself remains opt-in when the bind stays
+on loopback; the server refuses a network bind without a token.
 """
 
 import hmac
@@ -46,11 +47,41 @@ def is_authorized(provided: Optional[str], expected: Optional[str]) -> bool:
     return hmac.compare_digest(str(provided), str(expected))
 
 
-def client_ip(headers: dict, peer: Optional[str]) -> str:
-    forwarded = (headers or {}).get("X-Forwarded-For") or ""
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def client_ip(headers: dict, peer: Optional[str], trust_forwarded: bool = False) -> str:
+    """Return the client address for rate limiting.
+
+    ``X-Forwarded-For`` is client-controlled, so it is only honoured when the
+    deployment explicitly declares a trusted reverse proxy; otherwise any
+    caller could rotate spoofed addresses and bypass the limiter.
+    """
+    if trust_forwarded:
+        forwarded = (headers or {}).get("X-Forwarded-For") or ""
+        if forwarded:
+            return forwarded.split(",")[0].strip()
     return peer or "unknown"
+
+
+def is_mutation_allowed(headers: dict, allowed_origins: Set[str], allow_all: bool = False) -> bool:
+    """Return True when a state-changing request is same-origin or non-browser.
+
+    Cross-site POSTs are simple requests, so they skip CORS preflight and can
+    reach the API when no token is configured. Browsers mark those with an
+    ``Origin`` header and ``Sec-Fetch-Site: cross-site``; local scripts send
+    neither, so their absence is not treated as hostile.
+    """
+    headers = headers or {}
+    site = str(headers.get("Sec-Fetch-Site") or "").strip().lower()
+    if site in ("same-origin", "none"):
+        return True
+    origin = headers.get("Origin")
+    if not origin:
+        return True
+    if allow_all:
+        return True
+    return is_origin_allowed(origin, allowed_origins)
 
 
 class RateLimiter:
