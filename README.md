@@ -464,7 +464,8 @@ python research_bot.py
 ```
 
 Open **http://127.0.0.1:8080** — the header shows **v12.0**. `START_BOT.bat` is
-a convenience wrapper that runs `python research_bot.py` from its own folder.
+a convenience wrapper that runs `research_bot.py` from its own folder, using
+`.venv\Scripts\python.exe` when the virtualenv exists and `python` otherwise.
 
 4. Optional checks:
 
@@ -674,13 +675,19 @@ export DASHBOARD_TOKEN="$(openssl rand -hex 24)"
 docker compose up --build
 ```
 
-Mount or provide:
+The image keeps mutable state in `/app/data`, which compose bind-mounts to
+`./data` (created automatically, so a fresh checkout works without
+pre-creating files):
 
-- `.env`
-- `paper_portfolio.db`
-- `bot_history.log`
+- `data/paper_portfolio.db` — paper book
+- `data/bot_history.log` — text log
+- `data/bot_audit.jsonl` — audit trail
+- `data/ml_model.json` — advisory ML model
 
-Live trading remains disabled unless explicitly configured in `.env`.
+`.env` is optional for the container (the exported token is enough); use it
+for `GEMINI_API_KEY` or other overrides. `./backup.sh` and `./backup.ps1`
+include `./data` automatically. Live trading remains disabled unless
+explicitly configured in `.env`.
 
 ## Backup and restore
 
@@ -715,6 +722,10 @@ Or restore from a specific folder:
 ```
 
 The restore script asks for confirmation before overwriting local files.
+
+Both helpers cover the two supported layouts: files in the project root (a
+local `python research_bot.py` run) and the Docker Compose `data/` directory.
+Backups store the container state as `data/` inside the timestamped folder.
 
 ## Telegram bot (buttons)
 

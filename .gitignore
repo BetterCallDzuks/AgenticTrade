@@ -15,6 +15,11 @@ bot_history.jsonl
 bot_audit.jsonl
 ml_model.json
 replay_report.md
+# Docker Compose state directory (DB, logs, audit trail, ML model).
+# Keep the directory itself (so a fresh clone does not get a root-owned bind
+# mount) but ignore everything inside it.
+data/*
+!data/.gitkeep
 
 # Python
 __pycache__/

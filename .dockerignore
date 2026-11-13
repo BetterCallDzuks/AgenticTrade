@@ -1,0 +1,28 @@
+# Build context hygiene: never send secrets, local state or tool caches to the
+# Docker daemon. The image copies only the files listed in the Dockerfile.
+.git
+.gitignore
+.gitattributes
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.coverage
+htmlcov
+.env
+.env.*
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.jsonl
+ml_model.json
+replay_report.md
+data
+*.key
+*.pem
+*.zip

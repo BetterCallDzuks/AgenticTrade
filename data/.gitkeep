@@ -1,0 +1,3 @@
+# Mutable state for the Docker Compose deployment (database, logs, audit
+# trail, ML model) is written here. The directory is tracked so a fresh clone
+# gets a user-owned bind mount instead of a root-owned one created by Docker.

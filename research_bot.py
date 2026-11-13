@@ -68,7 +68,12 @@ from bettercalltrader.http import post_json_with_retry as _post_json_with_retry
 from bettercalltrader.models import TokenAnalysisDecision
 from bettercalltrader.telegram import TelegramNotifier
 
-LOG_FILE_PATH = BASE_DIR / "bot_history.log"
+# Relative LOG_FILE_PATH values resolve against the project directory, not the
+# caller's cwd, so `./run.sh` and a bare `python research_bot.py` agree.
+LOG_FILE_PATH = Path(os.environ.get("LOG_FILE_PATH") or "bot_history.log")
+if not LOG_FILE_PATH.is_absolute():
+    LOG_FILE_PATH = BASE_DIR / LOG_FILE_PATH
+LOG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
 file_logger = logging.getLogger("BetterCallTraderFileLogger")
 file_logger.setLevel(logging.INFO)
 if not file_logger.handlers:

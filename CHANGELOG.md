@@ -28,6 +28,31 @@ All notable changes to BetterCallTrader are documented here. The format follows
   dashboard section (language switch, dashboard token storage, metric prefix),
   and the known-limitations note about Croatian backend messages.
 
+### Fixed
+
+- **Docker Compose state layout.** Mounting individual files made Docker create
+  missing host paths as *directories*, which broke SQLite and logging on a fresh
+  checkout. The container now keeps all mutable state in `/app/data`
+  (`PAPER_DB_PATH`, `AUDIT_LOG_PATH`, `LOG_FILE_PATH`, `ML_MODEL_PATH`), bound to
+  `./data`. `data/.gitkeep` keeps that directory user-owned after a clone.
+- **Container healthcheck.** Compose now polls the authenticated `/ready`
+  endpoint with `DASHBOARD_TOKEN`, so `docker compose ps` reports real health.
+- **Secrets no longer leak into the container.** The GitHub token used by this
+  checkout's git credential helper moved out of `.env` to
+  `~/.config/git/bettercalltrader-token` (mode 0600). `.env` is loaded into the
+  bot process and passed to the container, so it should only hold app config.
+  A new `.dockerignore` also keeps `.env`, `.git`, `.venv`, databases and logs
+  out of the build context.
+- `LOG_FILE_PATH` is now configurable; relative values resolve against the
+  project directory instead of the caller's cwd. `doctor` reports an existing
+  `.env` with no keys as OK instead of "no readable file".
+- `START_BOT.bat` was still branded "Solana Agentic Trading Bot v9.0" and now
+  prefers `.venv\Scripts\python.exe` when the virtualenv exists.
+- Backup/restore scripts (bash and PowerShell) now include the Compose `data/`
+  directory, and the WAL consistency warning checks both locations.
+- CI no longer runs the test workflow twice per pull request (`push` is limited
+  to `main`; `pull_request` still covers branches).
+
 ## [12.0.0] - 2026-11-13
 
 ### Security

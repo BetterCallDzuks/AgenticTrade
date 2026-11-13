@@ -7,7 +7,8 @@
 #   ./restore.sh -y <backup-dir> # skip the confirmation prompt
 #
 # Mirrors restore.ps1: overwrites .env, the DB, logs, audit trail and ML model
-# in the project directory.
+# in the project directory, plus the Docker Compose `data/` directory when the
+# backup contains one.
 #
 set -euo pipefail
 
@@ -21,7 +22,7 @@ for arg in "$@"; do
     case "$arg" in
         -y|--yes) ASSUME_YES=1 ;;
         -h|--help)
-            sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         -*) printf '[ERROR] unknown option: %s\n' "$arg" >&2; exit 2 ;;
@@ -58,6 +59,18 @@ for file in paper_portfolio.db paper_portfolio.db-wal paper_portfolio.db-shm \
         restored=$((restored + 1))
     fi
 done
+
+if [ -d "$BACKUP_PATH/data" ]; then
+    mkdir -p "./data"
+    for file in paper_portfolio.db paper_portfolio.db-wal paper_portfolio.db-shm \
+                bot_history.log bot_audit.jsonl ml_model.json; do
+        if [ -f "$BACKUP_PATH/data/$file" ]; then
+            cp -p "$BACKUP_PATH/data/$file" "./data/$file"
+            printf 'Restored data/%s\n' "$file"
+            restored=$((restored + 1))
+        fi
+    done
+fi
 
 if [ "$restored" -eq 0 ]; then
     printf '[ERROR] backup contains none of the expected files: %s\n' "$BACKUP_PATH" >&2

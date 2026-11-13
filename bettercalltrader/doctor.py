@@ -272,7 +272,16 @@ def run_checks(
     if env_file is not None:
         file_values = load_env_file(env_file)
         if not file_values:
-            checks: List[Check] = [Check("env_file", "warn", f"no readable file at {env_file}")]
+            if env_file.exists():
+                checks: List[Check] = [
+                    Check(
+                        "env_file",
+                        "ok",
+                        f"{env_file} has no keys; defaults and the process environment apply",
+                    )
+                ]
+            else:
+                checks = [Check("env_file", "warn", f"no readable file at {env_file}")]
         else:
             checks = [Check("env_file", "ok", f"{env_file} ({len(file_values)} keys)")]
         # File values win: this mirrors python-dotenv's override=True usage.

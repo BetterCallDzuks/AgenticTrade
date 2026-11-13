@@ -16,4 +16,18 @@ foreach ($file in $files) {
     }
 }
 
+# Docker Compose keeps the same files under .\data.
+$dataFiles = @("paper_portfolio.db", "bot_history.log", "bot_audit.jsonl", "ml_model.json")
+$dataDir = Join-Path $source "data"
+if (Test-Path $dataDir) {
+    $targetData = Join-Path $target "data"
+    foreach ($file in $dataFiles) {
+        $path = Join-Path $dataDir $file
+        if (Test-Path $path) {
+            New-Item -ItemType Directory -Force -Path $targetData | Out-Null
+            Copy-Item $path $targetData -Force
+        }
+    }
+}
+
 Write-Host "Backup created at: $target"
