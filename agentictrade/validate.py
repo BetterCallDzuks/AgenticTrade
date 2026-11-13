@@ -13,6 +13,7 @@ Levels:
 from dataclasses import dataclass
 from typing import Dict, List, Mapping, Optional, Tuple
 
+from agentictrade.llm import OLLAMA_BASE_URL
 from agentictrade.strategies import PROFILES, normalize_profile
 
 
@@ -42,6 +43,7 @@ _BOOLEAN_KEYS = (
     "CORS_ALLOW_ALL",
     "TRUST_PROXY_HEADERS",
     "ALLOW_INSECURE_DASHBOARD",
+    "LLM_FALLBACK_TO_HEURISTIC",
 )
 
 
@@ -204,6 +206,9 @@ def validate_env(env: Mapping[str, str]) -> List[Issue]:
     c.numeric(env, "STEP2_TRIGGER_PCT", minimum=0.0, maximum=10_000.0, allow_zero=True)
     c.numeric(env, "STEP2_FLOOR_PCT", minimum=-100.0, maximum=10_000.0, allow_zero=True)
     c.numeric(env, "BREAKEVEN_BUFFER_PCT", minimum=0.0, maximum=100.0, allow_zero=True)
+    c.numeric(env, "TP1_FRACTION", minimum=0.01, maximum=1.0)
+    c.numeric(env, "FINAL_TAKE_PROFIT_PCT", minimum=0.0, maximum=10_000.0, allow_zero=True)
+    c.numeric(env, "TRAILING_ARM_GAIN_PCT", minimum=0.0, maximum=10_000.0, allow_zero=True)
 
     # ---- entry gates --------------------------------------------------
     c.numeric(env, "ENTRY_CONFIRM_SEC", minimum=0, maximum=3_600, integer=True)
@@ -228,6 +233,7 @@ def validate_env(env: Mapping[str, str]) -> List[Issue]:
     c.numeric(env, "PAPER_SLIPPAGE_BPS", minimum=0.0, maximum=5_000.0, allow_zero=True)
     c.numeric(env, "PAPER_EXIT_SLIPPAGE_BPS", minimum=0.0, maximum=5_000.0, allow_zero=True)
     c.numeric(env, "PAPER_IMPACT_COEFF", minimum=0.0, maximum=100.0, allow_zero=True)
+    c.numeric(env, "PAPER_IMPACT_EXPONENT", minimum=0.1, maximum=2.0)
     c.numeric(env, "PAPER_AMM_FEE_BPS", minimum=0.0, maximum=5_000.0, allow_zero=True)
     c.numeric(env, "PAPER_PRIORITY_FEE_SOL", minimum=0.0, maximum=10.0, allow_zero=True)
     c.numeric(env, "PAPER_FAILED_TX_PROB", minimum=0.0, maximum=1.0, allow_zero=True)
@@ -310,8 +316,44 @@ def validate_env(env: Mapping[str, str]) -> List[Issue]:
                 f"cannot load timezone {timezone_name!r}; a fixed CET/CEST fallback is used",
             )
 
-    if not _raw(env, "GEMINI_API_KEY"):
-        c.info("GEMINI_API_KEY", "missing; the research agent uses the heuristic mode")
+    # ---- LLM providers ------------------------------------------------
+    provider = (_raw(env, "LLM_PROVIDER") or "auto").lower()
+    known_providers = ("auto", "gemini", "openai", "ollama", "none")
+    # Aliases accepted by LLMConfig.from_env (local/openai-compatible/...).
+    aliases = ("local", "openai-compatible", "llama", "llamacpp")
+    if provider not in known_providers and provider not in aliases:
+        c.fail(
+            "LLM_PROVIDER",
+            f"unknown provider {provider!r}; use one of {', '.join(known_providers)}",
+        )
+    base_url = _raw(env, "LLM_BASE_URL")
+    if base_url:
+        if not (base_url.startswith("http://") or base_url.startswith("https://")):
+            c.fail("LLM_BASE_URL", f"expected an http(s) URL, got {base_url!r}")
+        elif base_url.startswith("http://") and not any(
+            f"://{host}" in base_url for host in _LOOPBACK_HOSTS
+        ):
+            c.warn(
+                "LLM_BASE_URL",
+                "plain http to a non-loopback host sends prompts in clear text; prefer https or a local server",
+            )
+        if not _raw(env, "LLM_MODEL"):
+            c.warn(
+                "LLM_MODEL",
+                "LLM_BASE_URL is set but LLM_MODEL is empty; the server's default model is used",
+            )
+    c.numeric(env, "LLM_TIMEOUT_SEC", minimum=1.0, maximum=600.0)
+    c.numeric(env, "LLM_TEMPERATURE", minimum=0.0, maximum=2.0, allow_zero=True)
+    c.numeric(env, "LLM_MAX_TOKENS", minimum=64, maximum=131_072, integer=True)
+    if provider in ("openai", "ollama", "local", "openai-compatible", "llama", "llamacpp") and not base_url:
+        c.warn(
+            "LLM_BASE_URL",
+            f"LLM_PROVIDER={provider!r} but LLM_BASE_URL is empty; falling back to {OLLAMA_BASE_URL}",
+        )
+
+    gemini_key = _raw(env, "GEMINI_API_KEY")
+    if not gemini_key and not base_url:
+        c.info("GEMINI_API_KEY", "missing and no LLM_BASE_URL; the research agent uses the heuristic mode")
 
     return c.issues
 

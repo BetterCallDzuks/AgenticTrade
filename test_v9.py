@@ -1266,7 +1266,7 @@ def test_v11_cost_model():
     assert round_trip["entryCostSol"] > 0 and round_trip["exitCostSol"] > 0
     assert round_trip["exitPrice"] < 1.5
 
-    assert COST_MODEL_VERSION == "1"
+    assert COST_MODEL_VERSION == "2"
     assert spread.as_dict()["version"] == COST_MODEL_VERSION
     assert COST_DEFAULTS["amm_fee_bps"] == 25.0
     assert config_hash({"a": 80.0}) == config_hash({"a": 80})
@@ -1334,9 +1334,11 @@ def test_v11_backtest_exits():
         (1.0, 1.0, 1.0, 1.0),
         (2.0, 2.2, 1.9, 2.0),
     ])
-    result = run_backtest(gap_tp, _FirstBuyStrategy(), free_config(take_profit_pct=50.0))
+    result = run_backtest(
+        gap_tp, _FirstBuyStrategy(), free_config(take_profit_pct=50.0, tp1_fraction=1.0)
+    )
     trade = result.trades[0]
-    assert trade["exitReason"] == "TAKE_PROFIT"
+    assert trade["exitReason"] == "TAKE_PROFIT_1"
     assert trade["exitMidPrice"] == 2.0
     assert abs(trade["pnlSol"] - (0.5 * 2.0 - 0.5)) < 1e-12
     assert trade["ambiguousBar"] is False
@@ -1505,7 +1507,338 @@ def test_v11_config_fingerprint():
     assert any(issue.key == "PAPER_AMM_FEE_BPS" and issue.level == "fail" for issue in issues)
     issues = validate_env({"PAPER_PRIORITY_FEE_SOL": "-0.1"})
     assert any(issue.key == "PAPER_PRIORITY_FEE_SOL" and issue.level == "fail" for issue in issues)
+    issues = validate_env({"PAPER_IMPACT_EXPONENT": "0"})
+    assert any(issue.key == "PAPER_IMPACT_EXPONENT" and issue.level == "fail" for issue in issues)
+    issues = validate_env({"TP1_FRACTION": "1.5"})
+    assert any(issue.key == "TP1_FRACTION" and issue.level == "fail" for issue in issues)
+    issues = validate_env({"LLM_PROVIDER": "wat"})
+    assert any(issue.key == "LLM_PROVIDER" and issue.level == "fail" for issue in issues)
+    issues = validate_env({"LLM_BASE_URL": "ftp://example.com"})
+    assert any(issue.key == "LLM_BASE_URL" and issue.level == "fail" for issue in issues)
     print("  v11 config fingerprint and cost validation: OK")
+
+
+def test_v11_partial_tp1():
+    from agentictrade.ohlcv import BacktestConfig, run_backtest
+
+    cfg = BacktestConfig(
+        initial_sol=10.0,
+        trade_size_sol=0.5,
+        fee_bps=0.0,
+        slippage_bps=0.0,
+        exit_slippage_bps=0.0,
+        impact_coeff=0.0,
+        priority_fee_sol=0.0,
+        failed_tx_prob=0.0,
+        latency_candles=1,
+        stop_loss_pct=-25.0,
+        take_profit_pct=20.0,
+        trailing_stop_pct=0.0,
+        tp1_fraction=0.5,
+    )
+    candles = _ohlc_candles([
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.05, 0.95, 1.0),  # entry at the open
+        (1.0, 1.30, 1.00, 1.25),  # TP1: sell half at 1.2
+        (0.70, 0.72, 0.60, 0.70),  # remainder stops out at the open
+    ])
+    result = run_backtest(candles, _FirstBuyStrategy(), cfg)
+    assert len(result.trades) == 1, result.trades
+    trade = result.trades[0]
+    assert trade["tp1Hit"] is True
+    assert trade["exitIndex"] == 4 and trade["legs"] == 2
+    assert trade["exitReason"] == "TRAILING_STOP"
+    assert abs(trade["tp1Price"] - 1.2) < 1e-12
+    assert abs(trade["tp1ProceedsSol"] - 0.3) < 1e-12
+    # Half sold at 1.2, half at the gapped stop (0.7), on a 0.5 SOL budget.
+    assert abs(trade["returnedSol"] - (0.25 * 1.2 + 0.25 * 0.7)) < 1e-12
+    assert abs(trade["pnlSol"] - -0.025) < 1e-12
+    assert result.summary["tp1Exits"] == 1
+    print("  v11 partial TP1: OK")
+
+
+def test_v11_depth_and_participation():
+    from agentictrade.costs import CostModel, depth_used_fraction, replay_round_trip
+    from agentictrade.ohlcv import BacktestConfig, Candle, run_backtest
+
+    model = CostModel(
+        base_bps=0.0,
+        amm_fee_bps=0.0,
+        impact_coeff=1.0,
+        priority_fee_sol=0.0,
+        failed_tx_prob=0.0,
+        sol_price_usd=185.0,
+        max_slippage=0.9,
+    )
+    used = depth_used_fraction(5.0, 10_000.0, 185.0)
+    assert 0.0 < used < 0.95
+    shallow = replay_round_trip(model, model, 1.0, 1.0, 5.0, 10_000.0, depth_decay=False)
+    deep = replay_round_trip(model, model, 1.0, 1.0, 5.0, 10_000.0, depth_decay=True)
+    assert deep["depthUsedFraction"] > 0
+    assert deep["exitCostSol"] > shallow["exitCostSol"]
+    assert deep["returnedSol"] < shallow["returnedSol"]
+
+    # A steeper exponent prices the same depth more aggressively.
+    linear = model.impact_fraction(5.0, 10_000.0)
+    quad = CostModel(
+        base_bps=0.0, amm_fee_bps=0.0, impact_coeff=1.0, priority_fee_sol=0.0,
+        failed_tx_prob=0.0, sol_price_usd=185.0, impact_exponent=0.5,
+    ).impact_fraction(5.0, 10_000.0)
+    assert quad > linear and linear > 0
+
+    # A thin candle cannot fill the full requested size.
+    candles = [
+        Candle(ts=float(index * 60), open=1.0, high=1.01, low=0.99, close=1.0, volume=100.0)
+        for index in range(8)
+    ]
+    cfg = BacktestConfig(
+        initial_sol=10.0,
+        trade_size_sol=0.5,
+        fee_bps=0.0,
+        slippage_bps=0.0,
+        exit_slippage_bps=0.0,
+        impact_coeff=0.0,
+        priority_fee_sol=0.0,
+        failed_tx_prob=0.0,
+        latency_candles=1,
+        stop_loss_pct=0.0,
+        take_profit_pct=0.0,
+        trailing_stop_pct=0.0,
+        max_participation_pct=0.1,
+    )
+    result = run_backtest(candles, _FirstBuyStrategy(), cfg)
+    trade = result.trades[0]
+    capacity = (100.0 * 0.1) / 185.0
+    assert trade["requestedSol"] == 0.5
+    assert abs(trade["investedSol"] - capacity) < 1e-12
+    assert 0.0 < trade["filledFraction"] < 1.0
+    assert result.summary["partialEntries"] == 1
+    assert result.summary["requestedEntries"] == 1
+    print("  v11 depth decay and participation cap: OK")
+
+
+def test_v11_exit_policy_parity():
+    from agentictrade.exits import (
+        BREAKEVEN_STOP, FAST_INVALIDATION, FLOW_EXIT, STOP_LOSS,
+        TAKE_PROFIT_1, TIME_STOP, TRAILING_STOP, WHALE_EXIT, ExitPolicy,
+    )
+
+    policy = ExitPolicy()
+    # TP1 is partial by default.
+    intent = policy.classify_tick(
+        entry_price=1.0, current_price=1.9, highest_price=1.9, tp1_hit=False, age_sec=600
+    )
+    assert intent.reason == TAKE_PROFIT_1 and intent.fraction == 0.5
+
+    # Same tick through the bar resolver: reason and fraction must agree.
+    bar = policy.intrabar(
+        entry_price=1.0, peak_price=1.0, tp1_hit=False,
+        open_price=1.0, high=1.0, low=1.0, close=1.9, age_sec=600,
+    )
+    assert bar is None or bar.reason == TAKE_PROFIT_1
+
+    assert policy.classify_tick(
+        entry_price=1.0, current_price=0.7, highest_price=1.0, tp1_hit=False, age_sec=600
+    ).reason == STOP_LOSS
+    assert policy.classify_tick(
+        entry_price=1.0, current_price=0.7, highest_price=1.0, tp1_hit=False, age_sec=10
+    ).reason == FAST_INVALIDATION
+    assert policy.classify_tick(
+        entry_price=1.0, current_price=1.02, highest_price=1.0, tp1_hit=False, age_sec=10,
+        whale_selling={"label": "w"},
+    ).reason == WHALE_EXIT
+    assert policy.classify_tick(
+        entry_price=1.0, current_price=1.0, highest_price=1.0, tp1_hit=False, age_sec=10,
+        flow={"sells": 5, "buys": 1},
+    ).reason == FLOW_EXIT
+    assert policy.classify_tick(
+        entry_price=1.0, current_price=1.0, highest_price=1.0, tp1_hit=False, age_sec=1000
+    ).reason == TIME_STOP
+
+    # Trailing: a new high arms it, then a pullback through the trail exits.
+    trail = ExitPolicy(trailing_arm_gain_pct=10.0, trailing_stop_pct=20.0)
+    assert trail.classify_tick(
+        entry_price=1.0, current_price=1.15, highest_price=1.5, tp1_hit=False, age_sec=600
+    ).reason == TRAILING_STOP
+    bar = trail.intrabar(
+        entry_price=1.0, peak_price=1.5, tp1_hit=False,
+        open_price=1.4, high=1.4, low=1.2, close=1.3, age_sec=600,
+    )
+    assert bar is not None and bar.reason == TRAILING_STOP and abs(bar.price - 1.2) < 1e-12
+
+    # Breakeven floor after TP1, in both paths.
+    moon = ExitPolicy(move_stop_to_breakeven_after_tp1=True, breakeven_buffer_pct=1.0)
+    assert moon.classify_tick(
+        entry_price=1.0, current_price=1.0, highest_price=1.2, tp1_hit=True, age_sec=600
+    ).reason == BREAKEVEN_STOP
+    bar = moon.intrabar(
+        entry_price=1.0, peak_price=1.2, tp1_hit=True,
+        open_price=1.0, high=1.0, low=0.99, close=1.0, age_sec=600,
+    )
+    assert bar is not None and bar.reason == BREAKEVEN_STOP
+
+    # intrabar excludes the plain stop when it is disabled.
+    assert ExitPolicy(stop_loss_pct=0.0, tp1_pct=0.0).intrabar(
+        entry_price=1.0, peak_price=1.0, tp1_hit=False,
+        open_price=0.5, high=1.0, low=0.5, close=0.5, age_sec=600,
+    ) is None
+    print("  v11 shared exit policy parity: OK")
+
+
+def test_v11_llm_layer():
+    import asyncio
+
+    from aiohttp import web
+
+    from agentictrade.llm import LLMClient, LLMConfig, LLMError, extract_json_object, probe
+
+    gemini = LLMConfig.from_env({"GEMINI_API_KEY": "g"})
+    assert gemini.providers()[0].kind == "gemini"
+    local = LLMConfig.from_env({"LLM_BASE_URL": "http://127.0.0.1:9/v1", "LLM_MODEL": "tiny"})
+    assert local.providers()[0].kind == "openai"
+    assert local.providers()[0].model == "tiny"
+    assert LLMConfig.from_env({"LLM_PROVIDER": "none", "GEMINI_API_KEY": "g"}).providers() == []
+    assert LLMConfig.from_env(
+        {"LLM_PROVIDER": "local", "LLM_BASE_URL": "http://127.0.0.1:9/v1", "LLM_MODEL": "x"}
+    ).provider == "openai"
+    chain = LLMConfig.from_env(
+        {
+            "LLM_PROVIDER": "openai",
+            "LLM_BASE_URL": "http://127.0.0.1:9/v1",
+            "LLM_MODEL": "x",
+            "GEMINI_API_KEY": "g",
+        }
+    ).providers()
+    assert [spec.kind for spec in chain] == ["openai", "gemini"]
+
+    assert extract_json_object('```json\n{"a": 1}\n```') == {"a": 1}
+    assert extract_json_object('Here you go: {"b": 2} — done') == {"b": 2}
+    try:
+        extract_json_object("definitely not json")
+        raise AssertionError("non-JSON should raise")
+    except LLMError:
+        pass
+
+    async def run():
+        async def chat(request):
+            body = await request.json()
+            assert body["model"] == "tiny"
+            return web.json_response(
+                {"choices": [{"message": {"content": '```json\n{"decision": "BUY"}\n```'}}]}
+            )
+
+        async def models(request):
+            return web.json_response({"data": [{"id": "tiny"}]})
+
+        app = web.Application()
+        app.router.add_post("/v1/chat/completions", chat)
+        app.router.add_get("/v1/models", models)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        port = runner.addresses[0][1]
+        base = f"http://127.0.0.1:{port}/v1"
+        try:
+            from pydantic import BaseModel
+
+            class Decision(BaseModel):
+                decision: str
+
+            cfg = LLMConfig(provider="openai", model="tiny", local_model="tiny", base_url=base)
+            client = LLMClient(cfg)
+            assert client.available and client.is_local and client.label == "local:tiny"
+            decision = await client.complete_json("pick one", Decision)
+            assert decision.decision == "BUY"
+            assert client.last_provider == "local:tiny"
+            assert client.describe()["chain"] == ["local:tiny"]
+            # probe() is synchronous urllib, so it must run off the server loop.
+            assert (await asyncio.to_thread(probe, cfg, 2.0))["state"] == "ok"
+        finally:
+            await runner.cleanup()
+
+    asyncio.run(run())
+    print("  v11 LLM provider layer: OK")
+
+
+def test_v11_ml_contract():
+    import json
+    import sqlite3
+
+    from agentictrade.ml import (
+        FEATURE_SET_VERSION, MODEL_SCHEMA_VERSION, build_training_rows,
+        data_fingerprint, load_model, model_status, save_model, train_if_stale,
+        train_model,
+    )
+
+    db_path = make_temp_db()
+    model_path = db_path + ".model.json"
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """CREATE TABLE trade_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, mint TEXT, closed_at TEXT,
+                net_pnl_sol REAL, invested_sol REAL, conviction TEXT, source TEXT
+            )"""
+        )
+        conn.execute(
+            """CREATE TABLE decision_journal (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, mint TEXT, risk_score INTEGER,
+                hype_score INTEGER, suggested_size_sol REAL, extra_json TEXT
+            )"""
+        )
+        for i in range(30):
+            mint = f"mint{i}"
+            risk = 25 + (i % 10) * 7
+            hype = 25 + ((i * 3) % 10) * 7
+            win = risk >= 60 and hype >= 60
+            conn.execute(
+                "INSERT INTO trade_history (mint, closed_at, net_pnl_sol, invested_sol, conviction, source) VALUES (?,?,?,?,?,?)",
+                (mint, "2026-01-01 12:00:00", 0.25 if win else -0.2, 0.5, "high", "TEST"),
+            )
+            conn.execute(
+                "INSERT INTO decision_journal (mint, risk_score, hype_score, suggested_size_sol, extra_json) VALUES (?,?,?,?,?)",
+                (mint, risk, hype, 0.5, "{}"),
+            )
+        conn.commit()
+        conn.close()
+
+        rows = build_training_rows(db_path)
+        first = data_fingerprint(rows)
+        assert len(first) == 12 and data_fingerprint(list(rows)) == first
+
+        model = train_model(db_path)
+        assert model.get("ok"), model
+        assert model["schema"] == MODEL_SCHEMA_VERSION
+        assert model["featureSetVersion"] == FEATURE_SET_VERSION
+        assert model["dataFingerprint"] == first
+        save_model(model, model_path)
+
+        status = model_status(model_path)
+        assert status["state"] == "ok" and not status["reasons"]
+        assert status["summary"]["schemaVersion"] == MODEL_SCHEMA_VERSION
+        assert load_model(model_path) is not None
+
+        # Any contract bump (e.g. the shared cost model) invalidates the file.
+        stale = dict(model, costModelVersion="1")
+        Path(model_path).write_text(json.dumps(stale), encoding="utf-8")
+        assert load_model(model_path) is None
+        stale_status = model_status(model_path)
+        assert stale_status["state"] == "stale"
+        assert any("cost model" in reason for reason in stale_status["reasons"])
+
+        retrained = train_if_stale(db_path, model_path)
+        assert retrained["trained"] is True and retrained["retrained"] is True
+        assert model_status(model_path)["state"] == "ok"
+        assert train_if_stale(db_path, model_path)["retrained"] is False
+    finally:
+        cleanup_db(db_path)
+        try:
+            os.remove(model_path)
+        except OSError:
+            pass
+    print("  v11 ML model contract: OK")
 
 
 def main():
@@ -1539,6 +1872,11 @@ def main():
         test_v11_ohlcv()
         test_v11_cost_model()
         test_v11_backtest_exits()
+        test_v11_partial_tp1()
+        test_v11_depth_and_participation()
+        test_v11_exit_policy_parity()
+        test_v11_llm_layer()
+        test_v11_ml_contract()
         test_v11_cost_parity()
         test_v11_config_fingerprint()
         test_v11_config_validation()

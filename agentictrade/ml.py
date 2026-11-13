@@ -5,6 +5,7 @@ journal entry for the same mint. It is advisory only: it never changes sizing or
 blocks/opens trades. A model is only trained when there are enough samples.
 """
 
+import hashlib
 import json
 import math
 import sqlite3
@@ -26,6 +27,13 @@ FEATURE_NAMES = [
 ]
 
 MIN_SAMPLES = 12
+
+# The model contract. A model trained under an older cost model, feature set or
+# label definition is not comparable with today's trades, so it is refused
+# instead of quietly producing a probability from stale economics.
+MODEL_SCHEMA_VERSION = 2
+FEATURE_SET_VERSION = "1"
+LABEL_SOURCE = "trade_history.net_pnl_sol"
 
 
 def _sigmoid(z: float) -> float:
@@ -97,6 +105,38 @@ def build_training_rows(db_path: str) -> List[dict]:
     return out
 
 
+def data_fingerprint(rows: List[dict]) -> str:
+    """Short hash of the training rows, so two runs can be compared."""
+    payload = sorted(
+        (str(row.get("mint")), str(row.get("closed_at")), round(float(row.get("label") or 0.0), 6))
+        for row in rows
+    )
+    encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:12]
+
+
+def staleness_reasons(model: Optional[dict]) -> List[str]:
+    """Return why a model cannot be used, or an empty list when it is current."""
+    if not model:
+        return ["no model file"]
+    if not model.get("ok"):
+        return [str(model.get("reason") or "model training failed")]
+    reasons = []
+    if model.get("schema") != MODEL_SCHEMA_VERSION:
+        reasons.append(f"schema {model.get('schema')} != {MODEL_SCHEMA_VERSION}")
+    if model.get("featureSetVersion") != FEATURE_SET_VERSION:
+        reasons.append(f"feature set {model.get('featureSetVersion')!r} != {FEATURE_SET_VERSION!r}")
+    if list(model.get("featureNames") or []) != FEATURE_NAMES:
+        reasons.append("feature names changed")
+    if model.get("costModelVersion") != COST_MODEL_VERSION:
+        reasons.append(
+            f"cost model v{model.get('costModelVersion')} != v{COST_MODEL_VERSION}; labels are not comparable"
+        )
+    if model.get("labelSource") != LABEL_SOURCE:
+        reasons.append(f"label source {model.get('labelSource')!r} != {LABEL_SOURCE!r}")
+    return reasons
+
+
 def _standardize(rows: List[dict]) -> Tuple[List[List[float]], List[float], List[float]]:
     matrix = [list(r["features"]) for r in rows]
     width = len(matrix[0])
@@ -151,7 +191,7 @@ def train_model(db_path: str, iterations: int = 600, learning_rate: float = 0.15
 
     return {
         "ok": True,
-        "schema": 1,
+        "schema": MODEL_SCHEMA_VERSION,
         "trainedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "samples": len(rows),
         "positives": positives,
@@ -166,9 +206,12 @@ def train_model(db_path: str, iterations: int = 600, learning_rate: float = 0.15
         "weights": weights,
         "bias": bias,
         # Labels are net of the shared CostModel, so a model trained today is
-        # not comparable with one trained before the cost model existed.
-        "labelSource": "trade_history.net_pnl_sol",
+        # not comparable with one trained under different economics.
+        "featureSetVersion": FEATURE_SET_VERSION,
+        "labelSource": LABEL_SOURCE,
         "costModelVersion": COST_MODEL_VERSION,
+        "dataFingerprint": data_fingerprint(rows),
+        "minSamples": MIN_SAMPLES,
     }
 
 
@@ -227,12 +270,57 @@ def save_model(model: dict, path: str) -> None:
     Path(path).write_text(json.dumps(model, indent=2), encoding="utf-8")
 
 
-def load_model(path: str) -> Optional[dict]:
+def load_model_any(path: str) -> Optional[dict]:
+    """Read the file without judging it (diagnostics only)."""
     try:
         model = json.loads(Path(path).read_text(encoding="utf-8"))
-        return model if model.get("ok") else None
+        return model if isinstance(model, dict) else None
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return None
+
+
+def load_model(path: str) -> Optional[dict]:
+    """Load a model only if it still matches the current contract.
+
+    Fail closed: a stale model returns ``None`` so the caller cannot score a
+    trade with economics the labels were not trained on.
+    """
+    model = load_model_any(path)
+    if staleness_reasons(model):
+        return None
+    return model
+
+
+def model_status(path: str) -> dict:
+    """Report whether the model on disk is usable, and why not."""
+    raw = load_model_any(path)
+    if raw is None:
+        return {"state": "missing", "reasons": ["no model file"], "path": str(path)}
+    reasons = staleness_reasons(raw)
+    return {
+        "state": "stale" if reasons else "ok",
+        "reasons": reasons,
+        "path": str(path),
+        "summary": model_summary(raw) if not reasons else None,
+    }
+
+
+def train_if_stale(db_path: str, path: str, **kwargs) -> dict:
+    """Retrain only when the model is missing or no longer matches the contract."""
+    status = model_status(path)
+    if status["state"] == "ok":
+        return {"trained": True, "retrained": False, "status": status}
+    model = train_model(db_path, **kwargs)
+    if not model.get("ok"):
+        return {
+            "trained": False,
+            "retrained": False,
+            "reason": model.get("reason"),
+            "previous": status,
+            "status": model_status(path),
+        }
+    save_model(model, path)
+    return {"trained": True, "retrained": True, "status": model_status(path)}
 
 
 def model_summary(model: Optional[dict]) -> dict:
@@ -245,8 +333,11 @@ def model_summary(model: Optional[dict]) -> dict:
         "positives": model.get("positives"),
         "accuracy": model.get("accuracy"),
         "logLoss": model.get("logLoss"),
+        "schemaVersion": model.get("schema"),
+        "featureSetVersion": model.get("featureSetVersion"),
         "labelSource": model.get("labelSource"),
         "costModelVersion": model.get("costModelVersion"),
+        "dataFingerprint": model.get("dataFingerprint"),
         "topWeights": sorted(
             (
                 {"feature": name, "weight": round(weight, 5)}
@@ -268,7 +359,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "status":
-        print(json.dumps(model_summary(load_model(args.model)), indent=2))
+        print(json.dumps(model_status(args.model), indent=2))
         return 0
 
     model = train_model(args.db)

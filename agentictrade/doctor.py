@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence
 
 from agentictrade import validate as validation
+from agentictrade.llm import LLMConfig, probe as probe_llm
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 REQUIRED_PACKAGES = ("aiohttp", "pydantic", "python-dotenv")
@@ -197,6 +198,28 @@ def check_timezone(name: Optional[str]) -> Check:
     return Check("timezone", "ok", name)
 
 
+def check_llm(values: Mapping[str, str]) -> Check:
+    """Report which LLM backend the research agent will use, and if it is up."""
+    try:
+        config = LLMConfig.from_env(values)
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never raise
+        return Check("llm", "warn", f"could not resolve LLM config: {exc}")
+    if not config.providers():
+        return Check(
+            "llm",
+            "info",
+            "no provider configured; the research agent uses heuristics "
+            "(set GEMINI_API_KEY or LLM_BASE_URL + LLM_MODEL)",
+        )
+    try:
+        result = probe_llm(config, timeout=2.0)
+    except Exception as exc:  # noqa: BLE001
+        return Check("llm", "warn", f"probe failed: {exc}")
+    chain = " → ".join(spec.label for spec in config.providers())
+    status = {"ok": "ok", "unconfigured": "info"}.get(result["state"], "warn")
+    return Check("llm", status, f"{chain}: {result['detail']}")
+
+
 def run_checks(
     env: Optional[Mapping[str, str]] = None,
     *,
@@ -260,6 +283,7 @@ def run_checks(
             checks.append(check_port(resolved_host, resolved_port))
 
     checks.append(check_timezone(values.get("BOT_TIMEZONE")))
+    checks.append(check_llm(values))
     return checks
 
 

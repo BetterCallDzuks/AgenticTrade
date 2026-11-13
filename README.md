@@ -5,7 +5,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-11.0.0-e3a452.svg)](https://github.com/BetterCallDzuks/AgenticTrade)
 
-A multi-agent system for discovering, checking and **paper-trading** Solana memecoins. It combines the Pump.fun WebSocket, the DexScreener API, RugCheck security checks, an optional Google Gemini analyst, a SQLite paper portfolio and a Jupiter/Jito dry-run executor, all behind a local web Command Center and an analytics dashboard.
+A multi-agent system for discovering, checking and **paper-trading** Solana memecoins. It combines the Pump.fun WebSocket, the DexScreener API, RugCheck security checks, an optional AI analyst (Google Gemini or any local OpenAI-compatible model), a SQLite paper portfolio and a Jupiter/Jito dry-run executor, all behind a local web Command Center and an analytics dashboard.
 
 > **Paper trading only by default.** `LIVE_TRADING_ENABLED=false` stays off, and nothing in v10 turns it on (the dashboard cannot either). This software does not promise or predict profit. Memecoins are extremely risky. Replay and paper results are a way to test rules, not a forecast.
 
@@ -24,12 +24,17 @@ v9.0 keeps the v8 risk engine and adds time-based and step-up protection plus Te
 ### Exit order (checked every monitor tick, 4s)
 
 1. **WHALE_EXIT** 🐳: the entry whale sold this token.
-2. **TAKE_PROFIT_1** 🎯: +80% from the entry fill sells 50%.
+2. **TAKE_PROFIT_1** 🎯: +80% from the entry fill sells `TP1_FRACTION` (50% by default).
 3. **FAST_INVALIDATION** ⚡: -12% within the first 90s.
 4. **STOP_LOSS** 🛑: -25%.
 5. **TIME_STOP** ⏱️: no configured pump after the configured hold time.
 6. **FLOW_EXIT** 💧: fresh flow, sells >= 3, sells > buys, and sells >= buys x 1.3.
 7. **TRAILING_STOP** 📉 / **BREAKEVEN_STOP** 🛡️ / **STEP_UP_STOP** 🪜: stop = max(trailing stop, breakeven floor, step-up floors).
+8. **TAKE_PROFIT** 🚀: optional `FINAL_TAKE_PROFIT_PCT` hard target for the remaining moonbag (0 disables it).
+
+The same rules live in `agentictrade/exits.py` (`ExitPolicy`) and drive both
+the paper book (`classify_tick`) and the OHLCV backtester (`intrabar`), so a
+research run measures the policy the bot actually trades.
 
 ---
 
@@ -233,7 +238,30 @@ AgenticTrade/
 ## Agents
 
 1. **Discovery** (`DiscoveryAgent`, `PumpFunStreamAgent`): Pump.fun WebSocket (new tokens, migrations, tracked-whale trades) and DexScreener scans. Also records whale sells, which feed `WHALE_EXIT`.
-2. **Research** (`ResearchAgent`): free hard filters, then Gemini (or a strict heuristic without a key) returns BUY / WATCH / SKIP with risk and hype scores.
+2. **Research** (`ResearchAgent`): free hard filters, then an LLM (Gemini or a local OpenAI-compatible model, or a strict heuristic when none is configured) returns BUY / WATCH / SKIP with risk and hype scores.
+
+### Local AI models
+
+`agentictrade/llm.py` treats every backend the same way. `LLM_PROVIDER=auto`
+(default) uses Gemini when `GEMINI_API_KEY` is set, otherwise a local server
+when `LLM_BASE_URL` is set, otherwise heuristics. An explicitly configured
+provider falls back to the other configured provider before heuristics.
+
+```bash
+# Ollama
+ollama serve
+ollama pull llama3.1:8b
+LLM_PROVIDER=ollama LLM_BASE_URL=http://127.0.0.1:11434/v1 LLM_MODEL=llama3.1:8b ./run.sh
+
+# llama.cpp server, LM Studio, vLLM or any OpenAI-compatible gateway
+LLM_PROVIDER=openai LLM_BASE_URL=http://127.0.0.1:8081/v1 LLM_MODEL=local-model ./run.sh
+```
+
+`LLM_TIMEOUT_SEC`, `LLM_TEMPERATURE`, `LLM_MAX_TOKENS` and
+`LLM_FALLBACK_TO_HEURISTIC` tune the call. `doctor` probes the configured
+endpoint and reports a missing model or an unreachable server without spending
+tokens; `GET /api/state` exposes the resolved provider chain and whether the AI
+is local under `config.llm`.
 3. **Risk & Portfolio** (`PaperTradingManager`): SQLite paper book plus the v9 risk engine.
 4. **Execution** (`SolanaExecutionAgent`): Jupiter v6 / PumpPortal routing with a Jito tip. **Dry-run only** while `LIVE_TRADING_ENABLED=false`.
 
@@ -253,8 +281,8 @@ AgenticTrade/
 | `GET /api/portfolio_risk` | v10 portfolio risk: HHI, top position, open exposure, max drawdown, VaR95, expected shortfall, profit factor, expectancy, avg win/loss |
 | `GET /api/backtest` | realized replay: equity curve, daily PnL, exit/source/conviction breakdowns |
 | `GET /api/audit?limit=N` | JSONL audit trail (live attempts, dry-runs, blocked calls, WS failures) |
-| `GET /api/ml/status` | ML advisory model summary (accuracy, top weights) |
-| `GET /api/ml/predict?mint=...` | advisory buy/skip probability for a scored mint |
+| `GET /api/ml/status` | ML model contract state (`ok`/`stale`/`missing`), reasons and summary |
+| `GET /api/ml/predict?mint=...` | advisory buy/skip probability; `409` with staleness reasons instead of scoring a stale model |
 | `POST /api/ml/train` | retrain the advisory model from closed paper trades |
 | `GET /analytics` | dedicated analytics dashboard page |
 | `POST /api/breaker/reset` | manual breaker reset |
@@ -282,6 +310,9 @@ The project is being migrated incrementally from the original monolith into a sm
 - `agentictrade/prometheus.py` — dependency-free counters/gauges/histograms and text exposition (v11)
 - `agentictrade/shutdown.py` — cross-platform SIGINT/SIGTERM controller (v11)
 - `agentictrade/ohlcv.py` — event-driven OHLCV backtester, strategy library and walk-forward splits (v11)
+- `agentictrade/exits.py` — one shared exit policy for the paper book and the backtester (v11)
+- `agentictrade/costs.py` — one shared transaction-cost model with depth decay (v11)
+- `agentictrade/llm.py` — provider-neutral LLM client: Gemini or local OpenAI-compatible servers (v11)
 
 `research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
 
@@ -446,6 +477,9 @@ python -m agentictrade.ohlcv --help   # candle backtester CLI
 - signal at candle close, fill at a later candle open (no look-ahead)
 - configurable AMM fee, entry/exit slippage, priority fee, failed-transaction probability, liquidity impact, latency, stop loss, take profit, trailing stop and time stop
 - one shared `CostModel` (`agentictrade/costs.py`) for the paper book, the backtester and the ML labels, so a round trip costs the same everywhere
+- depth-aware impact: the exit pays for the share of the pool the entry consumed (`--impact-exponent`, default linear; `0.5` for the square-root AMM curve)
+- one shared `ExitPolicy` (`agentictrade/exits.py`): take profit is partial (`--tp1-fraction`, 50% by default) and the remainder runs on the same stop ladder as the paper book
+- optional volume-participation cap (`--max-participation`): a thin candle fills a smaller position instead of a fantasy fill
 - gap-aware exits: a stop gaps to `min(open, stop)`, take profit to `max(open, tp)`
 - trailing stops use the peak before the current candle; the entry candle cannot exit the position it opened
 - if a stop and take profit share a candle, the stop wins and the trade is flagged `ambiguousBar`
@@ -458,13 +492,22 @@ python -m agentictrade.ohlcv --csv candles.csv --strategy momentum --fast 5 --sl
 python -m agentictrade.ohlcv --json candles.json --strategy breakout --lookback 30
 python -m agentictrade.ohlcv --pool <geckoterminal-pool> --timeframe hour --walk-forward 3
 python -m agentictrade.ohlcv --csv candles.csv --output json --save result.json
+
+# Partial TP1 (50%), a 200% moonbag target and a 5% volume cap
+python -m agentictrade.ohlcv --csv candles.csv --take-profit 80 --tp1-fraction 0.5 \
+  --final-take-profit 200 --max-participation 0.05
+
+# Exit the whole position at TP1, and opt into the paper book's 900s time stop
+python -m agentictrade.ohlcv --csv candles.csv --tp1-fraction 1.0 --time-stop
 ```
 
 This engine ships with a momentum (EMA cross) and a breakout strategy. It is a research tool: a positive backtest is not a promise of future profit.
 
 ## Known limitations
 
-- Without a Gemini key, the strict heuristic tops out below the auto-BUY threshold, so heuristic mode effectively never auto-buys. This is by design: fail-closed.
+- Without an LLM provider (no Gemini key and no `LLM_BASE_URL`), the strict heuristic tops out below the auto-BUY threshold, so heuristic mode effectively never auto-buys. This is by design: fail-closed.
+- A local model needs enough context for the JSON prompt and a server that supports `POST /v1/chat/completions`; small models can return malformed JSON, which falls back to heuristics (or the next configured provider).
+- An ML model is refused when its schema, feature set, label source or `COST_MODEL_VERSION` no longer matches; retrain it (`POST /api/ml/train`) instead of trusting a stale probability.
 - Pending confirmations live in memory. Restarting the bot drops them.
 - Tokens that exist only on the Pump.fun curve (no DexScreener quote yet) cannot pass confirmation or a manual buy, because no fresh price is available.
 - Wallet quality starts neutral and only becomes meaningful after a few closed trades per wallet.

@@ -26,8 +26,52 @@ All notable changes to AgenticTrade are documented here. The format follows
 - `docker-compose.yml` requires `DASHBOARD_TOKEN` (`${DASHBOARD_TOKEN:?…}`)
   because the container must bind `0.0.0.0`.
 
+### Added
+
+- `agentictrade/exits.py`: one shared `ExitPolicy` for the paper book
+  (`classify_tick`) and the OHLCV backtester (`intrabar`). It owns the effective
+  stop ladder, TP1 fraction, final target and the event-driven rules, so the two
+  engines can no longer drift.
+- `agentictrade/llm.py`: provider-neutral LLM client. Gemini and any
+  OpenAI-compatible server (Ollama, llama.cpp, LM Studio, vLLM) share one
+  call path, with `LLM_PROVIDER=auto`, provider fallback and a token-free
+  `probe()` used by `doctor`.
+- Depth-aware impact in `CostModel` (`impact_exponent`, `depth_used_fraction`,
+  `replay_round_trip(..., depth_decay=True)`): an exit pays for the liquidity
+  the entry consumed.
+- Partial take profit in the backtester: `tp1_fraction`, `final_take_profit_pct`
+  and the `--tp1-fraction` / `--final-take-profit` flags. Trade rows carry
+  `tp1Hit`, `tp1Price`, `tp1ProceedsSol` and `legs`.
+- `max_participation_pct` / `--max-participation`: a fill cannot exceed a share
+  of candle volume, so thin candles produce smaller positions instead of
+  fantasy fills. Summaries report `partialEntries`, `requestedEntries`,
+  `tp1Exits`, `ambiguousBars` and `costsPaidSol`.
+- ML model contract versioning: `MODEL_SCHEMA_VERSION`, `FEATURE_SET_VERSION`,
+  `LABEL_SOURCE`, `data_fingerprint()`, `model_status()` and
+  `train_if_stale()`. `load_model()` fails closed on a stale contract.
+- New environment knobs: `TP1_FRACTION`, `FINAL_TAKE_PROFIT_PCT`,
+  `TRAILING_ARM_GAIN_PCT`, `PAPER_IMPACT_EXPONENT`, `LLM_PROVIDER`,
+  `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_TIMEOUT_SEC`,
+  `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_FALLBACK_TO_HEURISTIC`.
+
 ### Changed
 
+- Take profit is now a *partial* exit by default (`tp1_fraction=0.5`); the
+  remainder runs on the same stop ladder as the paper book. Set
+  `tp1_fraction=1.0` for the old full-exit behaviour.
+- `COST_MODEL_VERSION` is `"2"` (impact exponent and depth decay). Every model
+  trained under v1 is reported stale until retrained.
+- `BacktestConfig.exit_policy()` merges the flat CLI overrides into the shared
+  policy; the fingerprint covers `exitPolicy`, both cost models and the
+  strategy. The second-based time stop is opt-in in backtests (`--time-stop`)
+  because it is tuned for minute data.
+- `GET /api/state` exposes `exitPolicy` and `llm` (resolved provider chain,
+  local/remote) and the runtime-editable config gains `tp1Fraction`,
+  `finalTakeProfitPct`, `trailingArmGainPct` and `paperImpactExponent`.
+- `GET /api/ml/status` reports the contract state and reasons; stale models are
+  refused on predict instead of scored quietly.
+- `doctor` now probes the configured LLM endpoint, and `validate.py` checks the
+  new LLM/exit/cost keys.
 - One `CostModel` (`agentictrade/costs.py`) now prices every simulated fill:
   the paper book, the OHLCV backtester and the ML label source. It models the
   AMM fee, priority fee, expected failed-transaction cost, spread/impact and
@@ -60,6 +104,13 @@ All notable changes to AgenticTrade are documented here. The format follows
 - When a candle contains both a stop/trailing stop and take profit, the stop is
   used and the trade is flagged `ambiguousBar` instead of silently assuming an
   intrabar order.
+- The backtester now actually applies the hard stop-loss level. Before, only the
+  trailing/step-up ladder was checked, so a position without an armed trailing
+  stop could ride through its stop.
+- A gap through a trailing stop fills at the open (never better than the stop),
+  and the fill price is recorded as the mid for cost reconciliation.
+- The paper book sells `intent.fraction` at TP1 instead of a hard-coded 50%, so
+  `TP1_FRACTION` and the backtester stay in sync.
 
 ## [11.0.0] - 2026-11-12
 

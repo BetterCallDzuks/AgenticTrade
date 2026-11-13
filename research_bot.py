@@ -47,8 +47,22 @@ load_local_env()
 
 # Modular components (incremental migration from the monolith).
 from agentictrade.config import env_float, env_int, env_bool
-from agentictrade.costs import CostModel
-from agentictrade.defaults import COST_DEFAULTS, STRATEGY_DEFAULTS, config_hash
+from agentictrade.costs import CostModel, depth_used_fraction
+from agentictrade.defaults import COST_DEFAULTS, EXIT_DEFAULTS, STRATEGY_DEFAULTS, config_hash
+from agentictrade.exits import (
+    BREAKEVEN_STOP,
+    FAST_INVALIDATION,
+    FLOW_EXIT,
+    STEP_UP_STOP,
+    STOP_LOSS,
+    TAKE_PROFIT,
+    TAKE_PROFIT_1,
+    TIME_STOP,
+    TRAILING_STOP,
+    WHALE_EXIT,
+    ExitPolicy,
+)
+from agentictrade.llm import LLMClient
 from agentictrade.http import fetch_json_with_retry as _fetch_json_with_retry
 from agentictrade.http import post_json_with_retry as _post_json_with_retry
 from agentictrade.models import TokenAnalysisDecision
@@ -68,14 +82,6 @@ try:
     SOLDERS_AVAILABLE = True
 except ImportError:
     SOLDERS_AVAILABLE = False
-
-try:
-    from google import genai
-    from google.genai import types
-    GENAI_AVAILABLE = True
-except ImportError:
-    GENAI_AVAILABLE = False
-
 
 # =====================================================================
 # 0B. v9.0 POMOĆNE FUNKCIJE (vrijeme, env, paper fill model, ikone izlaza)
@@ -461,12 +467,14 @@ class ResearchAgent:
     DEXSCREENER_TOKEN_URL = "https://api.dexscreener.com/latest/dex/tokens/{mint}"
 
     def __init__(self, gemini_api_key: Optional[str] = None, rpc_url: Optional[str] = None):
-        self.api_key = gemini_api_key or os.environ.get("GEMINI_API_KEY")
-        self.model_name = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+        # Gemini or any OpenAI-compatible local server; see agentictrade.llm.
+        self.llm = LLMClient.from_env({**os.environ, "GEMINI_API_KEY": gemini_api_key}) if gemini_api_key \
+            else LLMClient.from_env()
+        self.api_key = self.llm.config.gemini_api_key or None
+        self.model_name = self.llm.model_name
         self.rpc_url = rpc_url or os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
-        self.client = None
-        if GENAI_AVAILABLE and self.api_key:
-            self.client = genai.Client(api_key=self.api_key)
+        # Kept as the "is an AI configured?" flag used by the dashboard and logs.
+        self.client = self.llm if self.llm.available else None
 
         self.min_liquidity_usd = float(os.environ.get("MIN_LIQUIDITY_USD", "5000.0"))
         self.min_volume_h1_usd = float(os.environ.get("MIN_VOLUME_H1_USD", "2500.0"))
@@ -799,7 +807,7 @@ class ResearchAgent:
         return True, f"Prošao Hard Filtere (Top 10 Holdera: {top10_pct:.1f}%, Mint/Freeze OK)"
 
     async def ai_evaluate_token(self, market: dict, security: dict) -> TokenAnalysisDecision:
-        if not self.client:
+        if not self.llm.available:
             self.last_eval_mode = "HEURISTIC"
             return self._heuristic_fallback(market, security)
 
@@ -823,39 +831,16 @@ class ResearchAgent:
         7. Budi strog i precizan! Napiši konkretne brojke u 'summary_hr'.
         """
 
-        candidate_models = [self.model_name]
-        for fallback_m in ("gemini-3.8-flash", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash"):
-            if fallback_m not in candidate_models:
-                candidate_models.append(fallback_m)
+        try:
+            decision = await self.llm.complete_json(prompt, TokenAnalysisDecision)
+        except Exception as e:  # noqa: BLE001 - any provider failure falls back
+            print(f"⚠️ Greška u AI pozivu ({e}), prebacujem na heurističku procjenu...")
+            self.last_eval_mode = "HEURISTIC"
+            return self._heuristic_fallback(market, security)
 
-        last_err = None
-        for model_to_try in candidate_models:
-            try:
-                response = await asyncio.to_thread(
-                    self.client.models.generate_content,
-                    model=model_to_try,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=TokenAnalysisDecision,
-                        temperature=0.2,
-                    ),
-                )
-                if model_to_try != self.model_name:
-                    print(f"ℹ️ [AI Model Auto-Switch] Prebačen aktivni model na: {model_to_try}")
-                    self.model_name = model_to_try
-                parsed = TokenAnalysisDecision.model_validate_json(response.text)
-                self.last_eval_mode = "AI"
-                return parsed
-            except Exception as e:
-                last_err = e
-                if "NOT_FOUND" in str(e) or "404" in str(e):
-                    continue
-                break
-
-        print(f"⚠️ Greška u Gemini AI pozivu ({last_err}), prebacujem na heurističku procjenu...")
-        self.last_eval_mode = "HEURISTIC"
-        return self._heuristic_fallback(market, security)
+        self.model_name = self.llm.model_name
+        self.last_eval_mode = "LOCAL_AI" if self.llm.is_local else "AI"
+        return decision
 
     def _heuristic_fallback(self, market: dict, security: dict) -> TokenAnalysisDecision:
         risk_score = 55
@@ -1193,6 +1178,10 @@ class PaperTradingManager:
         self.stop_loss_cooldown_sec = env_int("STOP_LOSS_COOLDOWN_SEC", 180)
         self.fast_invalidation_pct = env_float("FAST_INVALIDATION_PCT", STRATEGY_DEFAULTS["FAST_INVALIDATION_PCT"])
         self.fast_invalidation_window_sec = env_int("FAST_INVALIDATION_WINDOW_SEC", 90)
+        # Shared exit policy knobs (see agentictrade.exits).
+        self.tp1_fraction = env_float("TP1_FRACTION", EXIT_DEFAULTS["tp1_fraction"])
+        self.trailing_arm_gain_pct = env_float("TRAILING_ARM_GAIN_PCT", EXIT_DEFAULTS["trailing_arm_gain_pct"])
+        self.final_take_profit_pct = env_float("FINAL_TAKE_PROFIT_PCT", 0.0)
         self.position_monitor_sec = env_float("POSITION_MONITOR_SEC", 4)
 
         # v8.0 postavke
@@ -1209,6 +1198,7 @@ class PaperTradingManager:
         self.paper_slippage_bps = env_float("PAPER_SLIPPAGE_BPS", COST_DEFAULTS["base_bps"])
         self.paper_exit_slippage_bps = env_float("PAPER_EXIT_SLIPPAGE_BPS", COST_DEFAULTS["exit_base_bps"])
         self.paper_impact_coeff = env_float("PAPER_IMPACT_COEFF", COST_DEFAULTS["impact_coeff"])
+        self.paper_impact_exponent = env_float("PAPER_IMPACT_EXPONENT", COST_DEFAULTS["impact_exponent"])
         self.paper_sol_price_usd = env_float("PAPER_SOL_PRICE_USD", COST_DEFAULTS["sol_price_usd"])
         self.paper_amm_fee_bps = env_float("PAPER_AMM_FEE_BPS", COST_DEFAULTS["amm_fee_bps"])
         self.paper_priority_fee_sol = env_float("PAPER_PRIORITY_FEE_SOL", COST_DEFAULTS["priority_fee_sol"])
@@ -1275,7 +1265,8 @@ class PaperTradingManager:
             {
                 "profile": self.strategy_profile,
                 "costModel": self._cost_model("BUY").as_dict(),
-                "exitBaseBps": self.paper_exit_slippage_bps,
+                "exitCostModel": self._cost_model("SELL").as_dict(),
+                "exitPolicy": self.exit_policy().as_dict(),
             },
         )
         return self.config_hash
@@ -1287,6 +1278,7 @@ class PaperTradingManager:
             base_bps=base,
             amm_fee_bps=self.paper_amm_fee_bps,
             impact_coeff=self.paper_impact_coeff,
+            impact_exponent=self.paper_impact_exponent,
             priority_fee_sol=self.paper_priority_fee_sol,
             failed_tx_prob=self.paper_failed_tx_prob,
             sol_price_usd=self.paper_sol_price_usd,
@@ -1750,24 +1742,39 @@ class PaperTradingManager:
                 pass
         return result
 
+    def _depth_used(self, notional_sol: float, liquidity_usd: Optional[float]) -> float:
+        """Share of the pool this position consumed at entry."""
+        return depth_used_fraction(notional_sol, liquidity_usd, self.paper_sol_price_usd)
+
+    def exit_policy(self) -> ExitPolicy:
+        """Snapshot the current risk knobs as the shared exit policy."""
+        return ExitPolicy(
+            stop_loss_pct=self.stop_loss_pct,
+            tp1_pct=self.tp1_pct,
+            tp1_fraction=self.tp1_fraction,
+            trailing_stop_pct=self.trailing_stop_pct,
+            trailing_stop_pct_after_tp1=self.trailing_stop_pct_after_tp1,
+            trailing_arm_gain_pct=self.trailing_arm_gain_pct,
+            move_stop_to_breakeven_after_tp1=self.move_stop_to_breakeven_after_tp1,
+            breakeven_buffer_pct=self.breakeven_buffer_pct,
+            step1_trigger_pct=self.step1_trigger_pct,
+            step1_floor_pct=self.step1_floor_pct,
+            step2_trigger_pct=self.step2_trigger_pct,
+            step2_floor_pct=self.step2_floor_pct,
+            fast_invalidation_pct=self.fast_invalidation_pct,
+            fast_invalidation_window_sec=self.fast_invalidation_window_sec,
+            time_stop_enabled=self.time_stop_enabled,
+            max_hold_no_pump_sec=self.max_hold_no_pump_sec,
+            time_stop_min_profit_pct=self.time_stop_min_profit_pct,
+            flow_exit_enabled=self.flow_exit_enabled,
+            flow_exit_min_sells=self.flow_exit_min_sells,
+            flow_exit_sell_ratio=self.flow_exit_sell_ratio,
+            whale_exit_enabled=self.whale_exit_enabled,
+            final_take_profit_pct=self.final_take_profit_pct,
+        )
+
     def _effective_stop(self, entry_price: float, highest_price: float, tp1_hit: bool) -> tuple:
-        trail_pct = self.trailing_stop_pct_after_tp1 if tp1_hit else self.trailing_stop_pct
-        trail_stop = highest_price * (1.0 - trail_pct / 100.0) if (highest_price and highest_price >= entry_price * 1.30) else None
-
-        floor_stops = []
-        if tp1_hit and self.move_stop_to_breakeven_after_tp1:
-            floor_stops.append(entry_price * (1.0 + self.breakeven_buffer_pct / 100.0))
-
-        if highest_price and entry_price > 0:
-            peak_gain_pct = ((highest_price / entry_price) - 1.0) * 100.0
-            if peak_gain_pct >= self.step2_trigger_pct:
-                floor_stops.append(entry_price * (1.0 + self.step2_floor_pct / 100.0))
-            elif peak_gain_pct >= self.step1_trigger_pct:
-                floor_stops.append(entry_price * (1.0 + self.step1_floor_pct / 100.0))
-
-        be_stop = max(floor_stops) if floor_stops else None
-        candidates = [s for s in (trail_stop, be_stop) if s is not None]
-        return (max(candidates) if candidates else None), trail_stop, be_stop
+        return self.exit_policy().effective_stop(entry_price, highest_price, tp1_hit)
 
     def get_all_positions(self) -> List[dict]:
         conn = self._conn()
@@ -2552,8 +2559,11 @@ class PaperTradingManager:
         meta = c.fetchone() or (None,) * 11
         opened_at, sig_px, entry_fill, prev_slip_sol, size_reason, conviction, whale_wallet, whale_label, tp1_flag, stored_liq, src_val = meta
         liq = liquidity_usd if liquidity_usd is not None else stored_liq
-        # Every SELL leg pays exit slippage, the AMM fee and flat costs.
-        cost_fill = self._cost_model("SELL").exit_value(current_value_sol, current_price, liq)
+        # Every SELL leg pays exit slippage, the AMM fee and flat costs, priced
+        # against the depth the entry already consumed.
+        cost_fill = self._cost_model("SELL").exit_value(
+            current_value_sol, current_price, liq, self._depth_used(invested_sol, liq)
+        )
         exit_fill = cost_fill.price
         slip = cost_fill.total_cost_fraction
         proceeds = cost_fill.net_sol
@@ -2641,18 +2651,33 @@ class PaperTradingManager:
             )
             return reason
 
-        if whale_selling and self.whale_exit_enabled:
+        policy = self.exit_policy()
+        intent = policy.classify_tick(
+            entry_price=entry_price,
+            current_price=current_price,
+            highest_price=highest_price,
+            tp1_hit=tp1_hit,
+            age_sec=age_sec,
+            fresh=fresh,
+            flow=flow,
+            whale_selling=whale_selling,
+        )
+        reason = intent.reason
+
+        if reason == WHALE_EXIT:
             action = close("WHALE_EXIT", f"Tracked whale '{whale_selling.get('label', '?')}' is selling this token.")
 
-        elif fresh and not tp1_hit and pnl_pct >= self.tp1_pct:
-            sell_value_sol = current_value_sol * 0.5
-            tp_cost = self._cost_model("SELL").exit_value(sell_value_sol, current_price, liquidity_usd)
+        elif reason == TAKE_PROFIT_1:
+            sell_value_sol = current_value_sol * intent.fraction
+            tp_cost = self._cost_model("SELL").exit_value(
+                sell_value_sol, current_price, liquidity_usd, self._depth_used(invested_sol, liquidity_usd)
+            )
             tp_fill = tp_cost.price
             slip = tp_cost.total_cost_fraction
             proceeds = tp_cost.net_sol
-            new_rem_ratio = rem_ratio * 0.5
+            new_rem_ratio = rem_ratio * (1.0 - intent.fraction)
             new_realized = realized_sol + proceeds
-            new_stop, _, new_be = self._effective_stop(entry_price, highest_price, True)
+            new_stop, _, new_be = policy.effective_stop(entry_price, highest_price, True)
 
             c.execute("""
                 UPDATE positions
@@ -2666,47 +2691,42 @@ class PaperTradingManager:
             c.execute("UPDATE wallet SET balance_sol = balance_sol + ? WHERE id = 1", (proceeds,))
             self.journal(
                 "EXIT", mint=mint, symbol=symbol, rule="TAKE_PROFIT_1",
-                reasons=[f"{pnl_pct:+.1f}% ≥ TP1 {self.tp1_pct:g}% → sold 50%"],
+                reasons=[f"{pnl_pct:+.1f}% ≥ TP1 {self.tp1_pct:g}% → sold {intent.fraction * 100:g}%"],
                 fill_price=tp_fill, mid_price=current_price,
                 extra={"proceedsSol": round(proceeds, 6), "slippageBps": round(slip * 10000, 2)}, cur=c,
             )
-            msg = (f"🎯 [TAKE-PROFIT 1] ${symbol} skočio {pnl_pct:+.1f}%! Prodano 50% za {proceeds:.3f} SOL "
-                   f"(Moonbag aktivan, stop ≥ breakeven).")
+            msg = (f"🎯 [TAKE-PROFIT 1] ${symbol} skočio {pnl_pct:+.1f}%! Prodano {intent.fraction * 100:g}% za "
+                   f"{proceeds:.3f} SOL (Moonbag aktivan, stop ≥ breakeven).")
             print(f"   {msg}")
             add_agent_log("RISK MGR", msg, "success")
-            TELEGRAM.enqueue(f"🎯 <b>TP1 OSTVAREN: ${symbol}</b> (+{pnl_pct:.1f}%)\nProdano 50% za <b>{proceeds:.3f} SOL</b>. Moonbag aktivan!")
+            TELEGRAM.enqueue(f"🎯 <b>TP1 OSTVAREN: ${symbol}</b> (+{pnl_pct:.1f}%)\nProdano {intent.fraction * 100:g}% za "
+                             f"<b>{proceeds:.3f} SOL</b>. Moonbag aktivan!")
             action = "TAKE_PROFIT_1"
 
-        elif age_sec <= self.fast_invalidation_window_sec and pnl_pct <= self.fast_invalidation_pct:
+        elif reason == FAST_INVALIDATION:
             action = close("FAST_INVALIDATION", f"Fast invalidation inside the first {self.fast_invalidation_window_sec}s.")
 
-        elif pnl_pct <= self.stop_loss_pct:
+        elif reason == STOP_LOSS:
             action = close("STOP_LOSS")
 
-        elif (
-            self.time_stop_enabled
-            and not tp1_hit
-            and age_sec >= self.max_hold_no_pump_sec
-            and peak_pnl_pct < self.time_stop_min_profit_pct
-        ):
+        elif reason == TIME_STOP:
             action = close("TIME_STOP", f"No pump after {int(age_sec)}s (peak {peak_pnl_pct:+.1f}% < {self.time_stop_min_profit_pct:g}%).")
 
-        elif (
-            fresh and self.flow_exit_enabled and flow is not None
-            and flow.get("sells", 0) >= self.flow_exit_min_sells
-            and flow.get("sells", 0) > flow.get("buys", 0)
-            and flow.get("sells", 0) >= flow.get("buys", 0) * self.flow_exit_sell_ratio
-        ):
+        elif reason == FLOW_EXIT:
             action = close("FLOW_EXIT", f"Sell flow: {flow.get('sells')} sells vs {flow.get('buys')} buys (5m).")
 
-        elif eff_stop is not None and current_price <= eff_stop * (1.0 + 1e-9):
-            if trail_stop is not None and (be_stop is None or trail_stop >= be_stop):
-                trail_used = self.trailing_stop_pct_after_tp1 if tp1_hit else self.trailing_stop_pct
-                action = close("TRAILING_STOP", f"{drawdown_from_peak_pct:.1f}% off peak (trail {trail_used:.1f}%).")
-            elif eff_stop >= entry_price:
-                action = close("BREAKEVEN_STOP", f"Moonbag/Step-up protected above entry (${eff_stop:.8f}).")
-            else:
-                action = close("STEP_UP_STOP", f"Step-up risk floor triggered (${eff_stop:.8f}).")
+        elif reason == TAKE_PROFIT:
+            action = close("TAKE_PROFIT", f"Final target {self.final_take_profit_pct:g}% reached.")
+
+        elif reason == TRAILING_STOP:
+            trail_used = self.trailing_stop_pct_after_tp1 if tp1_hit else self.trailing_stop_pct
+            action = close("TRAILING_STOP", f"{drawdown_from_peak_pct:.1f}% off peak (trail {trail_used:.1f}%).")
+
+        elif reason == BREAKEVEN_STOP:
+            action = close("BREAKEVEN_STOP", f"Moonbag/Step-up protected above entry (${eff_stop:.8f}).")
+
+        elif reason == STEP_UP_STOP:
+            action = close("STEP_UP_STOP", f"Step-up risk floor triggered (${eff_stop:.8f}).")
 
         else:
             if fresh:
@@ -3061,6 +3081,7 @@ CONFIG_FIELDS = [
     ("paperSlippageBps", "portfolio", "paper_slippage_bps", float),
     ("paperExitSlippageBps", "portfolio", "paper_exit_slippage_bps", float),
     ("paperImpactCoeff", "portfolio", "paper_impact_coeff", float),
+    ("paperImpactExponent", "portfolio", "paper_impact_exponent", float),
     ("paperAmmFeeBps", "portfolio", "paper_amm_fee_bps", float),
     ("paperPriorityFeeSol", "portfolio", "paper_priority_fee_sol", float),
     ("paperFailedTxProb", "portfolio", "paper_failed_tx_prob", float),
@@ -3080,6 +3101,9 @@ CONFIG_FIELDS = [
     ("stalePriceSec", "portfolio", "stale_price_sec", float),
     ("moveStopToBreakevenAfterTp1", "portfolio", "move_stop_to_breakeven_after_tp1", bool),
     ("breakevenBufferPct", "portfolio", "breakeven_buffer_pct", float),
+    ("tp1Fraction", "portfolio", "tp1_fraction", float),
+    ("finalTakeProfitPct", "portfolio", "final_take_profit_pct", float),
+    ("trailingArmGainPct", "portfolio", "trailing_arm_gain_pct", float),
     # v9.0
     ("timeStopEnabled", "portfolio", "time_stop_enabled", bool),
     ("maxHoldNoPumpSec", "portfolio", "max_hold_no_pump_sec", int),
@@ -3103,6 +3127,8 @@ def build_config_payload(portfolio, researcher, executor) -> dict:
     cfg["configHash"] = portfolio.config_hash
     cfg["costModel"] = portfolio._cost_model("BUY").as_dict()
     cfg["exitCostModel"] = portfolio._cost_model("SELL").as_dict()
+    cfg["exitPolicy"] = portfolio.exit_policy().as_dict()
+    cfg["llm"] = researcher.llm.describe()
     return cfg
 
 
@@ -3389,17 +3415,26 @@ async def start_command_center_server(
         return web.json_response({"ok": True, "events": read_audit(AUDIT_LOG_PATH, limit)})
 
     async def handle_api_ml_status(request: web.Request):
-        from agentictrade.ml import load_model, model_summary
-        return web.json_response({"ok": True, "model": model_summary(load_model(ML_MODEL_PATH))})
+        from agentictrade.ml import model_status
+        return web.json_response({"ok": True, "model": model_status(ML_MODEL_PATH)})
 
     async def handle_api_ml_predict(request: web.Request):
-        from agentictrade.ml import load_model, predict_mint
+        from agentictrade.ml import load_model, model_status, predict_mint
         mint = (request.query.get("mint") or "").strip()
         if not mint:
             return web.json_response({"ok": False, "error": "mint query parameter required"}, status=400)
         model = load_model(ML_MODEL_PATH)
         if not model:
-            return web.json_response({"ok": False, "error": "model not trained"}, status=409)
+            status = model_status(ML_MODEL_PATH)
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": "model is missing or stale; retrain it",
+                    "state": status["state"],
+                    "reasons": status["reasons"],
+                },
+                status=409,
+            )
         probability = predict_mint(portfolio.db_path, mint, model)
         if probability is None:
             return web.json_response({"ok": False, "error": "no scored journal entry for mint"}, status=404)
@@ -3411,12 +3446,12 @@ async def start_command_center_server(
         })
 
     async def handle_api_ml_train(request: web.Request):
-        from agentictrade.ml import model_summary, save_model, train_model
+        from agentictrade.ml import model_status, save_model, train_model
         model = train_model(portfolio.db_path)
         if not model.get("ok"):
             return web.json_response({"ok": False, "reason": model.get("reason")}, status=409)
         save_model(model, ML_MODEL_PATH)
-        return web.json_response({"ok": True, "model": model_summary(model)})
+        return web.json_response({"ok": True, "model": model_status(ML_MODEL_PATH)})
 
     async def handle_api_backtest(request: web.Request):
         from agentictrade.backtest import build_report
@@ -3666,12 +3701,18 @@ async def run_research_pipeline(
     print("=" * 70)
 
     researcher = ResearchAgent()
-    if os.environ.get("GEMINI_API_KEY"):
-        print(f"🧠 [AI Status] GEMINI_API_KEY detektiran! Koristim {researcher.model_name} za AI forenziku.")
-        add_agent_log("RESEARCH AI", f"Gemini AI inicijaliziran ({researcher.model_name}).", "ai")
+    llm = researcher.llm
+    if llm.available:
+        where = "LOCAL" if llm.is_local else "REMOTE"
+        chain = " → ".join(llm.describe()["chain"]) or llm.label
+        print(f"🧠 [AI Status] {where} AI aktivan: {llm.label} (lanac: {chain}).")
+        add_agent_log("RESEARCH AI", f"AI inicijaliziran: {llm.label} ({where}).", "ai")
     else:
-        print("ℹ️ [AI Status] GEMINI_API_KEY nije pronađen u .env — radim u lokalnom heurističkom modu.")
-        add_agent_log("RESEARCH AI", "Nema GEMINI_API_KEY u .env — koristim brzi heuristički mod.", "warn")
+        print(
+            "ℹ️ [AI Status] Nijedan LLM provider nije konfiguriran — radim u heurističkom modu. "
+            "Postavi GEMINI_API_KEY ili LLM_BASE_URL (+ LLM_MODEL) za AI forenziku."
+        )
+        add_agent_log("RESEARCH AI", "Nema LLM providera — koristim brzi heuristički mod.", "warn")
 
     discovery = DiscoveryAgent()
     pumpfun_stream = PumpFunStreamAgent(max_dev_buy_sol=15.0, min_initial_sol_in_curve=30.2)

@@ -36,9 +36,39 @@ COST_DEFAULTS: dict[str, float] = {
     "exit_base_bps": 80.0,
     "amm_fee_bps": 25.0,
     "impact_coeff": 1.0,
+    "impact_exponent": 1.0,
     "priority_fee_sol": 0.0015,
     "failed_tx_prob": 0.02,
     "sol_price_usd": 185.0,
+}
+
+
+# Exit-policy defaults. ``agentictrade.exits.ExitPolicy`` is the shared
+# implementation; these values are the ones the balanced profile has always used.
+EXIT_DEFAULTS: dict[str, float] = {
+    "tp1_fraction": 0.5,
+    "trailing_arm_gain_pct": 30.0,
+    "breakeven_buffer_pct": 1.0,
+    "step1_trigger_pct": 30.0,
+    "step1_floor_pct": -5.0,
+    "step2_trigger_pct": 50.0,
+    "step2_floor_pct": 15.0,
+    "fast_invalidation_pct": -12.0,
+    "fast_invalidation_window_sec": 90.0,
+    "max_hold_no_pump_sec": 900.0,
+    "time_stop_min_profit_pct": 20.0,
+    "flow_exit_min_sells": 3.0,
+    "flow_exit_sell_ratio": 1.3,
+}
+
+# LLM provider defaults. ``auto`` uses Gemini when a key is present, otherwise a
+# local OpenAI-compatible server when LLM_BASE_URL is set, otherwise heuristics.
+LLM_DEFAULTS: dict = {
+    "provider": "auto",
+    "base_url": "",
+    "timeout_sec": 60.0,
+    "temperature": 0.2,
+    "max_tokens": 1024,
 }
 
 
