@@ -47,6 +47,8 @@ load_local_env()
 
 # Modular components (incremental migration from the monolith).
 from agentictrade.config import env_float, env_int, env_bool
+from agentictrade.costs import CostModel
+from agentictrade.defaults import COST_DEFAULTS, STRATEGY_DEFAULTS, config_hash
 from agentictrade.http import fetch_json_with_retry as _fetch_json_with_retry
 from agentictrade.http import post_json_with_retry as _post_json_with_retry
 from agentictrade.models import TokenAnalysisDecision
@@ -96,7 +98,7 @@ from agentictrade.fills import (  # noqa: E402
     EXIT_ICONS as EXIT_ICONS,
     LOSING_EXIT_REASONS,
     exit_icon,
-    paper_fill,
+    paper_fill as paper_fill,
 )
 
 WHALE_SELL_EVENTS: dict = {}
@@ -1179,15 +1181,17 @@ class PaperTradingManager:
         self.db_path = db_path
         self.clock = clock or utc_now
         self.initial_sol = initial_sol or env_float("INITIAL_PAPER_SOL", 10.0)
-        self.trade_size_sol = trade_size_sol or env_float("TRADE_SIZE_SOL", 0.5)
-        self.stop_loss_pct = stop_loss_pct or env_float("STOP_LOSS_PCT", -25.0)
-        self.tp1_pct = tp1_pct if tp1_pct is not None else env_float("TP1_PCT", 80.0)
-        self.trailing_stop_pct = trailing_stop_pct or env_float("TRAILING_STOP_PCT", 20.0)
-        self.trailing_stop_pct_after_tp1 = env_float("TRAILING_STOP_PCT_AFTER_TP1", 15.0)
-        self.max_open_positions = env_int("MAX_OPEN_POSITIONS", 2)
+        self.trade_size_sol = trade_size_sol or env_float("TRADE_SIZE_SOL", STRATEGY_DEFAULTS["TRADE_SIZE_SOL"])
+        self.stop_loss_pct = stop_loss_pct or env_float("STOP_LOSS_PCT", STRATEGY_DEFAULTS["STOP_LOSS_PCT"])
+        self.tp1_pct = tp1_pct if tp1_pct is not None else env_float("TP1_PCT", STRATEGY_DEFAULTS["TP1_PCT"])
+        self.trailing_stop_pct = trailing_stop_pct or env_float("TRAILING_STOP_PCT", STRATEGY_DEFAULTS["TRAILING_STOP_PCT"])
+        self.trailing_stop_pct_after_tp1 = env_float(
+            "TRAILING_STOP_PCT_AFTER_TP1", STRATEGY_DEFAULTS["TRAILING_STOP_PCT_AFTER_TP1"]
+        )
+        self.max_open_positions = env_int("MAX_OPEN_POSITIONS", int(STRATEGY_DEFAULTS["MAX_OPEN_POSITIONS"]))
         self.min_seconds_between_entries = env_int("MIN_SECONDS_BETWEEN_ENTRIES", 60)
         self.stop_loss_cooldown_sec = env_int("STOP_LOSS_COOLDOWN_SEC", 180)
-        self.fast_invalidation_pct = env_float("FAST_INVALIDATION_PCT", -12.0)
+        self.fast_invalidation_pct = env_float("FAST_INVALIDATION_PCT", STRATEGY_DEFAULTS["FAST_INVALIDATION_PCT"])
         self.fast_invalidation_window_sec = env_int("FAST_INVALIDATION_WINDOW_SEC", 90)
         self.position_monitor_sec = env_float("POSITION_MONITOR_SEC", 4)
 
@@ -1197,15 +1201,18 @@ class PaperTradingManager:
         self.flow_exit_sell_ratio = env_float("FLOW_EXIT_SELL_RATIO", 1.3)
         self.whale_exit_enabled = env_bool("WHALE_EXIT_ENABLED", True)
         self.whale_event_ttl_sec = env_float("WHALE_EVENT_TTL_SEC", 1800.0)
-        self.max_daily_stop_losses = env_int("MAX_DAILY_STOP_LOSSES", 2)
-        self.max_daily_drawdown_pct = env_float("MAX_DAILY_DRAWDOWN_PCT", 5.0)
-        self.max_daily_trades = env_int("MAX_DAILY_TRADES", 8)
+        self.max_daily_stop_losses = env_int("MAX_DAILY_STOP_LOSSES", int(STRATEGY_DEFAULTS["MAX_DAILY_STOP_LOSSES"]))
+        self.max_daily_drawdown_pct = env_float("MAX_DAILY_DRAWDOWN_PCT", STRATEGY_DEFAULTS["MAX_DAILY_DRAWDOWN_PCT"])
+        self.max_daily_trades = env_int("MAX_DAILY_TRADES", int(STRATEGY_DEFAULTS["MAX_DAILY_TRADES"]))
         self.entry_confirm_sec = env_float("ENTRY_CONFIRM_SEC", 20)
         self.entry_confirm_max_drop_pct = env_float("ENTRY_CONFIRM_MAX_DROP_PCT", 4.0)
-        self.paper_slippage_bps = env_float("PAPER_SLIPPAGE_BPS", 50)
-        self.paper_exit_slippage_bps = env_float("PAPER_EXIT_SLIPPAGE_BPS", 80)
-        self.paper_impact_coeff = env_float("PAPER_IMPACT_COEFF", 1.0)
-        self.paper_sol_price_usd = env_float("PAPER_SOL_PRICE_USD", 185.0)
+        self.paper_slippage_bps = env_float("PAPER_SLIPPAGE_BPS", COST_DEFAULTS["base_bps"])
+        self.paper_exit_slippage_bps = env_float("PAPER_EXIT_SLIPPAGE_BPS", COST_DEFAULTS["exit_base_bps"])
+        self.paper_impact_coeff = env_float("PAPER_IMPACT_COEFF", COST_DEFAULTS["impact_coeff"])
+        self.paper_sol_price_usd = env_float("PAPER_SOL_PRICE_USD", COST_DEFAULTS["sol_price_usd"])
+        self.paper_amm_fee_bps = env_float("PAPER_AMM_FEE_BPS", COST_DEFAULTS["amm_fee_bps"])
+        self.paper_priority_fee_sol = env_float("PAPER_PRIORITY_FEE_SOL", COST_DEFAULTS["priority_fee_sol"])
+        self.paper_failed_tx_prob = env_float("PAPER_FAILED_TX_PROB", COST_DEFAULTS["failed_tx_prob"])
         self.size_after_loss_mult = env_float("SIZE_AFTER_LOSS_MULT", 0.5)
         self.size_heuristic_mult = env_float("SIZE_HEURISTIC_MULT", 0.6)
         self.size_ai_only_mult = env_float("SIZE_AI_ONLY_MULT", 0.8)
@@ -1241,6 +1248,7 @@ class PaperTradingManager:
             setattr(self, attr, value)
         if not self._max_position_explicit:
             self.max_position_sol = self.trade_size_sol
+        self.refresh_config_hash()
 
         self.pending_confirmations: dict = {}
         self.last_entry_block: Optional[dict] = None
@@ -1254,6 +1262,35 @@ class PaperTradingManager:
 
     def now_ts(self) -> float:
         return self.now().replace(tzinfo=timezone.utc).timestamp()
+
+    def _effective_config(self) -> dict:
+        from agentictrade.strategies import ATTRIBUTE_MAP
+
+        return {key: getattr(self, attr) for key, attr in ATTRIBUTE_MAP.items() if hasattr(self, attr)}
+
+    def refresh_config_hash(self) -> str:
+        """Recompute the effective strategy + cost fingerprint after a change."""
+        self.config_hash = config_hash(
+            self._effective_config(),
+            {
+                "profile": self.strategy_profile,
+                "costModel": self._cost_model("BUY").as_dict(),
+                "exitBaseBps": self.paper_exit_slippage_bps,
+            },
+        )
+        return self.config_hash
+
+    def _cost_model(self, side: str = "BUY") -> CostModel:
+        """Build the shared cost model for one side of a paper trade."""
+        base = self.paper_exit_slippage_bps if str(side).upper() == "SELL" else self.paper_slippage_bps
+        return CostModel(
+            base_bps=base,
+            amm_fee_bps=self.paper_amm_fee_bps,
+            impact_coeff=self.paper_impact_coeff,
+            priority_fee_sol=self.paper_priority_fee_sol,
+            failed_tx_prob=self.paper_failed_tx_prob,
+            sol_price_usd=self.paper_sol_price_usd,
+        )
 
     def _conn(self):
         conn = sqlite3.connect(self.db_path, timeout=15)
@@ -2320,8 +2357,18 @@ class PaperTradingManager:
             return False
 
         liq = _safe_float(market.get("liquidity_usd"))
-        fill, slip = paper_fill(mid, "BUY", size, liq, self.paper_slippage_bps, self.paper_impact_coeff, self.paper_sol_price_usd)
-        slippage_sol = size - size * (mid / fill)
+        cost_fill = self._cost_model("BUY").entry(mid, size, liq)
+        if cost_fill.qty <= 0:
+            self._block(
+                market,
+                "SIZE_TOO_SMALL",
+                "size does not cover the flat transaction cost",
+                suggested_size=size,
+            )
+            return False
+        fill = cost_fill.price
+        slip = cost_fill.total_cost_fraction
+        slippage_sol = cost_fill.total_cost_sol
         sig_px = float(signal_price) if signal_price else mid
         whale_wallet = market.get("whale_wallet") if market.get("whale_signal") else None
         whale_label = market.get("whale_signal") or None
@@ -2505,12 +2552,12 @@ class PaperTradingManager:
         meta = c.fetchone() or (None,) * 11
         opened_at, sig_px, entry_fill, prev_slip_sol, size_reason, conviction, whale_wallet, whale_label, tp1_flag, stored_liq, src_val = meta
         liq = liquidity_usd if liquidity_usd is not None else stored_liq
-        # Every SELL leg pays exit slippage: TP1, TIME_STOP, trailing and manual
-        # exits all cross the same spread as a stop.
-        bps = self.paper_exit_slippage_bps
-        exit_fill, slip = paper_fill(current_price, "SELL", current_value_sol, liq, bps, self.paper_impact_coeff, self.paper_sol_price_usd)
-        proceeds = current_value_sol * (1.0 - slip)
-        slip_sol_total = (prev_slip_sol or 0.0) + (current_value_sol - proceeds)
+        # Every SELL leg pays exit slippage, the AMM fee and flat costs.
+        cost_fill = self._cost_model("SELL").exit_value(current_value_sol, current_price, liq)
+        exit_fill = cost_fill.price
+        slip = cost_fill.total_cost_fraction
+        proceeds = cost_fill.net_sol
+        slip_sol_total = (prev_slip_sol or 0.0) + cost_fill.total_cost_sol
 
         total_returned = realized_sol + proceeds
         net_pnl_sol = total_returned - invested_sol
@@ -2599,9 +2646,10 @@ class PaperTradingManager:
 
         elif fresh and not tp1_hit and pnl_pct >= self.tp1_pct:
             sell_value_sol = current_value_sol * 0.5
-            tp_fill, slip = paper_fill(current_price, "SELL", sell_value_sol, liquidity_usd,
-                                       self.paper_exit_slippage_bps, self.paper_impact_coeff, self.paper_sol_price_usd)
-            proceeds = sell_value_sol * (1.0 - slip)
+            tp_cost = self._cost_model("SELL").exit_value(sell_value_sol, current_price, liquidity_usd)
+            tp_fill = tp_cost.price
+            slip = tp_cost.total_cost_fraction
+            proceeds = tp_cost.net_sol
             new_rem_ratio = rem_ratio * 0.5
             new_realized = realized_sol + proceeds
             new_stop, _, new_be = self._effective_stop(entry_price, highest_price, True)
@@ -2612,7 +2660,7 @@ class PaperTradingManager:
                     slippage_sol = COALESCE(slippage_sol, 0) + ?, last_price_at = ?, liquidity_usd = COALESCE(?, liquidity_usd),
                     stop_price_usd = ?
                 WHERE mint = ?
-            """, (current_price, highest_price, new_rem_ratio, new_realized, sell_value_sol - proceeds, now,
+            """, (current_price, highest_price, new_rem_ratio, new_realized, tp_cost.total_cost_sol, now,
                   liquidity_usd, new_stop, mint))
 
             c.execute("UPDATE wallet SET balance_sol = balance_sol + ? WHERE id = 1", (proceeds,))
@@ -3013,6 +3061,9 @@ CONFIG_FIELDS = [
     ("paperSlippageBps", "portfolio", "paper_slippage_bps", float),
     ("paperExitSlippageBps", "portfolio", "paper_exit_slippage_bps", float),
     ("paperImpactCoeff", "portfolio", "paper_impact_coeff", float),
+    ("paperAmmFeeBps", "portfolio", "paper_amm_fee_bps", float),
+    ("paperPriorityFeeSol", "portfolio", "paper_priority_fee_sol", float),
+    ("paperFailedTxProb", "portfolio", "paper_failed_tx_prob", float),
     ("sizeAfterLossMult", "portfolio", "size_after_loss_mult", float),
     ("sizeHeuristicMult", "portfolio", "size_heuristic_mult", float),
     ("sizeAiOnlyMult", "portfolio", "size_ai_only_mult", float),
@@ -3049,6 +3100,9 @@ def build_config_payload(portfolio, researcher, executor) -> dict:
     cfg["telegramEnabled"] = TELEGRAM.enabled
     cfg["timezone"] = BOT_TIMEZONE_NAME
     cfg["version"] = "v11.0"
+    cfg["configHash"] = portfolio.config_hash
+    cfg["costModel"] = portfolio._cost_model("BUY").as_dict()
+    cfg["exitCostModel"] = portfolio._cost_model("SELL").as_dict()
     return cfg
 
 
@@ -3083,6 +3137,8 @@ def apply_config_payload(data: dict, portfolio, researcher, executor) -> List[st
             executor.priority_fee_sol = float(data["jitoTipSol"])
         except (TypeError, ValueError):
             pass
+    if changed:
+        portfolio.refresh_config_hash()
     return changed
 
 
@@ -3624,6 +3680,7 @@ async def run_research_pipeline(
 
     mode_str = "🔥 LIVE ON-CHAIN TRADING" if executor.live_trading_enabled else "🛡️ PAPER TRADING + JUPITER DRY-RUN"
     print(f"⚙️  Mod izvršavanja: {mode_str} | Telegram: {'ON ✅' if TELEGRAM.enabled else 'OFF (dodaj u .env)'}")
+    print(f"🧾 Config hash: {portfolio.config_hash} (profile: {portfolio.strategy_profile})")
     portfolio.print_portfolio_summary()
 
     if TELEGRAM.enabled:

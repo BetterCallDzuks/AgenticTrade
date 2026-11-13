@@ -576,6 +576,10 @@ def test_v11_phase0_hardening():
         portfolio.paper_slippage_bps = 0.0
         portfolio.paper_exit_slippage_bps = 800.0
         portfolio.paper_impact_coeff = 0.0
+        # Isolate the exit-slippage assertion from the rest of the CostModel.
+        portfolio.paper_amm_fee_bps = 0.0
+        portfolio.paper_priority_fee_sol = 0.0
+        portfolio.paper_failed_tx_prob = 0.0
         portfolio.time_stop_enabled = True
         portfolio.max_hold_no_pump_sec = 0
         portfolio.time_stop_min_profit_pct = 1_000_000.0
@@ -1210,6 +1214,300 @@ def test_v11_extracted_helpers():
     print("  v11 extracted helpers: OK")
 
 
+def test_v11_cost_model():
+    from agentictrade.costs import COST_MODEL_VERSION, CostModel, replay_round_trip
+    from agentictrade.defaults import COST_DEFAULTS, STRATEGY_DEFAULTS, config_hash
+
+    zero = CostModel(base_bps=0, amm_fee_bps=0, impact_coeff=0, priority_fee_sol=0, failed_tx_prob=0)
+    buy = zero.entry(2.0, 1.0)
+    assert buy.qty == 0.5 and buy.price == 2.0 and buy.total_cost_sol == 0.0
+    sell = zero.exit_value(1.0, 2.0)
+    assert sell.qty == 0.5 and sell.net_sol == 1.0 and sell.price == 2.0
+
+    spread = CostModel(base_bps=100, amm_fee_bps=0, impact_coeff=0, priority_fee_sol=0, failed_tx_prob=0)
+    buy = spread.entry(1.0, 1.0)
+    assert abs(buy.slippage_fraction - 0.01) < 1e-12
+    assert abs(buy.price - 1.01) < 1e-12
+    assert abs(buy.total_cost_fraction - 0.01) < 1e-12
+    sell = spread.exit_value(1.0, 1.0)
+    assert abs(sell.net_sol - 0.99) < 1e-12 and abs(sell.price - 0.99) < 1e-12
+
+    amm = CostModel(base_bps=0, amm_fee_bps=100, impact_coeff=0, priority_fee_sol=0, failed_tx_prob=0)
+    buy = amm.entry(1.0, 1.0)
+    assert abs(buy.price - 1.01) < 1e-12
+    assert abs(buy.amm_fee_sol - (1.0 - 1.0 / 1.01)) < 1e-12
+    sell = amm.exit_value(1.0, 1.0)
+    assert abs(sell.net_sol - 0.99) < 1e-12
+
+    flat = CostModel(base_bps=0, amm_fee_bps=0, impact_coeff=0, priority_fee_sol=0.01, failed_tx_prob=0)
+    buy = flat.entry(1.0, 1.0)
+    assert abs(buy.qty - 0.99) < 1e-12
+    assert abs(buy.price - (1.0 / 0.99)) < 1e-12
+    sell = flat.exit_value(1.0, 1.0)
+    assert abs(sell.net_sol - 0.99) < 1e-12
+
+    flaky = CostModel(base_bps=0, amm_fee_bps=0, impact_coeff=0, priority_fee_sol=0.01, failed_tx_prob=0.5)
+    buy = flaky.entry(1.0, 1.0)
+    assert abs(buy.qty - 0.985) < 1e-12  # 0.01 priority + 0.005 expected retry
+
+    impact = CostModel(base_bps=0, amm_fee_bps=0, impact_coeff=1, priority_fee_sol=0, failed_tx_prob=0)
+    assert impact.slippage_fraction(10.0, 10_000.0) > 0
+    assert abs(impact.slippage_fraction(1e9, 1.0) - 0.5) < 1e-12
+
+    for kwargs in ({"base_bps": -1}, {"failed_tx_prob": 1.5}, {"max_slippage": 0.0}):
+        try:
+            CostModel(**kwargs)
+            raise AssertionError(f"CostModel should reject {kwargs}")
+        except ValueError:
+            pass
+
+    round_trip = replay_round_trip(spread, spread, 1.0, 1.5, 2.0)
+    assert abs(round_trip["pnlSol"] - (round_trip["returnedSol"] - 2.0)) < 1e-12
+    assert round_trip["entryCostSol"] > 0 and round_trip["exitCostSol"] > 0
+    assert round_trip["exitPrice"] < 1.5
+
+    assert COST_MODEL_VERSION == "1"
+    assert spread.as_dict()["version"] == COST_MODEL_VERSION
+    assert COST_DEFAULTS["amm_fee_bps"] == 25.0
+    assert config_hash({"a": 80.0}) == config_hash({"a": 80})
+    assert config_hash({"a": 80.0}) != config_hash({"a": 81.0})
+    print("  v11 shared cost model: OK")
+
+
+def _ohlc_candles(rows):
+    from agentictrade.ohlcv import Candle
+
+    return [
+        Candle(ts=float(index * 60), open=open_, high=high, low=low, close=close, volume=1.0)
+        for index, (open_, high, low, close) in enumerate(rows)
+    ]
+
+
+def test_v11_backtest_exits():
+    from agentictrade.costs import COST_MODEL_VERSION
+    from agentictrade.ohlcv import BacktestConfig, run_backtest
+
+    def free_config(**overrides):
+        values = dict(
+            initial_sol=10.0,
+            trade_size_sol=0.5,
+            fee_bps=0.0,
+            slippage_bps=0.0,
+            exit_slippage_bps=0.0,
+            impact_coeff=0.0,
+            liquidity_usd=0.0,
+            priority_fee_sol=0.0,
+            failed_tx_prob=0.0,
+            latency_candles=1,
+            stop_loss_pct=0.0,
+            take_profit_pct=0.0,
+            trailing_stop_pct=0.0,
+        )
+        values.update(overrides)
+        return BacktestConfig(**values)
+
+    # Entry candle 2 has a low below the stop, but the position was opened at
+    # its open and must not be stopped by its own bar. Candle 4 gaps through.
+    gap_stop = _ohlc_candles([
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.0, 0.80, 1.0),
+        (1.0, 1.0, 1.0, 1.0),
+        (0.8, 0.85, 0.75, 0.8),
+    ])
+    result = run_backtest(gap_stop, _FirstBuyStrategy(), free_config(stop_loss_pct=-10.0))
+    assert len(result.trades) == 1, result.trades
+    trade = result.trades[0]
+    assert trade["entryIndex"] == 2 and trade["exitIndex"] == 4
+    assert trade["exitReason"] == "STOP_LOSS"
+    assert trade["exitMidPrice"] == 0.8
+    assert abs(trade["pnlSol"] - (0.5 * 0.8 - 0.5)) < 1e-12
+    assert trade["costSol"] == 0.0
+    assert result.summary["configHash"] == free_config(stop_loss_pct=-10.0).fingerprint(_FirstBuyStrategy())
+    assert result.summary["costModelVersion"] == COST_MODEL_VERSION
+
+    # Take profit fills at max(open, tp) when the candle gaps above it.
+    gap_tp = _ohlc_candles([
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.05, 1.0, 1.0),
+        (1.0, 1.0, 1.0, 1.0),
+        (2.0, 2.2, 1.9, 2.0),
+    ])
+    result = run_backtest(gap_tp, _FirstBuyStrategy(), free_config(take_profit_pct=50.0))
+    trade = result.trades[0]
+    assert trade["exitReason"] == "TAKE_PROFIT"
+    assert trade["exitMidPrice"] == 2.0
+    assert abs(trade["pnlSol"] - (0.5 * 2.0 - 0.5)) < 1e-12
+    assert trade["ambiguousBar"] is False
+
+    # A candle that makes a new high must not arm and trigger its own trailing
+    # stop; the next candle does.
+    trailing = _ohlc_candles([
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.0, 0.8, 1.0),
+        (1.0, 2.0, 0.95, 2.0),
+        (2.0, 2.0, 0.85, 1.0),
+    ])
+    result = run_backtest(trailing, _FirstBuyStrategy(), free_config(trailing_stop_pct=10.0))
+    trade = result.trades[0]
+    assert trade["exitIndex"] == 4 and trade["exitReason"] == "TRAILING_STOP"
+    assert trade["exitMidPrice"] == 1.8
+
+    # Stop and take profit inside one candle: take the conservative stop and
+    # flag the ambiguity.
+    ambiguous = _ohlc_candles([
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.0, 1.0, 1.0),
+        (1.0, 1.3, 0.85, 1.0),
+    ])
+    result = run_backtest(
+        ambiguous, _FirstBuyStrategy(), free_config(stop_loss_pct=-10.0, take_profit_pct=20.0)
+    )
+    trade = result.trades[0]
+    assert trade["exitReason"] == "STOP_LOSS"
+    assert trade["exitMidPrice"] == 0.9
+    assert trade["ambiguousBar"] is True
+    assert result.summary["ambiguousBars"] == 1
+    print("  v11 backtest exit fixes: OK")
+
+
+def test_v11_cost_parity():
+    from agentictrade.costs import replay_round_trip
+    from agentictrade.ohlcv import BacktestConfig, run_backtest
+
+    cfg = BacktestConfig(
+        initial_sol=10.0,
+        trade_size_sol=0.5,
+        fee_bps=25.0,
+        slippage_bps=50.0,
+        exit_slippage_bps=80.0,
+        impact_coeff=1.0,
+        liquidity_usd=50_000.0,
+        priority_fee_sol=0.0015,
+        failed_tx_prob=0.02,
+        latency_candles=1,
+        stop_loss_pct=0.0,
+        take_profit_pct=0.0,
+        trailing_stop_pct=0.0,
+    )
+    candles = _synthetic_candles([1.0 + index * 0.02 for index in range(20)])
+    result = run_backtest(candles, _RoundTripStrategy(), cfg)
+    assert len(result.trades) == 1
+    trade = result.trades[0]
+    expected = replay_round_trip(
+        cfg.entry_model(),
+        cfg.exit_model(),
+        candles[trade["entryIndex"]].open,
+        trade["exitMidPrice"],
+        cfg.trade_size_sol,
+        cfg.liquidity(),
+    )
+    for key in ("entryPrice", "exitPrice", "investedSol", "returnedSol", "pnlSol"):
+        assert abs(float(trade[key]) - float(expected[key])) < 1e-12, (key, trade[key], expected[key])
+    assert abs(trade["costSol"] - (expected["entryCostSol"] + expected["exitCostSol"])) < 1e-12
+
+    # The paper book must price the very same round trip identically.
+    db_path = make_temp_db()
+    try:
+        portfolio = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
+        portfolio.cluster_cooldown_sec = 0
+        portfolio.stop_loss_cooldown_sec = 0
+        portfolio.min_seconds_between_entries = 0
+        portfolio.max_daily_stop_losses = 100
+        portfolio.max_daily_trades = 100
+        portfolio.paper_slippage_bps = cfg.slippage_bps
+        portfolio.paper_exit_slippage_bps = cfg.exit_slippage_bps
+        portfolio.paper_impact_coeff = cfg.impact_coeff
+        portfolio.paper_amm_fee_bps = cfg.fee_bps
+        portfolio.paper_priority_fee_sol = cfg.priority_fee_sol
+        portfolio.paper_failed_tx_prob = cfg.failed_tx_prob
+        portfolio.paper_sol_price_usd = cfg.sol_price_usd
+
+        mint = "ParityMint11111111111111111111111111111111"
+        market = {
+            "mint": mint,
+            "symbol": "PARITY",
+            "name": "Parity",
+            "price_usd": "1.0",
+            "liquidity_usd": cfg.liquidity_usd,
+            "dex_id": "raydium",
+            "fetched_at": portfolio.now_ts(),
+        }
+        assert portfolio.open_virtual_position(
+            market, conviction="manual", source="TEST", size_override=cfg.trade_size_sol
+        ) is True
+        exit_mid = 1.5
+        conn = portfolio._conn()
+        conn.execute("UPDATE positions SET current_price_usd = ? WHERE mint = ?", (exit_mid, mint))
+        conn.commit()
+        conn.close()
+        assert portfolio.close_position_manually(mint) is True
+        conn = portfolio._conn()
+        row = conn.execute(
+            "SELECT invested_sol, returned_sol, entry_fill_usd, exit_fill_usd FROM trade_history WHERE mint = ?",
+            (mint,),
+        ).fetchone()
+        conn.close()
+        invested, returned, entry_fill, exit_fill = row
+        paper_expected = replay_round_trip(
+            portfolio._cost_model("BUY"),
+            portfolio._cost_model("SELL"),
+            1.0,
+            exit_mid,
+            cfg.trade_size_sol,
+            cfg.liquidity(),
+        )
+        assert abs(invested - cfg.trade_size_sol) < 1e-12
+        assert abs(returned - paper_expected["returnedSol"]) < 1e-9
+        assert abs(entry_fill - paper_expected["entryPrice"]) < 1e-12
+        assert abs(exit_fill - paper_expected["exitPrice"]) < 1e-12
+    finally:
+        cleanup_db(db_path)
+    print("  v11 paper/OHLCV cost parity: OK")
+
+
+def test_v11_config_fingerprint():
+    from agentictrade.defaults import COST_DEFAULTS, STRATEGY_DEFAULTS
+    from agentictrade.ohlcv import BacktestConfig
+    from agentictrade.strategies import PROFILES
+    from agentictrade.validate import validate_env
+
+    assert PROFILES["balanced"]["STOP_LOSS_PCT"] == STRATEGY_DEFAULTS["STOP_LOSS_PCT"]
+    assert PROFILES["balanced"]["TP1_PCT"] == STRATEGY_DEFAULTS["TP1_PCT"]
+    assert COST_DEFAULTS["amm_fee_bps"] == 25.0
+    assert BacktestConfig().fingerprint() == BacktestConfig().fingerprint()
+    assert BacktestConfig().fingerprint() != BacktestConfig(fee_bps=100.0).fingerprint()
+    from agentictrade.ohlcv import BreakoutStrategy, EmaCrossStrategy
+
+    first = BacktestConfig().fingerprint(EmaCrossStrategy(fast=3, slow=8))
+    assert first == BacktestConfig().fingerprint(EmaCrossStrategy(fast=3, slow=8))
+    assert first != BacktestConfig().fingerprint(BreakoutStrategy(lookback=5))
+    assert first != BacktestConfig().fingerprint(EmaCrossStrategy(fast=4, slow=8))
+
+    db_path = make_temp_db()
+    try:
+        portfolio = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
+        before = portfolio.config_hash
+        assert len(before) == 12
+        assert portfolio._cost_model("BUY").base_bps == portfolio.paper_slippage_bps
+        assert portfolio._cost_model("SELL").base_bps == portfolio.paper_exit_slippage_bps
+        portfolio.stop_loss_pct = -10.0
+        assert portfolio.refresh_config_hash() != before
+    finally:
+        cleanup_db(db_path)
+
+    issues = validate_env({"PAPER_FAILED_TX_PROB": "1.5"})
+    assert any(issue.key == "PAPER_FAILED_TX_PROB" and issue.level == "fail" for issue in issues)
+    issues = validate_env({"PAPER_AMM_FEE_BPS": "-1"})
+    assert any(issue.key == "PAPER_AMM_FEE_BPS" and issue.level == "fail" for issue in issues)
+    issues = validate_env({"PAPER_PRIORITY_FEE_SOL": "-0.1"})
+    assert any(issue.key == "PAPER_PRIORITY_FEE_SOL" and issue.level == "fail" for issue in issues)
+    print("  v11 config fingerprint and cost validation: OK")
+
+
 def main():
     print("Running AgenticTrade v11.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
@@ -1239,6 +1537,10 @@ def main():
         test_v11_origin_policy()
         test_v11_shutdown_controller()
         test_v11_ohlcv()
+        test_v11_cost_model()
+        test_v11_backtest_exits()
+        test_v11_cost_parity()
+        test_v11_config_fingerprint()
         test_v11_config_validation()
         test_v11_doctor()
         test_v11_extracted_helpers()

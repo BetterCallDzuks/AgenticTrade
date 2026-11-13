@@ -1,10 +1,13 @@
 """Named paper-trading risk profiles.
 
 Profiles only fill values that are not explicitly set in the environment, so an
-existing .env keeps full control. `balanced` mirrors the historical defaults.
+existing .env keeps full control. `balanced` mirrors the historical defaults,
+which now live in :mod:`agentictrade.defaults`.
 """
 
 from typing import Dict
+
+from agentictrade.defaults import STRATEGY_DEFAULTS
 
 PROFILES: Dict[str, Dict[str, float]] = {
     "conservative": {
@@ -19,18 +22,7 @@ PROFILES: Dict[str, Dict[str, float]] = {
         "MAX_DAILY_TRADES": 4,
         "FAST_INVALIDATION_PCT": -8.0,
     },
-    "balanced": {
-        "TRADE_SIZE_SOL": 0.5,
-        "MAX_OPEN_POSITIONS": 2,
-        "STOP_LOSS_PCT": -25.0,
-        "TP1_PCT": 80.0,
-        "TRAILING_STOP_PCT": 20.0,
-        "TRAILING_STOP_PCT_AFTER_TP1": 15.0,
-        "MAX_DAILY_STOP_LOSSES": 2,
-        "MAX_DAILY_DRAWDOWN_PCT": 5.0,
-        "MAX_DAILY_TRADES": 8,
-        "FAST_INVALIDATION_PCT": -12.0,
-    },
+    "balanced": dict(STRATEGY_DEFAULTS),
     "aggressive": {
         "TRADE_SIZE_SOL": 0.75,
         "MAX_OPEN_POSITIONS": 3,

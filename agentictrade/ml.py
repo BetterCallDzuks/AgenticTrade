@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from agentictrade.costs import COST_MODEL_VERSION
+
 FEATURE_NAMES = [
     "risk",
     "hype",
@@ -163,6 +165,10 @@ def train_model(db_path: str, iterations: int = 600, learning_rate: float = 0.15
         "std": stds,
         "weights": weights,
         "bias": bias,
+        # Labels are net of the shared CostModel, so a model trained today is
+        # not comparable with one trained before the cost model existed.
+        "labelSource": "trade_history.net_pnl_sol",
+        "costModelVersion": COST_MODEL_VERSION,
     }
 
 
@@ -239,6 +245,8 @@ def model_summary(model: Optional[dict]) -> dict:
         "positives": model.get("positives"),
         "accuracy": model.get("accuracy"),
         "logLoss": model.get("logLoss"),
+        "labelSource": model.get("labelSource"),
+        "costModelVersion": model.get("costModelVersion"),
         "topWeights": sorted(
             (
                 {"feature": name, "weight": round(weight, 5)}

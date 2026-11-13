@@ -7,8 +7,16 @@ exits with configurable fees, slippage and signal latency.
 
 The engine is long-only, uses one position at a time and fills signals at the
 open of a later candle, so it cannot peek at the close that generated the
-signal. Exit checks use candle high/low (stop first, then trailing, then take
-profit), which is conservative on wide candles.
+signal. Exit checks use candle high/low. A gap through a stop fills at
+``min(open, stop)`` and a gap through take profit at ``max(open, tp)``, so a
+wide candle is never flattered. Trailing stops use the peak *before* the
+current candle, and the entry candle is excluded from exit checks (its high
+still counts towards the peak). If a stop and take profit are both inside the
+same candle, the stop wins and the trade is flagged ``ambiguousBar``.
+
+Fees and slippage come from :class:`agentictrade.costs.CostModel`, the same
+model the paper book and the ML labels use, so a round trip costs the same in
+research and in the live paper ledger.
 
 Examples:
     python -m agentictrade.ohlcv --csv candles.csv --strategy momentum
@@ -30,6 +38,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
+from agentictrade.costs import COST_MODEL_VERSION, CostModel
+from agentictrade.defaults import COST_DEFAULTS, STRATEGY_DEFAULTS, config_hash
 from agentictrade.risk_analytics import summarize
 
 _TF_TO_SECONDS = {
@@ -274,16 +284,30 @@ def make_strategy(name: str, **params: Any) -> Strategy:
     raise ValueError(f"unknown strategy: {name}")
 
 
+def _strategy_fingerprint(strategy: Strategy) -> Dict[str, Any]:
+    """Return the strategy name and its declared parameters for the config hash."""
+    params = {key: value for key, value in vars(strategy).items() if not key.startswith("_")}
+    return {"name": strategy.name, **params}
+
+
 @dataclass
 class BacktestConfig:
     initial_sol: float = 10.0
-    trade_size_sol: float = 0.5
-    fee_bps: float = 25.0
-    slippage_bps: float = 50.0
+    trade_size_sol: float = STRATEGY_DEFAULTS["TRADE_SIZE_SOL"]
+    # ``fee_bps`` is the AMM/DEX fee charged on the traded notional, kept under
+    # its historical name so existing callers and the CLI stay compatible.
+    fee_bps: float = COST_DEFAULTS["amm_fee_bps"]
+    slippage_bps: float = COST_DEFAULTS["base_bps"]
+    exit_slippage_bps: float = COST_DEFAULTS["exit_base_bps"]
+    impact_coeff: float = COST_DEFAULTS["impact_coeff"]
+    liquidity_usd: float = 0.0
+    priority_fee_sol: float = COST_DEFAULTS["priority_fee_sol"]
+    failed_tx_prob: float = COST_DEFAULTS["failed_tx_prob"]
+    sol_price_usd: float = COST_DEFAULTS["sol_price_usd"]
     latency_candles: int = 1
-    stop_loss_pct: float = -25.0
-    take_profit_pct: float = 80.0
-    trailing_stop_pct: float = 20.0
+    stop_loss_pct: float = STRATEGY_DEFAULTS["STOP_LOSS_PCT"]
+    take_profit_pct: float = STRATEGY_DEFAULTS["TP1_PCT"]
+    trailing_stop_pct: float = STRATEGY_DEFAULTS["TRAILING_STOP_PCT"]
     max_hold_candles: int = 0
 
     def __post_init__(self) -> None:
@@ -293,9 +317,54 @@ class BacktestConfig:
             raise ValueError("trade_size_sol must be positive")
         if self.trade_size_sol > self.initial_sol:
             raise ValueError("trade_size_sol cannot exceed initial_sol")
-        if self.fee_bps < 0 or self.slippage_bps < 0:
-            raise ValueError("fee_bps and slippage_bps must be non-negative")
+        if self.fee_bps < 0 or self.slippage_bps < 0 or self.exit_slippage_bps < 0:
+            raise ValueError("fee_bps, slippage_bps and exit_slippage_bps must be non-negative")
+        if self.impact_coeff < 0 or self.liquidity_usd < 0:
+            raise ValueError("impact_coeff and liquidity_usd must be non-negative")
+        if self.priority_fee_sol < 0:
+            raise ValueError("priority_fee_sol must be non-negative")
+        if not 0.0 <= self.failed_tx_prob <= 1.0:
+            raise ValueError("failed_tx_prob must be between 0 and 1")
+        if self.sol_price_usd <= 0:
+            raise ValueError("sol_price_usd must be positive")
         self.latency_candles = max(1, int(self.latency_candles))
+        # Eagerly build both models so an invalid cost combination fails here.
+        self.entry_model()
+        self.exit_model()
+
+    def entry_model(self) -> CostModel:
+        return CostModel(
+            base_bps=self.slippage_bps,
+            amm_fee_bps=self.fee_bps,
+            impact_coeff=self.impact_coeff,
+            priority_fee_sol=self.priority_fee_sol,
+            failed_tx_prob=self.failed_tx_prob,
+            sol_price_usd=self.sol_price_usd,
+        )
+
+    def exit_model(self) -> CostModel:
+        return CostModel(
+            base_bps=self.exit_slippage_bps,
+            amm_fee_bps=self.fee_bps,
+            impact_coeff=self.impact_coeff,
+            priority_fee_sol=self.priority_fee_sol,
+            failed_tx_prob=self.failed_tx_prob,
+            sol_price_usd=self.sol_price_usd,
+        )
+
+    def liquidity(self) -> Optional[float]:
+        return float(self.liquidity_usd) if self.liquidity_usd > 0 else None
+
+    def fingerprint(self, strategy: Optional[Strategy] = None) -> str:
+        """Stable id of this strategy, its parameters and its cost assumptions."""
+        payload: Dict[str, Any] = {
+            "costModelVersion": COST_MODEL_VERSION,
+            "entryCost": self.entry_model().as_dict(),
+            "exitCost": self.exit_model().as_dict(),
+        }
+        if strategy is not None:
+            payload["strategy"] = _strategy_fingerprint(strategy)
+        return config_hash(vars(self), payload)
 
 
 @dataclass
@@ -306,6 +375,7 @@ class Position:
     qty: float
     invested_sol: float
     entry_fee_sol: float
+    entry_cost_sol: float
     peak_price: float
 
 
@@ -323,6 +393,8 @@ class BacktestResult:
             "strategy": self.strategy,
             "candles": self.candles,
             "config": self.config.__dict__,
+            "configHash": self.summary.get("configHash"),
+            "costModelVersion": COST_MODEL_VERSION,
             "summary": self.summary,
             "equityCurve": self.equity_curve,
             "trades": self.trades,
@@ -362,8 +434,12 @@ def run_backtest(
     if not data:
         raise ValueError("no candles supplied")
 
-    fee_rate = cfg.fee_bps / 10000.0
-    slippage = cfg.slippage_bps / 10000.0
+    entry_model = cfg.entry_model()
+    exit_model = cfg.exit_model()
+    liquidity = cfg.liquidity()
+    # Fingerprint before the strategy runs, so mutable test state such as a
+    # "already signalled" flag cannot change the id.
+    config_id = cfg.fingerprint(strategy)
     cash = float(cfg.initial_sol)
     position: Optional[Position] = None
     pending: Optional[Dict[str, Any]] = None
@@ -371,13 +447,14 @@ def run_backtest(
     equity_curve: List[Dict[str, Any]] = []
     exposure_candles = 0
 
-    def close_position(index: int, timestamp: float, raw_price: float, reason: str) -> None:
+    def close_position(
+        index: int, timestamp: float, raw_price: float, reason: str, ambiguous: bool = False
+    ) -> None:
         nonlocal cash, position
         assert position is not None
-        fill_price = raw_price * (1.0 - slippage)
-        gross_sol = position.qty * fill_price
-        exit_fee = gross_sol * fee_rate
-        returned_sol = gross_sol - exit_fee
+        mid_value = position.qty * raw_price
+        exit_fill = exit_model.exit_value(mid_value, raw_price, liquidity)
+        returned_sol = exit_fill.net_sol
         cash += returned_sol
         pnl = returned_sol - position.invested_sol
         invested = position.invested_sol
@@ -388,15 +465,18 @@ def run_backtest(
                 "entryTs": position.entry_ts,
                 "exitTs": timestamp,
                 "entryPrice": position.entry_price,
-                "exitPrice": fill_price,
+                "exitPrice": exit_fill.price,
+                "exitMidPrice": raw_price,
                 "qty": position.qty,
                 "investedSol": invested,
                 "returnedSol": returned_sol,
                 "pnlSol": pnl,
                 "returnPct": (pnl / invested * 100.0) if invested else 0.0,
-                "feeSol": position.entry_fee_sol + exit_fee,
+                "feeSol": position.entry_fee_sol + exit_fill.explicit_fee_sol,
+                "costSol": position.entry_cost_sol + exit_fill.total_cost_sol,
                 "holdCandles": index - position.entry_index,
                 "exitReason": reason,
+                "ambiguousBar": bool(ambiguous),
             }
         )
         position = None
@@ -408,31 +488,34 @@ def run_backtest(
             pending = None
             # Fill at the first available open at or after the requested candle.
             if action == "BUY" and position is None and expected_index <= index and cash >= cfg.trade_size_sol:
-                fill_price = candle.open * (1.0 + slippage)
-                entry_fee = cfg.trade_size_sol * fee_rate
-                qty = (cfg.trade_size_sol - entry_fee) / fill_price if fill_price > 0 else 0.0
-                if qty > 0:
+                entry_fill = entry_model.entry(candle.open, cfg.trade_size_sol, liquidity)
+                if entry_fill.qty > 0:
                     cash -= cfg.trade_size_sol
                     position = Position(
                         entry_index=index,
                         entry_ts=candle.ts,
-                        entry_price=fill_price,
-                        qty=qty,
+                        entry_price=entry_fill.price,
+                        qty=entry_fill.qty,
                         invested_sol=cfg.trade_size_sol,
-                        entry_fee_sol=entry_fee,
-                        peak_price=fill_price,
+                        entry_fee_sol=entry_fill.explicit_fee_sol,
+                        entry_cost_sol=entry_fill.total_cost_sol,
+                        peak_price=entry_fill.price,
                     )
             elif action == "SELL" and position is not None:
                 close_position(index, candle.ts, candle.open, "SIGNAL")
 
         if position is not None:
             exposure_candles += 1
-            position.peak_price = max(position.peak_price, candle.high)
+            # The entry candle only feeds the peak; its own high/low never exits
+            # the position that was just opened at its open.
+            is_entry_bar = position.entry_index == index
             stop_price = (
                 position.entry_price * (1.0 + cfg.stop_loss_pct / 100.0)
                 if cfg.stop_loss_pct < 0
                 else None
             )
+            # Trailing uses the peak strictly before this candle. The current
+            # candle's high is folded in after the exit checks.
             trailing_price = (
                 position.peak_price * (1.0 - cfg.trailing_stop_pct / 100.0)
                 if cfg.trailing_stop_pct > 0
@@ -443,14 +526,24 @@ def run_backtest(
                 if cfg.take_profit_pct > 0
                 else None
             )
-            if stop_price is not None and candle.low <= stop_price:
-                close_position(index, candle.ts, stop_price, "STOP_LOSS")
-            elif trailing_price is not None and candle.low <= trailing_price:
-                close_position(index, candle.ts, trailing_price, "TRAILING_STOP")
-            elif take_profit_price is not None and candle.high >= take_profit_price:
-                close_position(index, candle.ts, take_profit_price, "TAKE_PROFIT")
-            elif cfg.max_hold_candles > 0 and index - position.entry_index >= cfg.max_hold_candles:
-                close_position(index, candle.ts, candle.close, "TIME_STOP")
+            if not is_entry_bar:
+                stop_hit = stop_price is not None and candle.low <= stop_price
+                trailing_hit = trailing_price is not None and candle.low <= trailing_price
+                tp_hit = take_profit_price is not None and candle.high >= take_profit_price
+                # If a candle contains both a stop-ish exit and take profit, we
+                # cannot know the intrabar order. Take the conservative stop and
+                # flag the trade so analytics can exclude it.
+                ambiguous_bar = (stop_hit or trailing_hit) and tp_hit
+                if stop_hit and stop_price is not None:
+                    close_position(index, candle.ts, min(candle.open, stop_price), "STOP_LOSS", ambiguous_bar)
+                elif trailing_hit and trailing_price is not None:
+                    close_position(index, candle.ts, min(candle.open, trailing_price), "TRAILING_STOP", ambiguous_bar)
+                elif tp_hit and take_profit_price is not None:
+                    close_position(index, candle.ts, max(candle.open, take_profit_price), "TAKE_PROFIT", ambiguous_bar)
+                elif cfg.max_hold_candles > 0 and index - position.entry_index >= cfg.max_hold_candles:
+                    close_position(index, candle.ts, candle.close, "TIME_STOP")
+            if position is not None:
+                position.peak_price = max(position.peak_price, candle.high)
 
         if pending is None:
             signal = strategy.generate(data[: index + 1])
@@ -485,6 +578,8 @@ def run_backtest(
     volatility = statistics.pstdev(returns) if len(returns) >= 2 else 0.0
     sharpe = (statistics.mean(returns) / volatility) if volatility > 0 else 0.0
     fees = sum(float(trade["feeSol"]) for trade in trades)
+    costs = sum(float(trade["costSol"]) for trade in trades)
+    ambiguous_bars = sum(1 for trade in trades if trade.get("ambiguousBar"))
     holds = [int(trade["holdCandles"]) for trade in trades]
     summary = {
         **base,
@@ -494,6 +589,10 @@ def run_backtest(
         "maxDrawdownPct": _max_drawdown_from_curve(equity_values),
         "exposurePct": (exposure_candles / len(data) * 100.0) if data else 0.0,
         "feesPaidSol": fees,
+        "costsPaidSol": costs,
+        "ambiguousBars": ambiguous_bars,
+        "configHash": config_id,
+        "costModelVersion": COST_MODEL_VERSION,
         "sharpePerTrade": sharpe,
         "avgHoldCandles": (sum(holds) / len(holds)) if holds else 0.0,
         "bestTradeSol": max(pnls) if pnls else 0.0,
@@ -535,6 +634,8 @@ def walk_forward(
     segments = max(1, int(segments))
     train_ratio = min(max(float(train_ratio), 0.1), 0.9)
     block_size = max(1, len(data) // segments)
+    cfg = config or BacktestConfig()
+    config_id = cfg.fingerprint(strategy_factory())
     results = []
     all_pnls: List[float] = []
     for segment in range(segments):
@@ -546,7 +647,7 @@ def walk_forward(
         test = block[split:]
         if len(test) < 10:
             continue
-        result = run_backtest(test, strategy_factory(), config)
+        result = run_backtest(test, strategy_factory(), cfg)
         segment_pnls = [float(trade["pnlSol"]) for trade in result.trades]
         all_pnls.extend(segment_pnls)
         results.append(
@@ -560,13 +661,15 @@ def walk_forward(
             }
         )
 
-    base = summarize(all_pnls, config.initial_sol if config else 10.0)
+    base = summarize(all_pnls, cfg.initial_sol)
     return {
         "segments": results,
         "aggregate": {
             **base,
             "segments": len(results),
             "testCandles": sum(item["testCandles"] for item in results),
+            "configHash": config_id,
+            "costModelVersion": COST_MODEL_VERSION,
         },
     }
 
@@ -589,7 +692,11 @@ def render_markdown(result: BacktestResult, trades_to_show: int = 15) -> str:
         "",
         f"- Strategy: `{result.strategy}`",
         f"- Candles: `{result.candles}`",
-        f"- Fees: `{result.config.fee_bps:g} bps` | Slippage: `{result.config.slippage_bps:g} bps` | Latency: `{result.config.latency_candles}` candle(s)",
+        f"- Cost model: `v{COST_MODEL_VERSION}` | AMM fee: `{result.config.fee_bps:g} bps` | "
+        f"Entry slippage: `{result.config.slippage_bps:g} bps` | Exit slippage: `{result.config.exit_slippage_bps:g} bps`",
+        f"- Priority fee: `{result.config.priority_fee_sol:g} SOL` | Failed-tx prob: `{result.config.failed_tx_prob:g}` | "
+        f"Liquidity: `${result.config.liquidity_usd:,.0f}` | Latency: `{result.config.latency_candles}` candle(s)",
+        f"- Config hash: `{summary.get('configHash', '-')}`",
         "",
         "## Summary",
         "",
@@ -604,6 +711,8 @@ def render_markdown(result: BacktestResult, trades_to_show: int = 15) -> str:
         f"| Profit factor | {_fmt(summary['profitFactor'], 3)} |",
         f"| Expectancy | {_fmt(summary['expectancySol'], 6)} SOL |",
         f"| Fees paid | {_fmt(summary['feesPaidSol'], 6)} SOL |",
+        f"| Total costs | {_fmt(summary.get('costsPaidSol', 0.0), 6)} SOL |",
+        f"| Ambiguous bars | {summary.get('ambiguousBars', 0)} |",
         f"| Exposure | {_fmt(summary['exposurePct'], 2)}% |",
         f"| Sharpe (per trade) | {_fmt(summary['sharpePerTrade'], 3)} |",
         f"| Avg hold | {_fmt(summary['avgHoldCandles'], 1)} candles |",
@@ -660,13 +769,23 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lookback", type=int, default=20)
     parser.add_argument("--threshold-pct", type=float, default=0.5)
     parser.add_argument("--initial-sol", type=float, default=10.0)
-    parser.add_argument("--trade-sol", type=float, default=0.5)
-    parser.add_argument("--fee-bps", type=float, default=25.0)
-    parser.add_argument("--slippage-bps", type=float, default=50.0)
+    parser.add_argument("--trade-sol", type=float, default=STRATEGY_DEFAULTS["TRADE_SIZE_SOL"])
+    parser.add_argument(
+        "--fee-bps", type=float, default=COST_DEFAULTS["amm_fee_bps"], help="AMM/DEX fee on notional (bps)"
+    )
+    parser.add_argument("--slippage-bps", type=float, default=COST_DEFAULTS["base_bps"], help="entry spread/impact (bps)")
+    parser.add_argument(
+        "--exit-slippage-bps", type=float, default=COST_DEFAULTS["exit_base_bps"], help="exit spread/impact (bps)"
+    )
+    parser.add_argument("--impact-coeff", type=float, default=COST_DEFAULTS["impact_coeff"])
+    parser.add_argument("--liquidity-usd", type=float, default=0.0, help="pool liquidity for market impact (0 disables it)")
+    parser.add_argument("--priority-fee-sol", type=float, default=COST_DEFAULTS["priority_fee_sol"])
+    parser.add_argument("--failed-tx-prob", type=float, default=COST_DEFAULTS["failed_tx_prob"])
+    parser.add_argument("--sol-price-usd", type=float, default=COST_DEFAULTS["sol_price_usd"])
     parser.add_argument("--latency", type=int, default=1)
-    parser.add_argument("--stop-loss", type=float, default=-25.0)
-    parser.add_argument("--take-profit", type=float, default=80.0)
-    parser.add_argument("--trailing-stop", type=float, default=20.0)
+    parser.add_argument("--stop-loss", type=float, default=STRATEGY_DEFAULTS["STOP_LOSS_PCT"])
+    parser.add_argument("--take-profit", type=float, default=STRATEGY_DEFAULTS["TP1_PCT"])
+    parser.add_argument("--trailing-stop", type=float, default=STRATEGY_DEFAULTS["TRAILING_STOP_PCT"])
     parser.add_argument("--max-hold", type=int, default=0)
     parser.add_argument("--walk-forward", type=int, default=0, help="number of out-of-sample segments")
     parser.add_argument("--train-ratio", type=float, default=0.6)
@@ -700,6 +819,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         trade_size_sol=args.trade_sol,
         fee_bps=args.fee_bps,
         slippage_bps=args.slippage_bps,
+        exit_slippage_bps=args.exit_slippage_bps,
+        impact_coeff=args.impact_coeff,
+        liquidity_usd=args.liquidity_usd,
+        priority_fee_sol=args.priority_fee_sol,
+        failed_tx_prob=args.failed_tx_prob,
+        sol_price_usd=args.sol_price_usd,
         latency_candles=args.latency,
         stop_loss_pct=args.stop_loss,
         take_profit_pct=args.take_profit,

@@ -26,6 +26,20 @@ All notable changes to AgenticTrade are documented here. The format follows
 - `docker-compose.yml` requires `DASHBOARD_TOKEN` (`${DASHBOARD_TOKEN:?…}`)
   because the container must bind `0.0.0.0`.
 
+### Changed
+
+- One `CostModel` (`agentictrade/costs.py`) now prices every simulated fill:
+  the paper book, the OHLCV backtester and the ML label source. It models the
+  AMM fee, priority fee, expected failed-transaction cost, spread/impact and
+  pool depth, and `replay_round_trip()` is the reference for parity tests.
+- `agentictrade/defaults.py` is the single source for the balanced strategy
+  values and the shared cost defaults. The paper book logs and exposes a
+  `configHash`; the OHLCV result reports the same hash plus
+  `costModelVersion`.
+- `PAPER_AMM_FEE_BPS`, `PAPER_PRIORITY_FEE_SOL` and
+  `PAPER_FAILED_TX_PROB` are validated by `doctor` and documented in
+  `.env.example`.
+
 ### Fixed
 
 - `WHALE_EXIT` now requires the sell to come from the whale the position
@@ -36,6 +50,16 @@ All notable changes to AgenticTrade are documented here. The format follows
   passing the freshness check.
 - `LIVE_TRADING_ENABLED` and `LIVE_TRADING_CONFIRMED` use the shared
   `env_bool()` parser, matching `validate.py` semantics.
+- OHLCV exits are gap-aware: a stop fills at `min(open, stop)` and take profit
+  at `max(open, tp)` instead of the stop/target price when the candle gapped
+  through it.
+- Trailing stops use the peak *before* the current candle, so a candle cannot
+  arm and trigger its own trailing stop.
+- The entry candle no longer exits the position it just opened; its high still
+  updates the peak for the next candle.
+- When a candle contains both a stop/trailing stop and take profit, the stop is
+  used and the trade is flagged `ambiguousBar` instead of silently assuming an
+  intrabar order.
 
 ## [11.0.0] - 2026-11-12
 

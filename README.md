@@ -444,9 +444,12 @@ python -m agentictrade.ohlcv --help   # candle backtester CLI
 - loads CSV, JSON, or GeckoTerminal USD candles
 - long-only, one position at a time
 - signal at candle close, fill at a later candle open (no look-ahead)
-- configurable fees, slippage, latency, stop loss, take profit, trailing stop and time stop
-- stop is checked before trailing and take profit, so wide candles are handled conservatively
-- reports return, max drawdown, profit factor, expectancy, exposure, fees, per-trade Sharpe and exit reasons
+- configurable AMM fee, entry/exit slippage, priority fee, failed-transaction probability, liquidity impact, latency, stop loss, take profit, trailing stop and time stop
+- one shared `CostModel` (`agentictrade/costs.py`) for the paper book, the backtester and the ML labels, so a round trip costs the same everywhere
+- gap-aware exits: a stop gaps to `min(open, stop)`, take profit to `max(open, tp)`
+- trailing stops use the peak before the current candle; the entry candle cannot exit the position it opened
+- if a stop and take profit share a candle, the stop wins and the trade is flagged `ambiguousBar`
+- reports return, max drawdown, profit factor, expectancy, exposure, fees, total costs, per-trade Sharpe, exit reasons and a `configHash`
 - `--walk-forward N` evaluates sequential out-of-sample segments
 
 ```powershell
@@ -468,7 +471,8 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 - Some older log and hard-filter messages are still in Croatian. The newer risk-engine messages are in English.
 - The web API is intended for local use and now binds `127.0.0.1` by default. A non-loopback bind requires `DASHBOARD_TOKEN` or startup is refused; `ALLOW_INSECURE_DASHBOARD=true` is an explicit opt-out. Keep the rate limit enabled and do not expose it to the internet.
 - The ML model is advisory only and never opens, blocks or resizes trades. The realized replay and the OHLCV backtester are research tools, not forecasts.
-- The OHLCV backtester uses close-based signals and conservative high/low exit checks; it cannot model order-book depth, MEV or partial fills.
+- The OHLCV backtester uses close-based signals and gap-aware high/low exit checks; it cannot model order-book depth, MEV or partial fills. When a candle contains both a stop and take profit, the stop is used and the trade is marked `ambiguousBar`.
+- The OHLCV engine exits the whole position at take profit; the live/paper book sells half at TP1 and trails the rest. Use the paper book to measure the actual TP1 policy.
 - Walk-forward segments reset the bankroll and do not re-optimize parameters; use it to compare strategies out of sample, not to tune them automatically.
 - Strategy profiles only fill environment variables that are not set explicitly; change `.env` values to override them.
 

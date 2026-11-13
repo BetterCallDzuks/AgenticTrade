@@ -7,6 +7,8 @@ liquidity. This keeps results conservative and reproducible in tests.
 
 from typing import Dict, Optional, Tuple
 
+from agentictrade.costs import CostModel
+
 EXIT_ICONS: Dict[str, str] = {
     "STOP_LOSS": "🛑",
     "FAST_INVALIDATION": "⚡",
@@ -35,15 +37,25 @@ def paper_fill(
     impact_coeff: float,
     sol_price_usd: float = 185.0,
 ) -> Tuple[float, float]:
-    """Return (fill price, slippage fraction) for a paper order."""
-    liq_usd = float(liquidity_usd or 0.0)
-    liquidity_sol = liq_usd / max(float(sol_price_usd or 185.0), 1e-9)
-    impact = (max(0.0, float(size_sol)) / max(liquidity_sol, 1.0)) * max(0.0, float(impact_coeff))
-    slip = max(0.0, float(base_bps)) / 10000.0 + impact
-    slip = min(0.5, max(0.0, slip))
+    """Return ``(fill price, cost fraction)`` for a paper order.
+
+    This is the legacy two-value interface. It delegates to the shared
+    :class:`CostModel` with AMM and flat fees disabled; new code should build a
+    ``CostModel`` directly so every cost component is explicit.
+    """
+    model = CostModel(
+        base_bps=base_bps,
+        amm_fee_bps=0.0,
+        impact_coeff=impact_coeff,
+        priority_fee_sol=0.0,
+        failed_tx_prob=0.0,
+        sol_price_usd=sol_price_usd,
+    )
     if side.upper() == "BUY":
-        return mid_price * (1.0 + slip), slip
-    return mid_price * (1.0 - slip), slip
+        fill = model.entry(mid_price, size_sol, liquidity_usd)
+        return fill.price, fill.slippage_fraction
+    fill = model.exit_value(size_sol, mid_price, liquidity_usd)
+    return fill.price, fill.slippage_fraction
 
 
 def exit_icon(reason: Optional[str]) -> str:
