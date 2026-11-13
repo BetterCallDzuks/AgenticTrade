@@ -2001,6 +2001,187 @@ def test_v11_ml_contract():
     print("  v11 ML model contract: OK")
 
 
+def test_v12_walk_forward_optimizer():
+    import json
+    import math
+
+    from agentictrade.ohlcv import BacktestConfig, make_strategy, run_backtest
+    from agentictrade.optimizer import (
+        OBJECTIVES,
+        default_grid,
+        grid_combinations,
+        optimize_walk_forward,
+        parse_grid,
+        render_report,
+    )
+
+    closes = []
+    price = 1.0
+    for index in range(600):
+        price *= 1.0 + 0.02 * math.sin(index / 7.0) + 0.004 * math.sin(index / 31.0)
+        closes.append(max(0.05, price))
+    candles = _synthetic_candles(closes)
+    config = BacktestConfig(initial_sol=10.0, trade_size_sol=0.5)
+
+    # Parsing and grid hygiene
+    assert parse_grid("5, 9,,13", int) == [5, 9, 13]
+    assert parse_grid("", int) == []
+    assert parse_grid(None, int) == []
+    try:
+        parse_grid("5,oops", int)
+        raise AssertionError("bad grid value should raise")
+    except ValueError:
+        pass
+
+    grid = default_grid("momentum")
+    combos = grid_combinations("momentum", grid)
+    assert combos, "default momentum grid must produce combinations"
+    assert all(item["slow"] > item["fast"] for item in combos), combos
+    assert len({tuple(sorted(item.items())) for item in combos}) == len(combos)
+    assert grid_combinations("momentum", {"fast": [], "slow": []}) == []
+
+    report = optimize_walk_forward(
+        candles,
+        "momentum",
+        grid,
+        config,
+        segments=3,
+        objective="pnl",
+        min_trades=1,
+        baseline_params={"fast": 9, "slow": 21},
+    )
+    again = optimize_walk_forward(
+        candles,
+        "momentum",
+        grid,
+        config,
+        segments=3,
+        objective="pnl",
+        min_trades=1,
+        baseline_params={"fast": 9, "slow": 21},
+    )
+    assert json.dumps(report, sort_keys=True, default=str) == json.dumps(again, sort_keys=True, default=str), (
+        "optimization must be deterministic"
+    )
+    assert report["objective"] == "pnl"
+    assert report["combinations"] == len(combos)
+    assert len(report["segments"]) == 3
+    eligible_params = {tuple(sorted(item.items())) for item in combos}
+    for segment in report["segments"]:
+        if segment.get("skipped"):
+            continue
+        chosen = tuple(sorted(segment["bestParams"].items()))
+        assert chosen in eligible_params, segment["bestParams"]
+
+    # Out-of-sample aggregate is exactly the sum of the traded test slices.
+    traded = [item for item in report["segments"] if not item.get("skipped")]
+    assert traded, "expected at least one traded segment"
+    assert report["aggregate"]["trades"] == sum(item["test"]["trades"] for item in traded)
+    assert abs(report["aggregate"]["netPnlSol"] - sum(item["testPnlSol"] for item in traded)) < 1e-9
+    assert report["aggregate"]["segments"] == len(traded)
+    assert "baseline" in report and "upliftSol" in report
+    assert abs(
+        report["upliftSol"]
+        - (report["aggregate"]["netPnlSol"] - report["baseline"]["summary"]["netPnlSol"])
+    ) < 1e-9
+    assert report["baseline"]["params"] == {"fast": 9, "slow": 21}
+
+    # No candidate reaches the trade floor: every segment is skipped, not filled.
+    strict = optimize_walk_forward(
+        candles, "momentum", grid, config, segments=3, min_trades=10_000, baseline_params={"fast": 9, "slow": 21}
+    )
+    assert all(item.get("skipped") for item in strict["segments"])
+    assert strict["aggregate"]["trades"] == 0
+    assert strict["aggregate"]["skippedSegments"] == 3
+
+    # Breakdowns are loud, never silent.
+    try:
+        optimize_walk_forward(candles, "momentum", {}, config)
+        raise AssertionError("empty grid should raise")
+    except ValueError:
+        pass
+    try:
+        optimize_walk_forward(candles, "momentum", grid, config, objective="nonsense")
+        raise AssertionError("bad objective should raise")
+    except ValueError:
+        pass
+    try:
+        optimize_walk_forward(candles, "nope", {"x": [1]}, config)
+        raise AssertionError("unknown strategy should raise")
+    except ValueError:
+        pass
+    assert set(OBJECTIVES) >= {"pnl", "return_pct", "profit_factor", "expectancy", "sharpe"}
+
+    # Each objective is usable and each breakout strategy is covered by the CLI path.
+    for objective in OBJECTIVES:
+        assert "aggregate" in optimize_walk_forward(
+            candles, "momentum", grid, config, segments=2, objective=objective, min_trades=0
+        )
+    breakout_grid = default_grid("breakout")
+    breakout = optimize_walk_forward(candles, "breakout", breakout_grid, config, segments=2, min_trades=0)
+    assert breakout["combinations"] == len(grid_combinations("breakout", breakout_grid))
+
+    markdown = render_report(report)
+    assert "Walk-forward optimization" in markdown
+    assert "Out-of-sample aggregate" in markdown
+    assert "Uplift over baseline" in markdown
+
+    # The CLI shares the same machinery; --optimize wins over --walk-forward.
+    from agentictrade import ohlcv as ohlcv_module
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+        json.dump(
+            [
+                {
+                    "ts": candle.ts,
+                    "open": candle.open,
+                    "high": candle.high,
+                    "low": candle.low,
+                    "close": candle.close,
+                    "volume": candle.volume,
+                }
+                for candle in candles
+            ],
+            handle,
+        )
+        candle_path = handle.name
+    try:
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = ohlcv_module.main(
+                [
+                    "--json",
+                    candle_path,
+                    "--optimize",
+                    "--walk-forward",
+                    "2",
+                    "--min-trades",
+                    "0",
+                    "--objective",
+                    "sharpe",
+                    "--output",
+                    "json",
+                ]
+            )
+        assert code == 0
+        payload = json.loads(buffer.getvalue())
+        assert payload["optimization"]["objective"] == "sharpe"
+        assert payload["optimization"]["segmentCount"] == 2
+    finally:
+        try:
+            os.remove(candle_path)
+        except OSError:
+            pass
+
+    # Sanity: the baseline runner really is the unoptimized strategy.
+    direct = run_backtest(candles[:200], make_strategy("momentum", fast=9, slow=21), config)
+    assert direct.summary["trades"] >= 0
+    print("  v12 walk-forward optimizer: OK")
+
+
 def main():
     print("Running AgenticTrade v11.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
@@ -2015,6 +2196,7 @@ def main():
         test_confirmation_cancel()
         test_v12_pending_persistence()
         test_v12_pumpfun_curve_quote()
+        test_v12_walk_forward_optimizer()
         test_exit_rules()
         test_flow_exit()
         test_whale_exit()

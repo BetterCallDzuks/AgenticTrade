@@ -62,9 +62,21 @@ All notable changes to AgenticTrade are documented here. The format follows
   so pre-graduation tokens can pass entry confirmation and manual buys.
   `PUMPFUN_CURVE_ENABLED` (default true), `PUMPFUN_CURVE_CACHE_SEC` (5s) and
   `PUMPFUN_CURVE_MISS_CACHE_SEC` (60s) control the fallback.
+- Walk-forward parameter optimization: `agentictrade/optimizer.py` grid-searches
+  the strategy parameters on each train slice and trades only the winning set on
+  the untouched test slice. The CLI exposes it as `--optimize` with
+  `--objective` (`pnl`, `return_pct`, `profit_factor`, `expectancy`, `sharpe`),
+  `--min-trades` and `--fast-grid` / `--slow-grid` / `--lookback-grid` /
+  `--threshold-grid`. Candidates that never traded on the train slice are
+  ineligible, a slice with no eligible candidate is reported as skipped, and
+  the report compares the out-of-sample aggregate against the unoptimized
+  `--fast/--slow/--lookback/--threshold` baseline (`upliftSol`).
 
 ### Changed
 
+- `python -m agentictrade.ohlcv --optimize` reuses the `--walk-forward` segment
+  count (default 3 when it is 0) and `--train-ratio`; the plain
+  `--walk-forward` path still evaluates one fixed parameter set.
 - `ResearchAgent.get_market_data()` now falls back to a Pump.fun bonding-curve
   quote when DexScreener has no pair, instead of returning `None`. Freshness,
   hard filters and the fail-closed `STALE_PRICE` path are unchanged.

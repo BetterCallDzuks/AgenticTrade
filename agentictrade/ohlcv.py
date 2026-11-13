@@ -30,6 +30,7 @@ research and in the live paper ledger.
 Examples:
     python -m agentictrade.ohlcv --csv candles.csv --strategy momentum
     python -m agentictrade.ohlcv --json candles.json --walk-forward 3
+    python -m agentictrade.ohlcv --csv candles.csv --optimize --objective sharpe
     python -m agentictrade.ohlcv --pool <pool-address> --timeframe hour
 """
 
@@ -932,6 +933,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--walk-forward", type=int, default=0, help="number of out-of-sample segments")
     parser.add_argument("--train-ratio", type=float, default=0.6)
+    parser.add_argument(
+        "--optimize",
+        action="store_true",
+        help="walk-forward parameter optimization (grid-search each train slice)",
+    )
+    parser.add_argument(
+        "--objective",
+        default="pnl",
+        choices=("pnl", "return_pct", "profit_factor", "expectancy", "sharpe"),
+        help="what the optimizer maximizes on the train slice",
+    )
+    parser.add_argument(
+        "--min-trades", type=int, default=3, help="minimum train trades for a candidate to be eligible"
+    )
+    parser.add_argument("--fast-grid", default="", help="e.g. 5,9,13 (empty uses the default grid)")
+    parser.add_argument("--slow-grid", default="", help="e.g. 13,21,34 (empty uses the default grid)")
+    parser.add_argument("--lookback-grid", default="", help="e.g. 10,20,30,55 (empty uses the default grid)")
+    parser.add_argument("--threshold-grid", default="", help="e.g. 0.0,0.5,1.0 (empty uses the default grid)")
     parser.add_argument("--output", choices=("markdown", "json"), default="markdown")
     parser.add_argument("--save", help="also write the JSON result to this path")
     return parser
@@ -984,6 +1003,58 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.strategy == "breakout":
             return BreakoutStrategy(lookback=args.lookback, threshold_pct=args.threshold_pct)
         return EmaCrossStrategy(fast=args.fast, slow=args.slow)
+
+    if args.optimize:
+        # Imported lazily: the optimizer imports this module.
+        from agentictrade.optimizer import (
+            default_grid,
+            optimize_walk_forward,
+            parse_grid,
+            render_report,
+        )
+
+        defaults = default_grid(args.strategy)
+        grid: Dict[str, Any] = {
+            "fast": parse_grid(args.fast_grid, int) or defaults.get("fast", []),
+            "slow": parse_grid(args.slow_grid, int) or defaults.get("slow", []),
+            "lookback": parse_grid(args.lookback_grid, int) or defaults.get("lookback", []),
+            "threshold_pct": parse_grid(args.threshold_grid, float)
+            or defaults.get("threshold_pct", []),
+        }
+        if args.strategy == "breakout":
+            grid.pop("fast", None)
+            grid.pop("slow", None)
+        else:
+            grid.pop("lookback", None)
+            grid.pop("threshold_pct", None)
+        if args.strategy == "breakout":
+            baseline_params: Dict[str, Any] = {
+                "lookback": args.lookback,
+                "threshold_pct": args.threshold_pct,
+            }
+        else:
+            baseline_params = {"fast": args.fast, "slow": args.slow}
+
+        optimization = optimize_walk_forward(
+            candles,
+            args.strategy,
+            grid,
+            config,
+            segments=args.walk_forward or 3,
+            train_ratio=args.train_ratio,
+            objective=args.objective,
+            min_trades=args.min_trades,
+            baseline_params=baseline_params,
+        )
+        payload = {"optimization": optimization}
+        if args.output == "json":
+            text = json.dumps(payload, indent=2, default=str)
+        else:
+            text = render_report(optimization)
+        print(text)
+        if args.save:
+            Path(args.save).write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        return 0
 
     if args.walk_forward > 0:
         report: Dict[str, Any] = walk_forward(

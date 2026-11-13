@@ -223,6 +223,7 @@ AgenticTrade/
 │   ├── prometheus.py     # metrics registry and text exposition (v11)
 │   ├── shutdown.py       # SIGINT/SIGTERM controller (v11)
 │   ├── ohlcv.py          # candle backtester + strategies + CLI (v11)
+│   ├── optimizer.py      # walk-forward parameter grid search (v12)
 │   ├── validate.py       # environment validation rules (v11)
 │   ├── doctor.py         # read-only pre-flight CLI (v11)
 │   ├── timeutils.py      # UTC/local day helpers, extracted from the monolith (v11)
@@ -313,6 +314,7 @@ The project is being migrated incrementally from the original monolith into a sm
 - `agentictrade/exits.py` — one shared exit policy for the paper book and the backtester (v11)
 - `agentictrade/costs.py` — one shared transaction-cost model with depth decay (v11)
 - `agentictrade/llm.py` — provider-neutral LLM client: Gemini or local OpenAI-compatible servers (v11)
+- `agentictrade/optimizer.py` — walk-forward parameter grid search with out-of-sample scoring and baseline uplift (v12)
 
 `research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
 
@@ -436,7 +438,7 @@ These additions are intentionally non-breaking: v9 behavior remains the default.
 ## v11.0 progress
 
 - **Reproducible builds**: exact pins in `requirements.txt`, separate dev tooling, `pyproject.toml` with Ruff/mypy settings, and a CI matrix (Ubuntu + Windows, Python 3.11 + 3.12).
-- **Research**: event-driven OHLCV backtester (`agentictrade/ohlcv.py`) with CSV/JSON/GeckoTerminal loaders, momentum and breakout strategies, fee/slippage/latency modelling and walk-forward splits. See `examples/candles_sample.csv`.
+- **Research**: event-driven OHLCV backtester (`agentictrade/ohlcv.py`) with CSV/JSON/GeckoTerminal loaders, momentum and breakout strategies, fee/slippage/latency modelling, walk-forward splits and walk-forward parameter optimization (`--optimize`, `agentictrade/optimizer.py`). See `examples/candles_sample.csv`.
 - **Observability**: dependency-free Prometheus registry, `GET /metrics` (counters, latency histogram, DB-derived gauges, breaker state, uptime) and `GET /ready` for dependency checks. Both honour `DASHBOARD_TOKEN`.
 - **Graceful shutdown**: `SIGINT`/`SIGTERM` stop new cycles, cancel monitor/confirmation tasks, close the aiohttp runner and append a `shutdown` audit event.
 - **Safer browser surface**: CORS is now an allowlist (`ALLOWED_ORIGINS`, localhost on any port by default) instead of `*`; responses carry `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a CSP for HTML pages. `CORS_ALLOW_ALL=true` restores the old behaviour.
@@ -486,7 +488,8 @@ python -m agentictrade.ohlcv --help   # candle backtester CLI
 - trailing stops use the peak before the current candle; the entry candle cannot exit the position it opened
 - if a stop and take profit share a candle, the stop wins and the trade is flagged `ambiguousBar`
 - reports return, max drawdown, profit factor, expectancy, exposure, fees, total costs, per-trade Sharpe, exit reasons and a `configHash`
-- `--walk-forward N` evaluates sequential out-of-sample segments
+- `--walk-forward N` evaluates sequential out-of-sample segments with one fixed parameter set
+- `--optimize` does the other half: it grid-searches the parameters on each train slice and trades only the winner on the untouched test slice, then reports the out-of-sample aggregate against the unoptimized `--fast/--slow/--lookback/--threshold` baseline (`agentictrade/optimizer.py`)
 
 ```powershell
 # CSV columns: ts,open,high,low,close,volume (ISO timestamps or epoch seconds)
@@ -501,7 +504,21 @@ python -m agentictrade.ohlcv --csv candles.csv --take-profit 80 --tp1-fraction 0
 
 # Exit the whole position at TP1, and opt into the paper book's 900s time stop
 python -m agentictrade.ohlcv --csv candles.csv --tp1-fraction 1.0 --time-stop
+
+# Walk-forward optimization: 3 segments, maximize Sharpe, custom grids
+python -m agentictrade.ohlcv --csv candles.csv --optimize --objective sharpe \
+  --fast-grid 5,9,13 --slow-grid 13,21,34 --min-trades 5
+
+python -m agentictrade.ohlcv --csv candles.csv --strategy breakout --optimize \
+  --lookback-grid 10,20,30,55 --threshold-grid 0.0,0.5,1.0 --output json --save opt.json
 ```
+
+`--optimize` reuses `--walk-forward` for the segment count (default 3 when it is
+0) and `--train-ratio` for the split. Objectives: `pnl`, `return_pct`,
+`profit_factor`, `expectancy`, `sharpe`. A candidate is only eligible when it
+produced at least `--min-trades` trades on the train slice; a slice with no
+eligible candidate is reported as skipped instead of being filled with an
+untested winner.
 
 This engine ships with a momentum (EMA cross) and a breakout strategy. It is a research tool: a positive backtest is not a promise of future profit.
 
@@ -517,8 +534,8 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 - The web API is intended for local use and now binds `127.0.0.1` by default. A non-loopback bind requires `DASHBOARD_TOKEN` or startup is refused; `ALLOW_INSECURE_DASHBOARD=true` is an explicit opt-out. Keep the rate limit enabled and do not expose it to the internet.
 - The ML model is advisory only and never opens, blocks or resizes trades. The realized replay and the OHLCV backtester are research tools, not forecasts.
 - The OHLCV backtester uses close-based signals and gap-aware high/low exit checks; it cannot model order-book depth, MEV or partial fills. When a candle contains both a stop and take profit, the stop is used and the trade is marked `ambiguousBar`.
-- The OHLCV engine exits the whole position at take profit; the live/paper book sells half at TP1 and trails the rest. Use the paper book to measure the actual TP1 policy.
-- Walk-forward segments reset the bankroll and do not re-optimize parameters; use it to compare strategies out of sample, not to tune them automatically.
+- The OHLCV engine sells `tp1_fraction` at take profit and trails the rest on the stop ladder, matching the paper book; the same `ExitPolicy` drives both.
+- Walk-forward segments reset the bankroll. `--walk-forward` compares one fixed parameter set out of sample; `--optimize` re-selects parameters per window, so it measures the selection process, not hindsight. Neither guarantees future profit.
 - Strategy profiles only fill environment variables that are not set explicitly; change `.env` values to override them.
 
 ## License
