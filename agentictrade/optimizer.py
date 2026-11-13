@@ -124,7 +124,7 @@ def grid_combinations(strategy_name: str, grid: Mapping[str, Sequence[Any]]) -> 
     return combinations
 
 
-def _objective_value(summary: Mapping[str, Any], objective: str) -> float:
+def objective_value(summary: Mapping[str, Any], objective: str) -> float:
     if objective == "pnl":
         return float(summary.get("netPnlSol") or 0.0)
     if objective == "return_pct":
@@ -409,7 +409,7 @@ def optimize_walk_forward(
             summary = result.summary
             if int(summary.get("trades") or 0) < min_trades:
                 continue
-            score = _objective_value(summary, objective)
+            score = objective_value(summary, objective)
             if best is None or score > best[0]:
                 best = (score, params, summary)
 

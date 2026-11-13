@@ -945,6 +945,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="sweep the modelled costs and report the break-even multiplier",
     )
+    mode.add_argument(
+        "--compare",
+        action="store_true",
+        help="optimize, stress and rank several strategies on the same candles",
+    )
     parser.add_argument(
         "--objective",
         default="pnl",
@@ -987,6 +992,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=1.0,
         help="multiplier treated as the reference cost level (default: 1.0)",
+    )
+    parser.add_argument(
+        "--compare-strategies",
+        default="momentum,breakout",
+        help="comma-separated strategies for --compare (default: momentum,breakout)",
     )
     parser.add_argument("--output", choices=("markdown", "json"), default="markdown")
     parser.add_argument("--save", help="also write the JSON result to this path")
@@ -1036,15 +1046,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         max_hold_candles=args.max_hold,
     )
 
-    if not args.optimize and (
+    if not (args.optimize or args.compare) and (
         args.window_mode != "fixed" or args.train_candles or args.test_candles
     ):
         print(
-            "--window-mode/--train-candles/--test-candles only apply to --optimize.",
+            "--window-mode/--train-candles/--test-candles only apply to "
+            "--optimize or --compare.",
             file=sys.stderr,
         )
         return 2
-    if args.optimize and args.window_mode == "fixed" and (args.train_candles or args.test_candles):
+    if (args.optimize or args.compare) and args.window_mode == "fixed" and (
+        args.train_candles or args.test_candles
+    ):
         print(
             "--train-candles/--test-candles only apply to --window-mode anchored or rolling.",
             file=sys.stderr,
@@ -1085,6 +1098,67 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             text = json.dumps(payload, indent=2, default=str)
         else:
             text = render_cost_report(stress)
+        print(text)
+        if args.save:
+            Path(args.save).write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        return 0
+
+    if args.compare:
+        # Imported lazily: the compare module imports this module.
+        from agentictrade.compare import compare_strategies, default_strategies
+        from agentictrade.compare import render_report as render_compare_report
+        from agentictrade.optimizer import parse_grid as parse_optimizer_grid
+
+        names = [chunk.strip() for chunk in args.compare_strategies.split(",") if chunk.strip()]
+        if not names:
+            print("--compare-strategies is empty.", file=sys.stderr)
+            return 2
+        specs: List[Dict[str, Any]] = []
+        try:
+            for name in names:
+                known = {spec["name"]: spec for spec in default_strategies()}
+                if name not in known:
+                    print(
+                        f"unknown strategy {name!r}; choose from {', '.join(sorted(known))}.",
+                        file=sys.stderr,
+                    )
+                    return 2
+                strategy_grid = dict(known[name]["grid"])
+                if name == "momentum":
+                    params = {"fast": args.fast, "slow": args.slow}
+                    if args.fast_grid:
+                        strategy_grid["fast"] = parse_optimizer_grid(args.fast_grid, int)
+                    if args.slow_grid:
+                        strategy_grid["slow"] = parse_optimizer_grid(args.slow_grid, int)
+                else:
+                    params = {"lookback": args.lookback, "threshold_pct": args.threshold_pct}
+                    if args.lookback_grid:
+                        strategy_grid["lookback"] = parse_optimizer_grid(args.lookback_grid, int)
+                    if args.threshold_grid:
+                        strategy_grid["threshold_pct"] = parse_optimizer_grid(
+                            args.threshold_grid, float
+                        )
+                specs.append({"name": name, "params": params, "grid": strategy_grid})
+            comparison = compare_strategies(
+                candles,
+                specs,
+                config,
+                objective=args.objective,
+                window_mode=args.window_mode,
+                segments=args.walk_forward or 3,
+                train_ratio=args.train_ratio,
+                min_trades=args.min_trades,
+                train_candles=args.train_candles or None,
+                test_candles=args.test_candles or None,
+            )
+        except ValueError as error:
+            print(error, file=sys.stderr)
+            return 2
+        payload = {"comparison": comparison}
+        if args.output == "json":
+            text = json.dumps(payload, indent=2, default=str)
+        else:
+            text = render_compare_report(comparison)
         print(text)
         if args.save:
             Path(args.save).write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")

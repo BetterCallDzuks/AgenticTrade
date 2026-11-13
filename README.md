@@ -225,6 +225,7 @@ AgenticTrade/
 │   ├── ohlcv.py          # candle backtester + strategies + CLI (v11)
 │   ├── optimizer.py      # walk-forward param search + rolling stability (v12)
 │   ├── cost_stress.py    # cost multiplier sweep + break-even (v12)
+│   ├── compare.py        # out-of-sample strategy ranking (v12)
 │   ├── validate.py       # environment validation rules (v11)
 │   ├── doctor.py         # read-only pre-flight CLI (v11)
 │   ├── timeutils.py      # UTC/local day helpers, extracted from the monolith (v11)
@@ -317,6 +318,7 @@ The project is being migrated incrementally from the original monolith into a sm
 - `agentictrade/llm.py` — provider-neutral LLM client: Gemini or local OpenAI-compatible servers (v11)
 - `agentictrade/optimizer.py` — walk-forward parameter grid search with fixed/anchored/rolling windows, stability scoring and baseline uplift (v12)
 - `agentictrade/cost_stress.py` — cost multiplier sweep and interpolated break-even (v12)
+- `agentictrade/compare.py` — optimize, cost-stress and rank several strategies in one report (v12)
 
 `research_bot.py` remains the main entry point and imports these components. The goal is to make future upgrades, tests and maintenance easier without changing trading behavior.
 
@@ -440,7 +442,7 @@ These additions are intentionally non-breaking: v9 behavior remains the default.
 ## v11.0 progress
 
 - **Reproducible builds**: exact pins in `requirements.txt`, separate dev tooling, `pyproject.toml` with Ruff/mypy settings, and a CI matrix (Ubuntu + Windows, Python 3.11 + 3.12).
-- **Research**: event-driven OHLCV backtester (`agentictrade/ohlcv.py`) with CSV/JSON/GeckoTerminal loaders, momentum and breakout strategies, fee/slippage/latency modelling, walk-forward splits and walk-forward parameter optimization (`--optimize`, `agentictrade/optimizer.py`). See `examples/candles_sample.csv`.
+- **Research**: event-driven OHLCV backtester (`agentictrade/ohlcv.py`) with CSV/JSON/GeckoTerminal loaders, momentum and breakout strategies, fee/slippage/latency modelling, walk-forward splits and walk-forward parameter optimization (`--optimize`, `agentictrade/optimizer.py`). `--compare` runs several strategies through the same optimizer and cost stress and ranks them in one artifact (`agentictrade/compare.py`). See `examples/candles_sample.csv`.
 - **Observability**: dependency-free Prometheus registry, `GET /metrics` (counters, latency histogram, DB-derived gauges, breaker state, uptime) and `GET /ready` for dependency checks. Both honour `DASHBOARD_TOKEN`.
 - **Graceful shutdown**: `SIGINT`/`SIGTERM` stop new cycles, cancel monitor/confirmation tasks, close the aiohttp runner and append a `shutdown` audit event.
 - **Safer browser surface**: CORS is now an allowlist (`ALLOWED_ORIGINS`, localhost on any port by default) instead of `*`; responses carry `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and a CSP for HTML pages. `CORS_ALLOW_ALL=true` restores the old behaviour.
@@ -548,8 +550,8 @@ python -m agentictrade.ohlcv --csv candles.csv --optimize --window-mode anchored
 ```
 
 `--window-mode`, `--train-candles` and `--test-candles` only apply to
-`--optimize` (and the candle sizes only to `anchored`/`rolling`); the CLI errors
-instead of silently ignoring them.
+`--optimize` and `--compare` (and the candle sizes only to
+`anchored`/`rolling`); the CLI errors instead of silently ignoring them.
 
 ### Cost stress and break-even
 
@@ -572,7 +574,34 @@ zero. `headroomPct` is the margin between the baseline and break-even: negative
 means the current cost assumptions already erase the edge. A strategy that is
 already unprofitable with zero costs is reported as `unprofitable-at-zero-cost`,
 never given a break-even. `--stress-costs` is mutually exclusive with
-`--optimize` and does not combine with `--walk-forward`.
+`--optimize` and `--compare` and does not combine with `--walk-forward`.
+
+### Strategy comparison
+
+`--compare` answers "which of these strategies actually holds up?" instead of
+"which parameter set won one backtest". Every strategy is run through the same
+walk-forward optimizer (so params are always picked on train slices) and the
+same cost sweep, then ranked on out-of-sample, cost-adjusted evidence:
+
+```bash
+python -m agentictrade.ohlcv --csv candles.csv --compare
+python -m agentictrade.ohlcv --csv candles.csv --compare \
+  --compare-strategies momentum,breakout --objective sharpe \
+  --window-mode rolling --train-candles 240 --test-candles 90
+python -m agentictrade.ohlcv --csv candles.csv --compare --output json --save compare.json
+```
+
+The ranking key is fixed and deterministic: the chosen `--objective` on the
+out-of-sample aggregate first, then the break-even cost multiplier (a wider
+margin wins ties, a strategy with no break-even ranks last), then stability
+(`stable` > `mixed` > `unstable`), then the strategy name. Each row shows net
+PnL, return, trades, profit factor, max drawdown, stability, break-even and the
+uplift over that strategy's unoptimized parameters. `--compare` is mutually
+exclusive with `--optimize` and `--stress-costs`; it reuses the optimizer's
+grid, window, `--min-trades` and `--objective` flags. `--compare-strategies`
+defaults to `momentum,breakout` and rejects unknown names. A comparison is a
+research artifact, not a recommendation: two strategies can both lose money and
+still be ranked.
 
 This engine ships with a momentum (EMA cross) and a breakout strategy. It is a research tool: a positive backtest is not a promise of future profit.
 
@@ -591,6 +620,7 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 - The OHLCV engine sells `tp1_fraction` at take profit and trails the rest on the stop ladder, matching the paper book; the same `ExitPolicy` drives both.
 - Walk-forward segments reset the bankroll. `--walk-forward` compares one fixed parameter set out of sample; `--optimize` re-selects parameters per window, so it measures the selection process, not hindsight. Neither guarantees future profit.
 - Cost stress assumes costs scale linearly with the multiplier and interpolates break-even between sweep points; it does not re-derive liquidity, MEV or congestion from the market. Treat the break-even multiplier as a sensitivity estimate, not a precise threshold.
+- Strategy comparison ranks only the strategies you pass it on one candle series. It cannot tell you a strategy is good in absolute terms, only which candidate held up best under the same windows and costs; the ranking is deterministic but not statistically significant.
 - Strategy profiles only fill environment variables that are not set explicitly; change `.env` values to override them.
 
 ## License

@@ -82,6 +82,13 @@ All notable changes to AgenticTrade are documented here. The format follows
   edge disappears. `--stress-costs`, `--cost-multipliers` and `--cost-baseline`
   expose it in the CLI; the report includes the gross edge (costs removed), the
   interpolated `breakEvenMultiplier`, `headroomPct` and per-point fees/costs.
+- Strategy comparison: `agentictrade/compare.py` runs several strategies through
+  the same walk-forward optimizer and cost sweep and ranks them on
+  out-of-sample, cost-adjusted evidence. `--compare` (with
+  `--compare-strategies`, default `momentum,breakout`) emits one report with
+  per-strategy aggregate, stability, break-even and uplift, plus a deterministic
+  `ranking` and `winner`. The ranking key is objective score, then break-even
+  multiplier, then stability, then strategy name.
 
 ### Changed
 
@@ -91,6 +98,9 @@ All notable changes to AgenticTrade are documented here. The format follows
 - `--window-mode` (fixed/anchored/rolling) and `--train-candles`/`--test-candles`
   are optimizer-only; the CLI rejects them for `--walk-forward`,
   `--stress-costs` and plain backtests instead of ignoring them.
+- `--compare` is a fourth mode in the same mutually-exclusive group as
+  `--optimize` and `--stress-costs`; it reuses the optimizer's grid, window and
+  `--min-trades`/`--objective` flags and rejects unknown strategy names.
 - `--stress-costs` is a third mode, mutually exclusive with `--optimize`: it
   sweeps the whole series instead of the walk-forward windows and refuses to
   combine with `--walk-forward` rather than silently ignoring it.

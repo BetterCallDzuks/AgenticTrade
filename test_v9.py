@@ -2646,6 +2646,176 @@ def test_v12_rolling_windows():
     print("  v12 rolling windows and stability: OK")
 
 
+def test_v12_strategy_comparison():
+    import json
+    import math
+
+    from agentictrade.compare import compare_strategies, default_strategies, render_report
+    from agentictrade.ohlcv import BacktestConfig
+
+    closes = []
+    price = 1.0
+    for index in range(600):
+        price *= 1.0 + 0.012 * math.sin(index / 6.0) + 0.0015
+        closes.append(max(0.05, price))
+    candles = _synthetic_candles(closes)
+    config = BacktestConfig(initial_sol=10.0, trade_size_sol=0.5)
+    specs = default_strategies()
+    assert [spec["name"] for spec in specs] == ["momentum", "breakout"]
+
+    report = compare_strategies(
+        candles,
+        specs,
+        config,
+        objective="pnl",
+        segments=2,
+        min_trades=1,
+        multipliers=[0.0, 1.0, 2.0],
+    )
+    again = compare_strategies(
+        candles,
+        specs,
+        config,
+        objective="pnl",
+        segments=2,
+        min_trades=1,
+        multipliers=[0.0, 1.0, 2.0],
+    )
+    assert json.dumps(report, sort_keys=True, default=str) == json.dumps(
+        again, sort_keys=True, default=str
+    )
+
+    assert report["candles"] == 600
+    assert report["windowMode"] == "fixed"
+    assert len(report["strategies"]) == 2
+    assert sorted(report["ranking"]) == ["breakout", "momentum"]
+    assert report["winner"] == report["ranking"][0]
+
+    for entry in report["strategies"]:
+        assert set(entry["aggregate"]) >= {"trades", "netPnlSol", "returnPct", "profitFactor"}
+        assert entry["stability"]["windows"] >= 0
+        assert entry["stability"]["consistency"] in ("stable", "mixed", "unstable")
+        assert entry["costStress"]["status"] in (
+            "break-even",
+            "unprofitable-at-zero-cost",
+            "unprofitable-throughout",
+            "profitable-at-max-multiplier",
+        )
+        assert isinstance(entry["upliftSol"], float)
+        assert "score" in entry and math.isfinite(entry["score"])
+
+    # Ranking follows the documented key: score desc, then break-even desc.
+    scores = [entry["score"] for entry in report["strategies"]]
+    ranked_scores = [
+        next(entry["score"] for entry in report["strategies"] if entry["strategy"] == name)
+        for name in report["ranking"]
+    ]
+    assert ranked_scores == sorted(scores, reverse=True)
+
+    # One strategy, rolling windows, and objective pass-through.
+    single = compare_strategies(
+        candles,
+        [specs[0]],
+        config,
+        objective="sharpe",
+        window_mode="rolling",
+        train_candles=240,
+        test_candles=90,
+        min_trades=1,
+    )
+    assert single["ranking"] == ["momentum"]
+    assert single["winner"] == "momentum"
+    assert single["objective"] == "sharpe"
+    assert single["windowMode"] == "rolling"
+    assert single["trainCandles"] == 240 and single["testCandles"] == 90
+
+    # Fail loudly on unusable inputs.
+    for call in (
+        lambda: compare_strategies(candles, [], config),
+        lambda: compare_strategies([], specs, config),
+        lambda: compare_strategies(candles, specs, config, objective="bogus"),
+        lambda: compare_strategies(candles, specs, config, window_mode="sideways"),
+        lambda: compare_strategies(candles, [{"name": "nope", "params": {}, "grid": {"x": [1]}}], config),
+        lambda: compare_strategies(candles, [{"name": "momentum", "params": {}, "grid": {}}], config),
+    ):
+        try:
+            call()
+            raise AssertionError("invalid comparison input should raise")
+        except ValueError:
+            pass
+
+    markdown = render_report(report)
+    assert "# Strategy comparison" in markdown
+    assert "Winner:" in markdown
+    assert "| Rank |" in markdown
+    assert "break-even" in markdown.lower()
+    for name in report["ranking"]:
+        assert name in markdown
+
+    # CLI: --compare builds the specs, reports JSON and rejects bad inputs.
+    from agentictrade import ohlcv as ohlcv_module
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+        json.dump(
+            [
+                {
+                    "ts": candle.ts,
+                    "open": candle.open,
+                    "high": candle.high,
+                    "low": candle.low,
+                    "close": candle.close,
+                    "volume": candle.volume,
+                }
+                for candle in candles
+            ],
+            handle,
+        )
+        candle_path = handle.name
+    try:
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = ohlcv_module.main(
+                [
+                    "--json",
+                    candle_path,
+                    "--compare",
+                    "--compare-strategies",
+                    "momentum,breakout",
+                    "--min-trades",
+                    "1",
+                    "--output",
+                    "json",
+                ]
+            )
+        assert code == 0
+        payload = json.loads(buffer.getvalue())
+        assert set(payload["comparison"]["ranking"]) == {"momentum", "breakout"}
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            assert ohlcv_module.main(
+                ["--json", candle_path, "--compare", "--compare-strategies", "nope"]
+            ) == 2
+        assert "unknown strategy" in stderr.getvalue()
+
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                ohlcv_module.main(["--json", candle_path, "--compare", "--optimize"])
+            raise AssertionError("--compare and --optimize are mutually exclusive")
+        except SystemExit as exit_error:
+            assert exit_error.code == 2
+    finally:
+        try:
+            os.remove(candle_path)
+        except OSError:
+            pass
+
+    print("  v12 strategy comparison: OK")
+
+
 def main():
     print("Running AgenticTrade v11.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
@@ -2663,6 +2833,7 @@ def main():
         test_v12_walk_forward_optimizer()
         test_v12_cost_stress()
         test_v12_rolling_windows()
+        test_v12_strategy_comparison()
         test_exit_rules()
         test_flow_exit()
         test_whale_exit()
