@@ -12,8 +12,9 @@ Three layers are checked:
 2. :func:`audit_guards` drives the real ``SolanaExecutionAgent.execute_buy``
    against a session that refuses every request, so the fail-closed branches
    are exercised without a socket: paper mode returns ``DRY_RUN_READY``, live
-   without confirmation is ``BLOCKED``, live above the cap is ``BLOCKED`` and
-   live without a key is ``ERROR``.
+   without confirmation is ``BLOCKED``, live above the cap is ``BLOCKED``, live
+   without a key is ``ERROR``, the ``dry_run`` stage returns ``DRY_RUN_STAGED``,
+   and an exhausted ``probe`` budget or unknown stage is ``BLOCKED``.
 3. :func:`run_readiness` combines both into ``PAPER`` / ``READY`` / ``BLOCKED``
    and optionally probes the RPC health endpoint and a Jupiter quote.
 
@@ -41,6 +42,14 @@ STATUS_PAPER = "PAPER"
 STATUS_READY = "READY"
 STATUS_BLOCKED = "BLOCKED"
 
+# Staged go-live arming. ``dry_run`` plans every order but never sends it,
+# ``probe`` sends at most ``LIVE_STAGE_MAX_TRADES`` orders (the budget is spent
+# on the attempt, so a failed or unroutable trade still counts), and ``full`` is
+# the historical behaviour. An unrecognised value fails closed to ``dry_run``.
+LIVE_TRADING_STAGES = ("dry_run", "probe", "full")
+DEFAULT_LIVE_TRADING_STAGE = "full"
+DEFAULT_STAGE_MAX_LIVE_ORDERS = 1
+
 DEFAULT_RPC_URL = "https://api.mainnet-beta.solana.com"
 SOL_MINT = "So11111111111111111111111111111111111111112"
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
@@ -66,6 +75,19 @@ def _as_float(value: Any, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return float(default)
+
+
+def normalize_live_stage(value: Any) -> Optional[str]:
+    """Return a canonical stage name, or ``None`` when the value is unknown.
+
+    An unset value keeps the historical ``full`` behaviour; typos are treated as
+    invalid so the executor can fail closed instead of silently arming live
+    trading at a stage the operator did not ask for.
+    """
+    if value is None or not str(value).strip():
+        return DEFAULT_LIVE_TRADING_STAGE
+    text = str(value).strip().lower().replace("-", "_")
+    return text if text in LIVE_TRADING_STAGES else None
 
 
 def _solders_available() -> bool:
@@ -134,7 +156,56 @@ def check_environment(
     priority_fee_sol = _as_float(values.get("PRIORITY_FEE_SOL"), 0.0015)
     solders = _solders_available() if solders_available is None else bool(solders_available)
 
+    stage_raw = values.get("LIVE_TRADING_STAGE")
+    stage = normalize_live_stage(stage_raw)
+    stage_valid = stage is not None
+    stage = stage or "dry_run"
+    stage_max_orders = max(
+        0,
+        int(_as_float(values.get("LIVE_STAGE_MAX_TRADES"), DEFAULT_STAGE_MAX_LIVE_ORDERS)),
+    )
+    if not stage_valid:
+        issues.append(
+            _issue(
+                "fail",
+                "LIVE_TRADING_STAGE",
+                f"expected one of {', '.join(LIVE_TRADING_STAGES)}, got {stage_raw!r}; treated as dry_run",
+            )
+        )
+
     if live:
+        if stage == "dry_run":
+            issues.append(
+                _issue(
+                    "info",
+                    "LIVE_TRADING_STAGE",
+                    "live is armed at dry_run: orders are planned but never sent",
+                )
+            )
+        elif stage == "probe":
+            issues.append(
+                _issue(
+                    "warn",
+                    "LIVE_TRADING_STAGE",
+                    f"probe stage: at most {stage_max_orders} live order(s) will be attempted",
+                )
+            )
+            if stage_max_orders <= 0:
+                issues.append(
+                    _issue(
+                        "warn",
+                        "LIVE_STAGE_MAX_TRADES",
+                        "probe stage with a zero budget blocks every order; set it to at least 1",
+                    )
+                )
+        else:
+            issues.append(
+                _issue(
+                    "warn",
+                    "LIVE_TRADING_STAGE",
+                    "full stage: every confirmed order under MAX_LIVE_TRADE_SOL is sent",
+                )
+            )
         if not confirmed:
             issues.append(
                 _issue(
@@ -223,6 +294,9 @@ def check_environment(
         "liveTradingEnabled": bool(live),
         "liveTradingConfirmed": bool(confirmed),
         "maxLiveTradeSol": max_live,
+        "liveTradingStage": stage,
+        "liveTradingStageInvalid": not stage_valid,
+        "stageMaxLiveOrders": stage_max_orders,
         "privateKeyPresent": key_present,
         "rpcUrl": rpc_url,
         "rpcLoopback": _is_loopback(rpc_url),
@@ -302,6 +376,37 @@ _SCENARIOS: Tuple[Dict[str, Any], ...] = (
         "expect": "ERROR",
         "detail": "live without a key fails before any request is sent",
     },
+    {
+        "name": "live_dry_run_stage",
+        "live": True,
+        "confirmed": True,
+        "maxLiveTradeSol": 0.05,
+        "amountSol": 0.05,
+        "stage": "dry_run",
+        "expect": "DRY_RUN_STAGED",
+        "detail": "dry_run stage plans the order but never touches the network",
+    },
+    {
+        "name": "live_probe_exhausted",
+        "live": True,
+        "confirmed": True,
+        "maxLiveTradeSol": 0.05,
+        "amountSol": 0.05,
+        "stage": "probe",
+        "stageMaxLiveOrders": 0,
+        "expect": "BLOCKED",
+        "detail": "probe stage with an exhausted budget blocks the next order",
+    },
+    {
+        "name": "live_invalid_stage",
+        "live": True,
+        "confirmed": True,
+        "maxLiveTradeSol": 0.05,
+        "amountSol": 0.05,
+        "stage": "banana",
+        "expect": "BLOCKED",
+        "detail": "an unknown LIVE_TRADING_STAGE fails closed",
+    },
 )
 
 
@@ -325,6 +430,10 @@ async def _run_guards() -> Dict[str, Any]:
                 live_trading_enabled=scenario["live"],
                 live_trading_confirmed=scenario["confirmed"],
                 max_live_trade_sol=scenario["maxLiveTradeSol"],
+                live_trading_stage=scenario.get("stage", DEFAULT_LIVE_TRADING_STAGE),
+                stage_max_live_orders=scenario.get(
+                    "stageMaxLiveOrders", DEFAULT_STAGE_MAX_LIVE_ORDERS
+                ),
                 slippage_bps=500,
                 priority_fee_sol=0.001,
             )
@@ -452,6 +561,8 @@ def render_report(report: Mapping[str, Any]) -> str:
         f"- Live trading enabled: {_fmt_bool(environment.get('liveTradingEnabled'))}",
         f"- Explicit confirmation: {_fmt_bool(environment.get('liveTradingConfirmed'))}",
         f"- Max live trade: {environment.get('maxLiveTradeSol')} SOL",
+        f"- Live stage: `{environment.get('liveTradingStage', 'unknown')}` "
+        f"(budget {environment.get('stageMaxLiveOrders', '?')} order(s))",
         f"- Private key: {'set' if environment.get('privateKeyPresent') else 'not set'}",
         f"- RPC: {environment.get('rpcUrl')}",
         f"- solders available: {_fmt_bool(environment.get('soldersAvailable'))}",

@@ -40,6 +40,14 @@ This repository never ships credentials. `.env` is gitignored; only
 - Mutating API routes (`POST`/`PUT`/`PATCH`/`DELETE`) reject cross-site
   browser requests unless the origin is allowlisted (`ALLOWED_ORIGINS` or
   localhost), even when no token is configured.
+- Set `DASHBOARD_TOTP_SECRET` to require a current RFC 6238 code in `X-TOTP` on
+  every mutating request. Codes are compared in constant time with a ±1-step
+  clock window, reads are unaffected, and an unset secret leaves behaviour
+  unchanged.
+- Live orders can be staged with `LIVE_TRADING_STAGE=dry_run|probe|full`.
+  `dry_run` never sends, `probe` spends a one-shot `LIVE_STAGE_MAX_TRADES`
+  budget on the attempt, and an unknown value fails closed; the stage cannot be
+  changed from the dashboard.
 - Rate limiting runs before token auth, and `X-Forwarded-For` is ignored
   unless `TRUST_PROXY_HEADERS=true`, so clients cannot spoof their address to
   bypass the limiter.

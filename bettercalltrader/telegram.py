@@ -1,6 +1,8 @@
 import asyncio
+import html
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -13,17 +15,87 @@ MAIN_BUTTONS = [
     ],
     [
         {"text": "📜 Journal", "callback_data": "journal"},
+        {"text": "🧾 Digest", "callback_data": "digest"},
+    ],
+    [
         {"text": "🛑 Sell All", "callback_data": "sell_all"},
-    ],
-    [
         {"text": "🔄 Reset Breaker", "callback_data": "reset_breaker"},
-        {"text": "❓ Help", "callback_data": "help"},
     ],
     [
+        {"text": "❓ Help", "callback_data": "help"},
         {"text": "🧠 Analyze mint", "callback_data": "prompt_analyze"},
+    ],
+    [
         {"text": "🟢 Buy mint", "callback_data": "prompt_buy"},
     ],
 ]
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name) or default)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def build_digest(portfolio, researcher=None, now: Optional[datetime] = None) -> str:
+    """Compose the periodic digest from the same read-only snapshots as /status.
+
+    All values come from the portfolio and the LLM health snapshot; nothing here
+    mutates state (``persist=False`` keeps the circuit breaker read-only), so the
+    scheduler can call it on every loop without side effects.
+    """
+    stamp = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M UTC")
+    wallet = portfolio.get_wallet_status()
+    equity = portfolio.get_equity_now()
+    breaker = portfolio.get_circuit_breaker_state(persist=False)
+
+    realized = float(wallet.get("realized_pnl_sol") or 0.0)
+    lines = [
+        f"🧾 <b>BetterCallTrader digest</b> · {stamp}",
+        (
+            f"💰 Balance: <b>{float(wallet.get('balance_sol') or 0.0):.3f} SOL</b> · "
+            f"Equity: <b>{float(equity):.3f} SOL</b> · "
+            f"Open: {int(wallet.get('open_positions') or 0)}/{portfolio.max_open_positions}"
+        ),
+        f"📈 Realized PnL: <b>{realized:+.3f} SOL</b>",
+        f"🛡️ Breaker: {'🚨 TRIPPED' if breaker.get('tripped') else '✅ OK'}",
+        (
+            f"📊 Today: {int(breaker.get('tradesToday') or 0)}/{int(breaker.get('maxDailyTrades') or 0)} trades · "
+            f"PnL {float(breaker.get('dailyPnlSol') or 0.0):+.3f} SOL "
+            f"({float(breaker.get('dailyPnlPct') or 0.0):+.2f}%) · "
+            f"stops {int(breaker.get('losingStopsToday') or 0)}/{int(breaker.get('maxDailyStopLosses') or 0)}"
+        ),
+    ]
+
+    llm = getattr(researcher, "llm", None) if researcher is not None else None
+    health: List[Dict[str, Any]] = []
+    if llm is not None:
+        try:
+            health = list(llm.health())
+        except Exception:
+            health = []
+    if health:
+        providers = []
+        for entry in health:
+            name = html.escape(str(entry.get("provider") or "?"))
+            calls = int(entry.get("calls") or 0)
+            failures = int(entry.get("failures") or 0)
+            providers.append(f"{name} {calls}c/{failures}f {'🚨' if entry.get('open') else '✅'}")
+        lines.append("🤖 AI: " + " · ".join(providers))
+
+    positions = [p for p in portfolio.get_all_positions() if p.get("status") == "OPEN"]
+    if positions:
+        shown = []
+        for position in positions[:3]:
+            entry_price = float(position.get("entryPriceUsd") or 0.0)
+            current_price = float(position.get("currentPriceUsd") or entry_price)
+            pnl_pct = ((current_price / entry_price) - 1.0) * 100.0 if entry_price else 0.0
+            shown.append(f"${html.escape(str(position.get('symbol') or '?'))} {pnl_pct:+.1f}%")
+        suffix = f" (+{len(positions) - 3} more)" if len(positions) > 3 else ""
+        lines.append("📂 " + " · ".join(shown) + suffix)
+
+    return "\n".join(lines)
 
 
 class TelegramNotifier:
@@ -34,6 +106,8 @@ class TelegramNotifier:
         self.last_update_id: int = 0
         self.input_mode: Optional[str] = None
         self.input_expires: float = 0.0
+        self.digest_interval_sec = max(0.0, _env_float("DIGEST_INTERVAL_SEC", 0.0))
+        self._last_digest_at = 0.0
 
     @property
     def enabled(self) -> bool:
@@ -62,6 +136,33 @@ class TelegramNotifier:
                 await resp.read()
         except Exception:
             pass
+
+    async def maybe_send_digest(
+        self,
+        session: aiohttp.ClientSession,
+        portfolio,
+        researcher=None,
+        now: Optional[float] = None,
+        interval_sec: Optional[float] = None,
+    ) -> bool:
+        """Send the periodic digest when the interval elapsed. Returns True if sent."""
+        interval = self.digest_interval_sec if interval_sec is None else float(interval_sec)
+        if not self.enabled or interval <= 0:
+            return False
+        current = time.time() if now is None else float(now)
+        if self._last_digest_at and current - self._last_digest_at < interval:
+            return False
+        try:
+            text = build_digest(
+                portfolio,
+                researcher,
+                now=datetime.fromtimestamp(current, timezone.utc),
+            )
+        except Exception:
+            return False
+        await self.send_now(session, text, MAIN_BUTTONS)
+        self._last_digest_at = current
+        return True
 
     async def _answer_callback(self, session: aiohttp.ClientSession, callback_id: str, text: Optional[str] = None):
         url = f"https://api.telegram.org/bot{self.token}/answerCallbackQuery"
@@ -123,6 +224,8 @@ class TelegramNotifier:
                 for r in rows:
                     lines.append(f"• {r.get('action')} ${r.get('symbol') or '?'} — {r.get('rule')}")
                 await self.send_now(session, "\n".join(lines), MAIN_BUTTONS)
+        elif cmd in ("/digest", "digest"):
+            await self.send_now(session, build_digest(portfolio, researcher), MAIN_BUTTONS)
         elif cmd in ("/sell_all", "sell_all"):
             open_pos = [p for p in portfolio.get_all_positions() if p["status"] == "OPEN"]
             for p in open_pos:
@@ -142,7 +245,7 @@ class TelegramNotifier:
                 session,
                 "🤖 <b>Dostupne komande i tipke:</b>\n"
                 "Koristi tipke ispod ili pošalji mint adresu nakon što pritisneš tipku za analizu/kupnju.\n"
-                "/status /positions /journal /analyze <mint> /buy <mint> /sell_all /reset_breaker",
+                "/status /positions /journal /digest /analyze <mint> /buy <mint> /sell_all /reset_breaker",
                 MAIN_BUTTONS,
             )
         else:
@@ -207,6 +310,9 @@ class TelegramNotifier:
             msg = self.queue.pop(0)
             await self.send_now(session, msg, MAIN_BUTTONS)
 
+        if self.digest_interval_sec > 0:
+            await self.maybe_send_digest(session, portfolio, researcher)
+
         url = f"https://api.telegram.org/bot{self.token}/getUpdates"
         params = {"offset": self.last_update_id + 1, "timeout": 1}
         try:
@@ -233,6 +339,8 @@ class TelegramNotifier:
                             await self._handle_text_command(session, portfolio, researcher, executor, "/positions")
                         elif cb_data == "journal":
                             await self._handle_text_command(session, portfolio, researcher, executor, "/journal")
+                        elif cb_data == "digest":
+                            await self._handle_text_command(session, portfolio, researcher, executor, "/digest")
                         elif cb_data == "sell_all":
                             await self._handle_text_command(session, portfolio, researcher, executor, "/sell_all")
                         elif cb_data == "reset_breaker":

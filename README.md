@@ -90,6 +90,9 @@ behaviour on day one:
 | `TRADE_SIZE_SOL` | `0.5` | Paper size per entry. |
 | `STRATEGY_PROFILE` | `balanced` | `conservative`, `balanced`, `aggressive` or `high_risk` (high-risk/high-reward mode). |
 | `DASHBOARD_TOKEN` | empty | Only needed if the dashboard binds beyond `127.0.0.1`. |
+| `DASHBOARD_TOTP_SECRET` | empty | Optional 2FA for dashboard writes (`X-TOTP`); reads stay token-only. |
+| `DIGEST_INTERVAL_SEC` | `0` | Push the Telegram digest every N seconds (`0` = only on `/digest`). |
+| `LIVE_TRADING_STAGE` | `full` | When live is armed: `dry_run` → `probe` → `full`. Env-only. |
 
 Everything else in `.env.example` is grouped by topic with comments; the
 defaults are a complete, working paper configuration. Explicit environment
@@ -209,6 +212,13 @@ request; the **Token** button in the shared header replaces or clears it.
 Prometheus metrics use the `bettercalltrader_*` prefix (`bettercalltrader_info`,
 `bettercalltrader_db_up`, `bettercalltrader_http_requests_total`).
 
+Set `DASHBOARD_TOTP_SECRET` (any base32 RFC 6238 secret) to add a second factor
+to **state-changing requests only** (`POST`/`PUT`/`PATCH`/`DELETE`). Reads stay
+token-only — a code that rotates every 30 seconds would break polling — while a
+write must also carry the current 6-digit code in `X-TOTP` (the console prompts
+for it on a `totp_required` / `invalid_totp` 401). `GET /api/state` reports
+`security.totpEnabled` so the UI can show whether the gate is armed.
+
 ### Manual controls
 
 | Action | Dashboard | API |
@@ -322,10 +332,16 @@ Live trading is a deliberate, separate step:
    your RPC and Jupiter.
 4. Set `SOLANA_RPC_URL`, `SOLANA_PRIVATE_KEY`, `LIVE_TRADING_ENABLED=true`,
    `LIVE_TRADING_CONFIRMED=true` and a small `MAX_LIVE_TRADE_SOL`.
-5. Re-run the readiness audit. It must print `READY` with zero failed guard
+5. Arm the stage, not the whole wallet: start with `LIVE_TRADING_STAGE=dry_run`
+   (every live order is planned and audited but never sent), then `probe` with
+   `LIVE_STAGE_MAX_TRADES=1` (one real attempt, then `BLOCKED`), and only then
+   `full`. The budget is spent on the attempt, not on a successful fill, and an
+   unknown stage fails closed to `dry_run`. The stage is environment-only, so it
+   cannot be widened from the browser.
+6. Re-run the readiness audit. It must print `READY` with zero failed guard
    scenarios and a matching RPC. `READY` means the guards are armed, not that a
    trade is safe.
-6. Read [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) and start with the smallest
+7. Read [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) and start with the smallest
    size you can afford to lose.
 
 ### Operating checklists
@@ -357,7 +373,7 @@ v9.0 keeps the v8 risk engine and adds time-based and step-up protection plus Te
 
 - **Time-Stop**: closes a position if it has not reached the configured minimum profit after the configured hold time.
 - **Step-Up Trailing**: raises the stop floor at configured profit milestones before TP1.
-- **Telegram notifications and commands**: `/status`, `/sell_all`, `/reset_breaker`, `/help`.
+- **Telegram notifications and commands**: `/status`, `/positions`, `/journal`, `/digest`, `/sell_all`, `/reset_breaker`, `/help`.
 - **Mint/freeze authority fix**: RugCheck `mintAuthority: null` is correctly treated as revoked.
 - **v8 risk engine retained**: flow exits, whale exits, circuit breaker, confirmation before entry, realistic paper fills, dynamic sizing, cluster guard, wallet quality, decision journal, equity curve, stale-price protection, breakeven after TP1.
 
@@ -860,15 +876,19 @@ Both helpers cover the two supported layouts: files in the project root (a
 local `python py/research_bot.py` run) and the Docker Compose `data/` directory.
 Backups store the container state as `data/` inside the timestamped folder.
 
-## Telegram bot (buttons)
+## Telegram bot (buttons and digest)
 
 The Telegram integration now uses inline buttons instead of slash commands:
 
-- Status, positions, journal, sell all, reset breaker, help
+- Status, positions, journal, digest, sell all, reset breaker, help
 - Analyze mint / buy mint prompt buttons, followed by sending the mint address
 - Button callbacks are handled through Telegram `callback_query` updates
 
-Slash commands are still supported for compatibility.
+Slash commands are still supported for compatibility. `/digest` (or the **🧾
+Digest** button) sends a compact snapshot: balance/equity, open positions,
+realized PnL, circuit-breaker state, today's trades/PnL/losing stops, per-provider
+LLM health and the first three open positions. Set `DIGEST_INTERVAL_SEC` to push
+the same digest periodically from the confirmation loop (`0` disables it).
 
 ## v10.0 progress
 
@@ -1103,6 +1123,9 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 | `python -m bettercalltrader.live_readiness` prints `BLOCKED` | A configuration key is missing or a guard failed | The report lists each failing key. Fix it, then re-run. A `blocked` guard is a bug, not a warning — do not arm live trading. |
 | Doctor warns the dashboard token is empty on a non-loopback bind | The bot refuses to expose an unauthenticated trading API | Bind `127.0.0.1` (default), or set `DASHBOARD_TOKEN` (and open `/?token=...` once). `ALLOW_INSECURE_DASHBOARD=true` is the explicit, unsafe opt-out. |
 | Dashboard returns `401` / `403` | `DASHBOARD_TOKEN` is set and the browser has no token cookie | Open `http://127.0.0.1:8080/?token=<value>` once; the cookie is then reused. |
+| A write returns `401` with `totp_required` / `invalid_totp` | `DASHBOARD_TOTP_SECRET` is set and the request had no current code | Supply the 6-digit code in `X-TOTP`; the dashboard prompts on failure. Reads (`GET`) never need it. |
+| Live order returns `DRY_RUN_STAGED` | `LIVE_TRADING_STAGE=dry_run` | Move to `probe` (with `LIVE_STAGE_MAX_TRADES`) and then `full` once the audit trail looks right. |
+| Live order returns `BLOCKED` with "probe stage budget exhausted" | The probe allowance was spent | Restart with a higher `LIVE_STAGE_MAX_TRADES` or `LIVE_TRADING_STAGE=full` — deliberately an environment-only decision. |
 | Port `8080` already in use | Another process (often a previous bot) holds the port | Stop it, or set `COMMAND_CENTER_PORT=8081` in `.env` and restart. The bot falls back to terminal-only mode when the port is busy. |
 | The bot appears to stop on its own | The process was killed, or it received `Ctrl+C` / `SIGTERM` | Check `bot_history.log` and the `shutdown` entry in `bot_audit.jsonl`. The bot has no cycle cap and runs until stopped; open paper positions persist in `paper_portfolio.db`. |
 | No automatic buys, only `SKIP`/`WATCH` | No LLM configured; the strict heuristic stays below the auto-BUY threshold | Set `GEMINI_API_KEY`, or `LLM_BASE_URL` + `LLM_MODEL`/`LLM_MODELS` for a local server. This is fail-closed by design. |

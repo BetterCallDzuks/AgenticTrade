@@ -145,13 +145,24 @@ from bettercalltrader.security import (
     is_authorized,
     is_mutation_allowed,
     is_origin_allowed,
+    normalize_totp_secret,
     parse_allowed_origins,
+    verify_totp,
+)
+from bettercalltrader.live_readiness import (
+    DEFAULT_STAGE_MAX_LIVE_ORDERS,
+    LIVE_TRADING_STAGES,
+    normalize_live_stage,
 )
 from bettercalltrader.observability import AlertThrottle, audit_event, configure_json_logging, log_event, read_audit
 from bettercalltrader.prometheus import MetricsRegistry
 from bettercalltrader.shutdown import ShutdownController
 
 DASHBOARD_TOKEN = (os.environ.get("DASHBOARD_TOKEN") or "").strip()
+# Optional second factor for state-changing requests only. A fresh code every
+# 30 seconds would make a polling dashboard unusable if reads required it, so
+# GET/HEAD stay token-only and writes need X-TOTP when this is set.
+DASHBOARD_TOTP_SECRET = normalize_totp_secret(os.environ.get("DASHBOARD_TOTP_SECRET"))
 # v11: loopback by default. A non-loopback bind requires DASHBOARD_TOKEN (or an
 # explicit ALLOW_INSECURE_DASHBOARD=true opt-out) or startup is refused.
 COMMAND_CENTER_HOST = (os.environ.get("COMMAND_CENTER_HOST") or "127.0.0.1").strip()
@@ -1068,6 +1079,8 @@ class SolanaExecutionAgent:
         priority_fee_sol: Optional[float] = None,
         live_trading_confirmed: Optional[bool] = None,
         max_live_trade_sol: Optional[float] = None,
+        live_trading_stage: Optional[str] = None,
+        stage_max_live_orders: Optional[int] = None,
     ):
         self.rpc_url = rpc_url or os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
         # ``""`` means "no key" (it must not silently fall back to the env), while
@@ -1095,6 +1108,22 @@ class SolanaExecutionAgent:
             if max_live_trade_sol is None
             else float(max_live_trade_sol)
         )
+        stage_raw = (
+            os.environ.get("LIVE_TRADING_STAGE")
+            if live_trading_stage is None
+            else live_trading_stage
+        )
+        normalized_stage = normalize_live_stage(stage_raw)
+        self.live_trading_stage_invalid = normalized_stage is None
+        self.live_trading_stage = normalized_stage or "dry_run"
+        self.live_trading_stage_raw = str(stage_raw or "")
+        self.stage_max_live_orders = max(
+            0,
+            env_int("LIVE_STAGE_MAX_TRADES", DEFAULT_STAGE_MAX_LIVE_ORDERS)
+            if stage_max_live_orders is None
+            else int(stage_max_live_orders),
+        )
+        self.live_orders_attempted = 0
         self.keypair = None
 
         if self.private_key_b58 and SOLDERS_AVAILABLE:
@@ -1146,6 +1175,41 @@ class SolanaExecutionAgent:
                 reason = f"amount {amount_sol} exceeds MAX_LIVE_TRADE_SOL {self.max_live_trade_sol}"
                 audit_event(AUDIT_LOG_PATH, "live_buy_blocked", mint=mint, amountSol=amount_sol, reason=reason)
                 return {"status": "BLOCKED", "reason": reason}
+            if self.live_trading_stage_invalid:
+                reason = (
+                    f"invalid LIVE_TRADING_STAGE {self.live_trading_stage_raw!r}; "
+                    f"expected one of {', '.join(LIVE_TRADING_STAGES)}"
+                )
+                audit_event(AUDIT_LOG_PATH, "live_buy_blocked", mint=mint, amountSol=amount_sol, reason=reason)
+                return {"status": "BLOCKED", "reason": reason}
+            if self.live_trading_stage == "dry_run":
+                audit_event(AUDIT_LOG_PATH, "live_buy_staged_dry_run", mint=mint, amountSol=amount_sol)
+                return {
+                    "status": "DRY_RUN_STAGED",
+                    "reason": "LIVE_TRADING_STAGE=dry_run: order planned but not sent",
+                    "amount_sol": amount_sol,
+                    "dex_id": dex_id,
+                }
+            if self.live_trading_stage == "probe":
+                if self.live_orders_attempted >= self.stage_max_live_orders:
+                    reason = (
+                        f"probe stage budget exhausted "
+                        f"({self.live_orders_attempted}/{self.stage_max_live_orders} attempted); "
+                        "raise LIVE_STAGE_MAX_TRADES or switch LIVE_TRADING_STAGE=full"
+                    )
+                    audit_event(AUDIT_LOG_PATH, "live_buy_blocked", mint=mint, amountSol=amount_sol, reason=reason)
+                    return {"status": "BLOCKED", "reason": reason}
+                # Conservative: the attempt spends the budget whether or not the
+                # order reaches the network or fills.
+                self.live_orders_attempted += 1
+                audit_event(
+                    AUDIT_LOG_PATH,
+                    "live_buy_probe",
+                    mint=mint,
+                    amountSol=amount_sol,
+                    attempt=self.live_orders_attempted,
+                    budget=self.stage_max_live_orders,
+                )
         is_pumpfun_curve = "pumpfun" in dex_id.lower() and "migration" not in dex_id.lower()
         lamports = int(amount_sol * 1_000_000_000)
 
@@ -3493,6 +3557,10 @@ def build_config_payload(portfolio, researcher, executor) -> dict:
     cfg["strategyProfile"] = portfolio.strategy_profile
     cfg["riskMode"] = "high" if portfolio.high_risk_mode else "standard"
     cfg["liveTradingEnabled"] = executor.live_trading_enabled
+    cfg["liveTradingStage"] = executor.live_trading_stage
+    cfg["liveTradingStageInvalid"] = getattr(executor, "live_trading_stage_invalid", False)
+    cfg["stageMaxLiveOrders"] = executor.stage_max_live_orders
+    cfg["stageOrdersAttempted"] = executor.live_orders_attempted
     cfg["telegramEnabled"] = TELEGRAM.enabled
     cfg["timezone"] = BOT_TIMEZONE_NAME
     cfg["version"] = "v12.0"
@@ -3676,7 +3744,7 @@ async def cors_middleware(request: web.Request, handler):
         resp.headers["Access-Control-Allow-Origin"] = "*" if CORS_ALLOW_ALL else origin
         resp.headers["Vary"] = "Origin"
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Auth-Token"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Auth-Token, X-TOTP"
         resp.headers["Access-Control-Max-Age"] = "600"
 
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -3719,6 +3787,20 @@ async def security_middleware(request: web.Request, handler):
             {"ok": False, "error": "cross_origin_blocked", "hint": "Send X-Auth-Token from a local client."},
             status=403,
         )
+
+    # TOTP only guards mutations: the dashboard polls GET routes continuously,
+    # and demanding a 30-second code there would make it unusable.
+    if DASHBOARD_TOTP_SECRET and request.method in MUTATING_METHODS:
+        supplied = request.headers.get("X-TOTP") or request.query.get("totp")
+        if not verify_totp(supplied, DASHBOARD_TOTP_SECRET):
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": "totp_required" if not supplied else "invalid_totp",
+                    "hint": "Send the current 6-digit code in the X-TOTP header.",
+                },
+                status=401,
+            )
 
     return await handler(request)
 
@@ -3780,6 +3862,7 @@ async def start_command_center_server(
             "version": "v12.0",
             "security": {
                 "authEnabled": bool(DASHBOARD_TOKEN),
+                "totpEnabled": bool(DASHBOARD_TOTP_SECRET),
                 "rateLimitPerMin": API_RATE_LIMIT_PER_MIN,
             },
             "runtime": RUNTIME_STATUS,
@@ -3787,6 +3870,7 @@ async def start_command_center_server(
             "ai_model": researcher.model_name,
             "telegram_active": TELEGRAM.enabled,
             "live_trading_enabled": executor.live_trading_enabled,
+            "live_trading_stage": executor.live_trading_stage,
             "wallet_address": executor.get_public_key_str(),
             "wallet": portfolio.get_wallet_status(),
             "positions": portfolio.get_all_positions(),

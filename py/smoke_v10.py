@@ -55,7 +55,7 @@ async def main():
         assert '"v12.0"' in health, health
 
         state = await fetch(session, "/api/state")
-        for key in ("strategyProfile", "priceCache", "security"):
+        for key in ("strategyProfile", "priceCache", "security", "totpEnabled", "live_trading_stage"):
             assert f'"{key}"' in state, key
 
         risk = await fetch(session, "/api/portfolio_risk")

@@ -6,11 +6,17 @@ spoof-resistant client address. Auth itself remains opt-in when the bind stays
 on loopback; the server refuses a network bind without a token.
 """
 
+import base64
+import hashlib
 import hmac
 import time
 from collections import deque
 from typing import Deque, Dict, Optional, Set, Tuple
 from urllib.parse import urlparse
+
+DEFAULT_TOTP_DIGITS = 6
+DEFAULT_TOTP_PERIOD = 30
+DEFAULT_TOTP_WINDOW = 1
 
 
 def parse_allowed_origins(raw: Optional[str]) -> Set[str]:
@@ -45,6 +51,73 @@ def is_authorized(provided: Optional[str], expected: Optional[str]) -> bool:
     if not provided:
         return False
     return hmac.compare_digest(str(provided), str(expected))
+
+
+def normalize_totp_secret(secret: Optional[str]) -> str:
+    """Normalise a base32 TOTP secret pasted from an authenticator app.
+
+    Spaces, dashes and lowercase are common in exported secrets; ``base32``
+    decoding is case-insensitive but rejects separators, so strip them here.
+    """
+    return "".join(str(secret or "").split()).replace("-", "").upper()
+
+
+def _totp_code(secret: str, counter: int, digits: int) -> str:
+    normalized = normalize_totp_secret(secret)
+    padding = "=" * ((8 - len(normalized) % 8) % 8)
+    key = base64.b32decode(normalized + padding, casefold=True)
+    message = int(counter).to_bytes(8, "big")
+    digest = hmac.new(key, message, hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = (int.from_bytes(digest[offset : offset + 4], "big") & 0x7FFFFFFF) % (10**digits)
+    return f"{value:0{digits}d}"
+
+
+def totp_now(
+    secret: Optional[str],
+    at: Optional[float] = None,
+    *,
+    digits: int = DEFAULT_TOTP_DIGITS,
+    period: int = DEFAULT_TOTP_PERIOD,
+) -> str:
+    """Return the RFC 6238 code for ``secret`` at ``at`` (default: now)."""
+    if not normalize_totp_secret(secret):
+        raise ValueError("empty TOTP secret")
+    counter = int(float(time.time() if at is None else at) // max(1, int(period)))
+    return _totp_code(str(secret), counter, int(digits))
+
+
+def verify_totp(
+    code: Optional[str],
+    secret: Optional[str],
+    at: Optional[float] = None,
+    *,
+    digits: int = DEFAULT_TOTP_DIGITS,
+    period: int = DEFAULT_TOTP_PERIOD,
+    window: int = DEFAULT_TOTP_WINDOW,
+) -> bool:
+    """Validate a TOTP code, accepting ``window`` steps of clock drift.
+
+    Comparison is constant-time per candidate and every candidate is checked, so
+    the timing does not reveal which step matched. A malformed secret simply
+    fails closed.
+    """
+    normalized_secret = normalize_totp_secret(secret)
+    if not normalized_secret or not code:
+        return False
+    supplied = str(code).replace(" ", "").strip()
+    if not supplied.isdigit() or len(supplied) != int(digits):
+        return False
+    counter = int(float(time.time() if at is None else at) // max(1, int(period)))
+    matched = False
+    for offset in range(-int(window), int(window) + 1):
+        try:
+            candidate = _totp_code(normalized_secret, counter + offset, int(digits))
+        except (ValueError, TypeError):
+            return False
+        if hmac.compare_digest(supplied, candidate):
+            matched = True
+    return matched
 
 
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})

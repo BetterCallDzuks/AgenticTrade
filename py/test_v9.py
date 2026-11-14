@@ -2271,6 +2271,536 @@ def test_v12_llm_reliability():
     print("  v12 LLM reliability + memory control: OK")
 
 
+def _training_row(mint, decision="SKIP", rule="AI_VERDICT", net=None, trades=0, verdict=None):
+    import json
+
+    market = {"mint": mint, "symbol": mint[:4].upper(), "price_usd": "0.001", "liquidity_usd": 25000}
+    security = {"status": "ok", "top10_holder_pct": 12.5, "is_bundled": False}
+    payload = verdict if verdict is not None else {
+        "decision": decision,
+        "risk_score": 55,
+        "hype_score": 61,
+        "summary_hr": "test verdict",
+        "red_flags": [],
+        "green_flags": ["clean mint"],
+    }
+    return {
+        "mint": mint,
+        "symbol": mint[:4].upper(),
+        "source": "TEST",
+        "market_json": json.dumps(market),
+        "security_json": json.dumps(security),
+        "verdict_json": json.dumps(payload) if not isinstance(payload, str) else payload,
+        "scanned_at": "2026-01-01 00:00:00",
+        "source_tag": "TEST",
+        "rule": rule,
+        "net_pnl": net,
+        "trades": trades,
+    }
+
+
+def test_v12_export_training():
+    """The SFT exporter keeps the right rows and emits a trainable chat record."""
+    import json
+
+    import export_training as exp
+
+    rows = [
+        _training_row("MintAI0001", "SKIP", "AI_VERDICT"),
+        _training_row("MintAI0002", "WATCH", "LOCAL_AI_VERDICT"),
+        _training_row("MintHeur01", "SKIP", "HEURISTIC_VERDICT"),
+        _training_row("MintHard01", "SKIP", "HARD_FILTER"),
+        _training_row("MintAI0001", "SKIP", "AI_VERDICT"),  # duplicate mint
+        _training_row("MintBought1", "BUY", "AI_VERDICT", net=0.42, trades=1),
+        _training_row("MintLosing1", "BUY", "AI_VERDICT", net=-0.18, trades=2),
+        _training_row("MintBroken1", verdict="{not json"),
+        _training_row("MintSchema1", verdict={"decision": "MAYBE"}),
+    ]
+
+    # AI labels only, deduplicated by mint, broken verdicts dropped.
+    examples, stats = exp.build_dataset(rows)
+    mints = [example["metadata"]["mint"] for example in examples]
+    assert mints == ["MintAI0001", "MintAI0002", "MintBought1", "MintLosing1"], mints
+    assert stats["byLabelSource"] == {"ai": 4}
+    assert stats["skipped"] == 5
+    assert stats["withOutcome"] == 2
+    assert stats["byDecision"] == {"SKIP": 1, "WATCH": 1, "BUY": 2}
+
+    # A chat example is a valid SFT record in the model's own contract.
+    first = examples[0]
+    assert [message["role"] for message in first["messages"]] == ["system", "user", "assistant"]
+    assert "JSON Schema" in first["messages"][0]["content"]
+    assert "PRAVILA EVALUACIJE" in first["messages"][1]["content"]
+    answer = json.loads(first["messages"][2]["content"])
+    assert set(answer) == {"decision", "risk_score", "hype_score", "summary_hr", "red_flags", "green_flags"}
+
+    # Pipeline knobs do exactly one thing each.
+    heuristic, stats_h = exp.build_dataset(rows, include_heuristic=True)
+    assert "MintHeur01" in [example["metadata"]["mint"] for example in heuristic]
+    assert stats_h["byLabelSource"]["heuristic"] == 1
+    hard, _ = exp.build_dataset(rows, include_heuristic=True, include_hard_filter=True)
+    assert "MintHard01" in [example["metadata"]["mint"] for example in hard]
+    buys, _ = exp.build_dataset(rows, decisions={"BUY"})
+    assert [example["metadata"]["decision"] for example in buys] == ["BUY", "BUY"]
+    outcomes, _ = exp.build_dataset(rows, only_outcomes=True)
+    assert {example["metadata"]["mint"] for example in outcomes} == {"MintBought1", "MintLosing1"}
+    winners, _ = exp.build_dataset(rows, positive_only=True)
+    assert [example["metadata"]["mint"] for example in winners] == ["MintBought1"]
+    no_dedupe, _ = exp.build_dataset(rows, dedupe=False)
+    assert len(no_dedupe) == 5
+    no_system, _ = exp.build_dataset(rows, dedupe=False, include_system=False)
+    assert [message["role"] for message in no_system[0]["messages"]] == ["user", "assistant"]
+
+    # Alpaca is a lossless re-shaping of the same three messages.
+    alpaca = exp.to_alpaca(first)
+    assert alpaca["input"] == first["messages"][1]["content"]
+    assert alpaca["output"] == first["messages"][2]["content"]
+    assert alpaca["metadata"] == first["metadata"]
+
+    # End to end against a real (temporary) database, including the val split.
+    import json as _json
+
+    db_path = make_temp_db()
+    out_dir = Path(tempfile.mkdtemp(dir=Path(tempfile.gettempdir())))
+    try:
+        portfolio = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
+        for index in range(12):
+            mint = f"ExportMint{index:03d}"
+            market = {
+                "mint": mint,
+                "symbol": f"E{index}",
+                "name": f"Export {index}",
+                "price_usd": "0.001",
+                "liquidity_usd": 20000,
+                "fetched_at": portfolio.now_ts(),
+            }
+            decision = rb.TokenAnalysisDecision(
+                decision="WATCH" if index % 2 else "SKIP",
+                risk_score=40 + index,
+                hype_score=50 + index,
+                summary_hr=f"export {index}",
+                red_flags=[],
+                green_flags=["clean"],
+            )
+            portfolio.save_scan_result(market, {"status": "ok"}, decision, "TEST")
+            portfolio.journal(
+                decision.decision,
+                mint=mint,
+                symbol=market["symbol"],
+                rule="AI_VERDICT",
+                reasons="export",
+            )
+        train_path = out_dir / "sft.jsonl"
+        val_path = out_dir / "val.jsonl"
+        assert exp.main(
+            ["--db", db_path, "--out", str(train_path), "--val-out", str(val_path), "--no-dedupe"]
+        ) == 0
+        train_lines = [line for line in train_path.read_text(encoding="utf-8").splitlines() if line]
+        val_lines = [line for line in val_path.read_text(encoding="utf-8").splitlines() if line]
+        assert len(train_lines) == 10 and len(val_lines) == 2, (len(train_lines), len(val_lines))
+        parsed = [_json.loads(line) for line in train_lines]
+        assert all(row["messages"][-1]["role"] == "assistant" for row in parsed)
+    finally:
+        cleanup_db(db_path)
+        import shutil
+
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+    print("  v12 SFT data export: OK")
+
+
+def test_v12_paper_live_parity():
+    """replay_v10 must rebuild the same realized book the live path recorded.
+
+    The interesting failure is the WAL: the bot keeps writing while the replay
+    copies the file, so a snapshot that ignores ``-wal`` silently loses the most
+    recent trades. This test holds a reader open (blocking checkpoint on close),
+    then checks the replay still matches the live metrics exactly.
+    """
+    import sqlite3 as _sqlite3
+
+    import replay_v10
+    from bettercalltrader.backtest import build_report
+    from bettercalltrader.metrics import collect_basic_metrics
+
+    db_path = make_temp_db()
+    snapshot = db_path + ".replay"
+    keeper = None
+    try:
+        portfolio = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
+        portfolio.cluster_cooldown_sec = 0
+        portfolio.stop_loss_cooldown_sec = 0
+        portfolio.min_seconds_between_entries = 0
+        portfolio.max_daily_stop_losses = 100
+        portfolio.max_daily_trades = 100
+
+        # Keep one connection open so the WAL cannot be truncated on close.
+        keeper = _sqlite3.connect(db_path, timeout=15)
+        keeper.execute("SELECT COUNT(*) FROM wallet").fetchone()
+
+        trades = [
+            ("ParityWin111111111111111111111111111111111", 1.0, 1.6, "WIN"),
+            ("ParityLoss11111111111111111111111111111111", 1.0, 0.7, "LOSS"),
+        ]
+        for mint, entry, exit_price, symbol in trades:
+            market = {
+                "mint": mint,
+                "symbol": symbol,
+                "name": symbol,
+                "price_usd": str(entry),
+                "liquidity_usd": 50000.0,
+                "dex_id": "raydium",
+                "fetched_at": portfolio.now_ts(),
+            }
+            assert portfolio.open_virtual_position(
+                market, conviction="manual", source="TEST", size_override=0.5
+            ) is True
+            conn = portfolio._conn()
+            conn.execute("UPDATE positions SET current_price_usd = ? WHERE mint = ?", (exit_price, mint))
+            conn.commit()
+            conn.close()
+            time.sleep(0.01)
+            assert portfolio.close_position_manually(mint) is True
+
+        live = collect_basic_metrics(db_path)
+        assert live["totalTrades"] == 2
+        assert live["netPnlSol"] != 0
+        # The sidecar really exists: this is the un-checkpointed data the replay
+        # has to copy, not a database that was already flushed on close.
+        wal = Path(str(db_path) + "-wal")
+        assert wal.exists() and wal.stat().st_size > 0
+
+        replay_v10.snapshot_database(Path(db_path), Path(snapshot))
+        report = build_report(snapshot, initial_sol=10.0)
+        summary = report["summary"]
+
+        assert summary["trades"] == int(live["totalTrades"])
+        assert abs(summary["netPnlSol"] - live["netPnlSol"]) < 1e-9, (summary["netPnlSol"], live["netPnlSol"])
+        assert abs(summary["winRate"] - live["winRate"]) < 1e-9
+        assert [trade["symbol"] for trade in report["trades"]] == ["WIN", "LOSS"]
+
+        # The replay's own accounting must be internally consistent.
+        assert abs(sum(trade["pnlSol"] for trade in report["trades"]) - summary["netPnlSol"]) < 1e-9
+        assert abs(report["equityCurve"][-1]["equitySol"] - (10.0 + summary["netPnlSol"])) < 1e-9
+        assert abs(sum(report["dailyPnl"].values()) - summary["netPnlSol"]) < 1e-9
+
+        # Snapshotting twice is idempotent: replay is a pure function of the file.
+        second = db_path + ".replay2"
+        try:
+            replay_v10.snapshot_database(Path(db_path), Path(second))
+            again = build_report(second, initial_sol=10.0)
+            assert again["summary"]["trades"] == summary["trades"]
+            assert abs(again["summary"]["netPnlSol"] - summary["netPnlSol"]) < 1e-12
+        finally:
+            for suffix in ("", "-wal", "-shm"):
+                if os.path.exists(second + suffix):
+                    os.remove(second + suffix)
+    finally:
+        if keeper is not None:
+            keeper.close()
+        cleanup_db(db_path)
+        cleanup_db(snapshot)
+    print("  v12 paper/live replay parity: OK")
+
+
+def test_v12_totp():
+    """RFC 6238 vectors, clock-drift window and fail-closed parsing."""
+    from bettercalltrader import security as sec
+
+    secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    vectors = [
+        (59, "94287082"),
+        (1111111109, "07081804"),
+        (1111111111, "14050471"),
+        (1234567890, "89005924"),
+        (2000000000, "69279037"),
+        (20000000000, "65353130"),
+    ]
+    for at, expected in vectors:
+        assert sec.totp_now(secret, at=at, digits=8) == expected, at
+        assert sec.verify_totp(expected, secret, at=at, digits=8) is True
+
+    # Authenticator exports often arrive lower-case with spaces and dashes.
+    pretty = "gezd gnbv-gy3t qojq gezd gnbv gy3t qojq"
+    assert sec.normalize_totp_secret(pretty) == secret
+    assert sec.totp_now(pretty, at=59, digits=8) == "94287082"
+
+    # Default is 6 digits: the last six of the 8-digit vector.
+    assert sec.totp_now(secret, at=59) == "287082"
+    assert sec.verify_totp("287082", secret, at=59) is True
+    assert sec.verify_totp(" 287082 ", secret, at=59) is True
+
+    # +/- one 30s step is accepted, anything further is not.
+    assert sec.verify_totp(sec.totp_now(secret, at=29), secret, at=59) is True
+    assert sec.verify_totp(sec.totp_now(secret, at=89), secret, at=59) is True
+    assert sec.verify_totp(sec.totp_now(secret, at=119), secret, at=59) is False
+    assert sec.verify_totp(sec.totp_now(secret, at=149), secret, at=59) is False
+    assert sec.verify_totp(sec.totp_now(secret, at=89), secret, at=59, window=0) is False
+
+    # Malformed input fails closed instead of raising.
+    assert sec.verify_totp(None, secret, at=59) is False
+    assert sec.verify_totp("", secret, at=59) is False
+    assert sec.verify_totp("abcdef", secret, at=59) is False
+    assert sec.verify_totp("28708", secret, at=59) is False
+    assert sec.verify_totp("2870821", secret, at=59) is False
+    assert sec.verify_totp("287082", "", at=59) is False
+    assert sec.verify_totp("287082", "!!!!", at=59) is False
+    try:
+        sec.totp_now("", at=59)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("an empty TOTP secret must raise")
+
+    print("  v12 TOTP (RFC 6238): OK")
+
+
+def test_v12_telegram_digest():
+    """The digest reflects the portfolio, flags open breakers and is throttled."""
+    import asyncio
+    from datetime import datetime, timezone
+
+    from bettercalltrader.telegram import TelegramNotifier, build_digest
+
+    class _FakeLLM:
+        def health(self):
+            return [
+                {"provider": "gemini", "calls": 12, "failures": 1, "open": False},
+                {"provider": "openai", "calls": 3, "failures": 3, "open": True},
+            ]
+
+    class _FakeResearcher:
+        llm = _FakeLLM()
+
+    researcher = _FakeResearcher()
+    db_path = make_temp_db()
+    try:
+        portfolio = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0, trade_size_sol=0.5)
+
+        text = build_digest(
+            portfolio,
+            researcher,
+            now=datetime(2026, 1, 2, 3, 4, tzinfo=timezone.utc),
+        )
+        assert "BetterCallTrader digest" in text
+        assert "2026-01-02 03:04 UTC" in text
+        assert "10.000 SOL" in text
+        assert "Breaker: ✅ OK" in text
+        assert "gemini 12c/1f" in text
+        assert "openai 3c/3f 🚨" in text
+        assert "📂" not in text  # no open positions yet
+
+        # An open position contributes its unrealized move.
+        mint = "DigestMint111111111111111111111111111111"
+        market = {
+            "mint": mint,
+            "symbol": "DGT",
+            "name": "Digest",
+            "price_usd": "1.0",
+            "liquidity_usd": 50000.0,
+            "dex_id": "raydium",
+            "fetched_at": portfolio.now_ts(),
+        }
+        assert portfolio.open_virtual_position(
+            market, conviction="manual", source="TEST", size_override=0.5
+        ) is True
+        conn = portfolio._conn()
+        conn.execute("UPDATE positions SET current_price_usd = 1.2 WHERE mint = ?", (mint,))
+        conn.commit()
+        conn.close()
+
+        text = build_digest(portfolio, researcher)
+        assert "📂 $DGT" in text and "%" in text
+
+        # Interval throttle: send, skip inside the window, send once it elapses.
+        notifier = TelegramNotifier()
+        notifier.token = "test-token"
+        notifier.chat_id = "test-chat"
+        notifier.digest_interval_sec = 3600
+        sent = []
+
+        async def fake_send(session, message, buttons=None):
+            sent.append(message)
+
+        notifier.send_now = fake_send  # type: ignore[assignment]
+
+        async def run():
+            assert await notifier.maybe_send_digest(None, portfolio, researcher, now=1000.0) is True
+            assert await notifier.maybe_send_digest(None, portfolio, researcher, now=2000.0) is False
+            assert await notifier.maybe_send_digest(None, portfolio, researcher, now=4600.0) is True
+            assert (
+                await notifier.maybe_send_digest(
+                    None, portfolio, researcher, now=5000.0, interval_sec=0
+                )
+                is False
+            )
+            # /digest is on demand and ignores the schedule.
+            await notifier._handle_text_command(None, portfolio, researcher, None, "/digest")
+
+        asyncio.run(run())
+        assert len(sent) == 3, len(sent)
+        assert "BetterCallTrader digest" in sent[-1]
+
+        # A notifier without credentials never sends.
+        disabled = TelegramNotifier()
+        disabled.token = ""
+        disabled.chat_id = ""
+        assert asyncio.run(disabled.maybe_send_digest(None, portfolio, researcher, now=1.0)) is False
+    finally:
+        cleanup_db(db_path)
+    print("  v12 Telegram digest: OK")
+
+
+def test_v12_staged_arming():
+    """dry_run/probe/full gate live orders without a socket and fail closed."""
+    import asyncio
+
+    from bettercalltrader import live_readiness as lr
+
+    class _RefusingSession:
+        def __init__(self):
+            self.calls = 0
+
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+
+            def _refuse(*args, **kwargs):
+                self.calls += 1
+                raise AssertionError(f"unexpected network call via {name}")
+
+            return _refuse
+
+    def make_agent(**kwargs):
+        return rb.SolanaExecutionAgent(
+            rpc_url="http://127.0.0.1:9",
+            private_key_b58="",
+            slippage_bps=500,
+            priority_fee_sol=0.001,
+            **kwargs,
+        )
+
+    mint = rb.SolanaExecutionAgent.SOL_MINT
+
+    async def run():
+        # Paper mode ignores the stage entirely.
+        paper = make_agent(live_trading_enabled=False, live_trading_stage="dry_run")
+        outcome = await paper.execute_buy(_RefusingSession(), mint, 0.05, dex_id="pumpfun")
+        assert outcome["status"] == "DRY_RUN_READY"
+
+        # dry_run stage plans the order and touches no network.
+        session = _RefusingSession()
+        agent = make_agent(
+            live_trading_enabled=True,
+            live_trading_confirmed=True,
+            live_trading_stage="dry_run",
+            max_live_trade_sol=1.0,
+        )
+        outcome = await agent.execute_buy(session, mint, 0.05, dex_id="pumpfun")
+        assert outcome["status"] == "DRY_RUN_STAGED"
+        assert session.calls == 0
+        assert agent.live_orders_attempted == 0
+
+        # An unknown stage fails closed.
+        session = _RefusingSession()
+        agent = make_agent(
+            live_trading_enabled=True,
+            live_trading_confirmed=True,
+            live_trading_stage="banana",
+            max_live_trade_sol=1.0,
+        )
+        outcome = await agent.execute_buy(session, mint, 0.05, dex_id="pumpfun")
+        assert outcome["status"] == "BLOCKED"
+        assert "LIVE_TRADING_STAGE" in outcome["reason"]
+        assert agent.live_trading_stage == "dry_run"
+        assert session.calls == 0
+
+        # Probe spends its budget on the attempt, even when the send fails.
+        session = _RefusingSession()
+        agent = make_agent(
+            live_trading_enabled=True,
+            live_trading_confirmed=True,
+            live_trading_stage="probe",
+            stage_max_live_orders=1,
+            max_live_trade_sol=1.0,
+        )
+        first = await agent.execute_buy(session, mint, 0.05, dex_id="pumpfun")
+        # No key, so the live path fails before the socket — but the attempt
+        # still spends the probe budget (conservative accounting).
+        assert first["status"] == "ERROR"
+        assert session.calls == 0
+        assert agent.live_orders_attempted == 1
+        second = await agent.execute_buy(session, mint, 0.05, dex_id="pumpfun")
+        assert second["status"] == "BLOCKED"
+        assert "budget exhausted" in second["reason"]
+        assert session.calls == 0
+
+        # Full keeps the historical behaviour and has no local budget.
+        session = _RefusingSession()
+        agent = make_agent(
+            live_trading_enabled=True,
+            live_trading_confirmed=True,
+            live_trading_stage="full",
+            max_live_trade_sol=1.0,
+        )
+        outcome = await agent.execute_buy(session, mint, 0.05, dex_id="pumpfun")
+        assert outcome["status"] == "ERROR"
+        assert session.calls == 0
+        assert agent.live_orders_attempted == 0
+
+    asyncio.run(run())
+
+    # Stage parsing and readiness reporting.
+    assert lr.normalize_live_stage(None) == "full"
+    assert lr.normalize_live_stage("") == "full"
+    assert lr.normalize_live_stage("DRY-RUN") == "dry_run"
+    assert lr.normalize_live_stage("probe") == "probe"
+    assert lr.normalize_live_stage("nope") is None
+
+    live_env = {
+        "LIVE_TRADING_ENABLED": "true",
+        "LIVE_TRADING_CONFIRMED": "true",
+        "SOLANA_PRIVATE_KEY": "x",
+        "MAX_LIVE_TRADE_SOL": "0.05",
+        "SOLANA_RPC_URL": "http://127.0.0.1:8899",
+    }
+    dry = lr.check_environment({**live_env, "LIVE_TRADING_STAGE": "dry_run"}, solders_available=True)
+    assert dry["fails"] == 0
+    assert dry["liveTradingStage"] == "dry_run"
+    assert any(
+        issue["key"] == "LIVE_TRADING_STAGE" and issue["level"] == "info"
+        for issue in dry["issues"]
+    )
+
+    probe = lr.check_environment(
+        {**live_env, "LIVE_TRADING_STAGE": "probe", "LIVE_STAGE_MAX_TRADES": "2"},
+        solders_available=True,
+    )
+    assert probe["liveTradingStage"] == "probe"
+    assert probe["stageMaxLiveOrders"] == 2
+    assert any(
+        issue["level"] == "warn" and "probe stage" in issue["message"] for issue in probe["issues"]
+    )
+
+    invalid = lr.check_environment(
+        {**live_env, "LIVE_TRADING_STAGE": "banana"}, solders_available=True
+    )
+    assert invalid["fails"] >= 1
+    assert invalid["liveTradingStageInvalid"] is True
+    assert invalid["liveTradingStage"] == "dry_run"
+
+    # The guard harness covers all three stages and stays network-free.
+    guards = lr.audit_guards()
+    assert guards["ok"] is True
+    observed = {item["name"]: item["observed"] for item in guards["scenarios"]}
+    assert observed["live_dry_run_stage"] == "DRY_RUN_STAGED"
+    assert observed["live_probe_exhausted"] == "BLOCKED"
+    assert observed["live_invalid_stage"] == "BLOCKED"
+    assert guards["networkCalls"] == 0
+
+    print("  v12 staged go-live arming: OK")
+
+
 def test_v11_ml_contract():
     import json
     import sqlite3
@@ -3078,6 +3608,51 @@ def test_v12_strategy_comparison():
     assert single["windowMode"] == "rolling"
     assert single["trainCandles"] == 240 and single["testCandles"] == 90
 
+    # Window mode is not cosmetic. On a regime-shifting series (300 trending
+    # candles then 300 oscillating ones) the same strategies must score
+    # differently when the train/test windows move, or `--window-mode rolling`
+    # would be a label with no effect.
+    shift_closes = []
+    shift_price = 1.0
+    for _ in range(300):
+        shift_price *= 1.006
+        shift_closes.append(shift_price)
+    for index in range(300):
+        shift_price *= 1.0 + 0.02 * math.sin(index / 4.0)
+        shift_closes.append(max(0.05, shift_price))
+    shift_candles = _synthetic_candles(shift_closes)
+    regime_args = dict(
+        objective="pnl",
+        min_trades=1,
+        multipliers=[0.0, 1.0, 2.0],
+    )
+    fixed_regime = compare_strategies(shift_candles, specs, config, segments=2, **regime_args)
+    rolling_regime = compare_strategies(
+        shift_candles,
+        specs,
+        config,
+        window_mode="rolling",
+        train_candles=150,
+        test_candles=150,
+        **regime_args,
+    )
+    fixed_pnl = {entry["strategy"]: round(entry["aggregate"]["netPnlSol"], 9) for entry in fixed_regime["strategies"]}
+    rolling_pnl = {entry["strategy"]: round(entry["aggregate"]["netPnlSol"], 9) for entry in rolling_regime["strategies"]}
+    assert fixed_pnl != rolling_pnl, (fixed_pnl, rolling_pnl)
+    assert fixed_regime["windowMode"] == "fixed" and rolling_regime["windowMode"] == "rolling"
+    rolling_again = compare_strategies(
+        shift_candles,
+        specs,
+        config,
+        window_mode="rolling",
+        train_candles=150,
+        test_candles=150,
+        **regime_args,
+    )
+    assert json.dumps(rolling_regime, sort_keys=True, default=str) == json.dumps(
+        rolling_again, sort_keys=True, default=str
+    )
+
     # Fail loudly on unusable inputs.
     for call in (
         lambda: compare_strategies(candles, [], config),
@@ -3243,6 +3818,9 @@ def test_v12_live_readiness():
         "live_unconfirmed": "BLOCKED",
         "live_over_max": "BLOCKED",
         "live_missing_key": "ERROR",
+        "live_dry_run_stage": "DRY_RUN_STAGED",
+        "live_probe_exhausted": "BLOCKED",
+        "live_invalid_stage": "BLOCKED",
     }
     for item in guards["scenarios"]:
         assert item["networkCalls"] == 0
@@ -3266,7 +3844,7 @@ def test_v12_live_readiness():
     assert "# Live-execution readiness" in markdown
     assert "**PAPER**" in markdown
     assert "## Guard scenarios" in markdown
-    assert "4 passed, 0 failed, 0 network call(s)." in markdown
+    assert "7 passed, 0 failed, 0 network call(s)." in markdown
 
     # The execution agent accepts explicit guard values, and an explicit empty
     # key no longer falls back to the process environment.
@@ -3369,6 +3947,11 @@ def main():
         test_v11_exit_policy_parity()
         test_v11_llm_layer()
         test_v12_llm_reliability()
+        test_v12_export_training()
+        test_v12_paper_live_parity()
+        test_v12_totp()
+        test_v12_telegram_digest()
+        test_v12_staged_arming()
         test_v11_ml_contract()
         test_v11_cost_parity()
         test_v11_config_fingerprint()

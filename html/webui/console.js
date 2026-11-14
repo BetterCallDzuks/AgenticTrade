@@ -66,6 +66,8 @@
 
             "toast.tokenSaved": "Token spremljen. Osvježavam…",
             "toast.unauthorized": "Neovlašteno: postavi dashboard token",
+            "toast.totpInvalid": "Neispravan 2FA kod",
+            "prompt.totp": "2FA kod (6 znamenki):",
             "toast.syncFail": "Sinkronizacija nije uspjela",
             "toast.failed": "Radnja nije uspjela",
             "toast.saved": "Spremljeno",
@@ -119,6 +121,8 @@
 
             "toast.tokenSaved": "Token saved. Reloading…",
             "toast.unauthorized": "Unauthorized: set the dashboard token",
+            "toast.totpInvalid": "Invalid 2FA code",
+            "prompt.totp": "2FA code (6 digits):",
             "toast.syncFail": "Sync failed",
             "toast.failed": "Action failed",
             "toast.saved": "Saved",
@@ -299,11 +303,25 @@
     }
 
     async function api(path, options = {}) {
+        const retried = Boolean(options._totpRetried);
         const headers = Object.assign({}, options.headers || {}, authHeaders());
-        const response = await fetch(path, Object.assign({ cache: "no-store" }, options, { headers }));
+        const init = Object.assign({ cache: "no-store" }, options, { headers });
+        delete init._totpRetried;
+        const response = await fetch(path, init);
         let body = null;
         try { body = await response.json(); } catch (err) { /* non-JSON */ }
         if (response.status === 401) {
+            const errorCode = body && body.error;
+            if (!retried && (errorCode === "totp_required" || errorCode === "invalid_totp")) {
+                const supplied = prompt(t("prompt.totp"), "");
+                if (supplied && /^\d{6}$/.test(supplied.trim())) {
+                    return api(path, Object.assign({}, options, {
+                        _totpRetried: true,
+                        headers: Object.assign({}, options.headers || {}, { "X-TOTP": supplied.trim() })
+                    }));
+                }
+                toast(t("toast.totpInvalid"));
+            }
             const error = new Error(t("toast.unauthorized"));
             error.status = 401;
             throw error;

@@ -86,6 +86,35 @@ All notable changes to BetterCallTrader are documented here. The format follows
   loaded/active state, and offers **Load & test** and **Use for research** per
   model. (GGUF models are inference-only; this manages and selects them rather
   than fine-tuning in-process.)
+- **SFT export for local fine-tuning.** `py/export_training.py` turns the
+  recorded `recent_scans` + `decision_journal` verdicts into chat-format JSONL
+  (`{"messages": [system, user, assistant]}`) using the exact research prompt and
+  JSON schema the live bot sends. It filters by label source (`--include-heuristic`,
+  `--include-hard-filter`), decision, outcomes, winners and duplicates, supports
+  an `--val-out` split and `--format alpaca`, and prints per-decision/label
+  counts. GGUF weights cannot be trained in-process, so the bot exports data
+  instead of pretending to fine-tune.
+- **Two-factor auth for dashboard writes.** Set `DASHBOARD_TOTP_SECRET` to any
+  base32 RFC 6238 secret and every `POST`/`PUT`/`PATCH`/`DELETE` under `/api/*`
+  must also carry the current 6-digit code in `X-TOTP` (`?totp=` works for
+  scripts). Reads stay token-only because a 30-second code would break polling.
+  The console prompts and retries once on `totp_required` / `invalid_totp`, CORS
+  allows the header, and `GET /api/state` exposes `security.totpEnabled`.
+- **Telegram digest.** `/digest` (and the **🧾 Digest** button) sends balance,
+  equity, open positions, realized PnL, circuit-breaker state, today's
+  trades/PnL/losing stops, per-provider LLM health and the first three open
+  positions. `DIGEST_INTERVAL_SEC` pushes the same message from the confirmation
+  loop on a schedule (`0` disables it); the builder is read-only
+  (`persist=False`).
+- **Staged go-live arming.** `LIVE_TRADING_STAGE` is an environment-only switch
+  with three steps: `dry_run` plans and audits every live order but returns
+  `DRY_RUN_STAGED` without a socket, `probe` sends at most
+  `LIVE_STAGE_MAX_TRADES` (default 1) live orders and then returns `BLOCKED`
+  (the budget is spent on the attempt, not a successful fill), and `full` keeps
+  the previous behaviour. An unknown value fails closed to `dry_run`. The
+  readiness audit now exercises all three stages plus an exhausted probe budget
+  and an invalid stage without network access, and `build_config_payload` /
+  `/api/state` report the active stage, budget and attempts.
 
 ### Changed
 
@@ -178,6 +207,24 @@ All notable changes to BetterCallTrader are documented here. The format follows
   directory, and the WAL consistency warning checks both locations.
 - CI no longer runs the test workflow twice per pull request (`push` is limited
   to `main`; `pull_request` still covers branches).
+
+### Tests
+
+- `test_v12_totp` pins the RFC 6238 SHA-1 vectors, the ±1-step drift window,
+  normalization of pasted secrets and fail-closed handling of malformed codes.
+- `test_v12_telegram_digest` covers portfolio/breaker/LLM rendering, the
+  on-demand `/digest` command, scheduler throttling and the no-credentials case.
+- `test_v12_staged_arming` drives `execute_buy` through `dry_run`, `probe` (with
+  its budget spent on a failed attempt), exhausted budget, `full` and an invalid
+  stage; the readiness guard scenario list now expects seven network-free cases.
+- `test_v12_paper_live_parity` keeps a reader open so the WAL stays non-empty,
+  then proves `replay_v10.snapshot_database` rebuilds exactly the live book
+  (trades, net PnL, win rate, equity curve, daily PnL) and is idempotent.
+- `test_v12_export_training` exercises every exporter filter plus an end-to-end
+  CLI run with a train/validation split.
+- `test_v12_strategy_comparison` gained a regime-shift block showing fixed and
+  rolling windows produce different out-of-sample PnL, so `--window-mode` is
+  proven to be wired end to end, and asserts rolling runs are deterministic.
 
 ## [12.0.0] - 2026-11-13
 
