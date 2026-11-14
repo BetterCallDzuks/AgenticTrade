@@ -4,6 +4,25 @@ All notable changes to BetterCallTrader are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions use
 `MAJOR.MINOR.PATCH`.
 
+## [Unreleased]
+
+### Security
+
+- **Failed dashboard authentication is audited.** A rejected `X-Auth-Token`
+  and a missing or invalid TOTP code now write an `auth_failed` audit record
+  (`kind`, `ip`, `method`, `path`, `origin`, `reason`) and increment
+  `bettercalltrader_auth_failures_total{kind="token"|"totp"}`, so a
+  brute-force attempt shows up in `/api/audit` and `/metrics` instead of
+  looking like a stale dashboard tab.
+
+### Fixed
+
+- **The probe budget survives restarts.** `live_probe_budget` is stored in
+  `bot_state` as `{day, attempted}` in UTC. A restarted or crash-looping
+  process restores today's count and is blocked once `LIVE_STAGE_MAX_TRADES` is
+  spent; a new UTC day resets it. `build_config_payload` and `/api/state`
+  refresh the day before reporting `stageOrdersAttempted`.
+
 ## [13.0.0] - 2026-11-14
 
 ### Added

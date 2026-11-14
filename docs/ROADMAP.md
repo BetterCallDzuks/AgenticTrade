@@ -33,46 +33,50 @@ deliberately. Every released change is also recorded in
 - `docs/MODEL_EVAL.md` baseline (two local models on four recorded cases;
   Gemini returned `503` at snapshot time, so that row is pending).
 
+## Unreleased
+
+- Failed token/TOTP attempts are audited (`auth_failed`) and counted as
+  `bettercalltrader_auth_failures_total{kind="token"|"totp"}`.
+- The probe budget is persisted per UTC day in `bot_state`, so a restart or a
+  crash loop cannot mint a fresh `LIVE_STAGE_MAX_TRADES` allowance.
+
 ## Candidates (not scheduled)
 
 Ordered by risk-reduction per unit of work, not by expected return.
 
 ### Safety and live readiness
 
-1. **Persist the probe budget per day.** Today the probe counter is in memory,
-   so a restart resets it. Writing attempts to `bot_state` would make a crash
-   loop unable to spend more than `LIVE_STAGE_MAX_TRADES` per day.
-2. **Readiness drift alert.** Re-run `bettercalltrader.live_readiness` on a
+1. **Readiness drift alert.** Re-run `bettercalltrader.live_readiness` on a
    schedule and alert when a previously `READY` environment becomes `BLOCKED`
    (key removed, cap raised, stage invalid).
-3. **Signed trade intent.** Log a hash of `(mint, amount, quote, stage)` before
+2. **Signed trade intent.** Log a hash of `(mint, amount, quote, stage)` before
    the send and after the fill, so a replayed audit trail can prove what the
    bot intended versus what executed.
-4. **Telegram approval for probe.** Optional two-step confirmation for the first
+3. **Telegram approval for probe.** Optional two-step confirmation for the first
    probe order (button + TOTP), separate from `LIVE_TRADING_CONFIRMED`.
 
 ### Research and models
 
-5. **Gemini baseline and eval regression gate.** The committed
+4. **Gemini baseline and eval regression gate.** The committed
    `docs/MODEL_EVAL.md` is locals-only because Gemini returned `503` at snapshot
    time; add the Gemini row when it is reachable, then fail a check when a
    prompt change drops the score below the committed baseline.
-6. **Walk-forward across the strategy comparison in CI.** A tiny synthetic
+5. **Walk-forward across the strategy comparison in CI.** A tiny synthetic
    candle set proving `--compare --window-mode rolling` stays deterministic on
    every platform (currently covered by self-tests, not the matrix).
-7. **Calibration report.** Compare the advisory ML probability against realized
+6. **Calibration report.** Compare the advisory ML probability against realized
    outcomes per bucket, instead of reporting a single accuracy number.
 
 ### Operations
 
-8. **Dashboard stage history.** Keep the last N stage transitions
+7. **Dashboard stage history.** Keep the last N stage transitions
    (`dry_run → probe → full`) in the audit log and render them on the System
    page.
-9. **Backup/restore verification.** `scripts/restore.sh` currently restores;
+8. **Backup/restore verification.** `scripts/restore.sh` currently restores;
    add a post-restore replay check that refuses a snapshot whose trades do not
    reconcile.
-10. **Rate-limit dashboard writes separately.** Reads and writes share one
-    limiter; a write burst should not lock out the polling UI.
+9. **Rate-limit dashboard writes separately.** Reads and writes share one
+   limiter; a write burst should not lock out the polling UI.
 
 ### Explicit non-goals
 

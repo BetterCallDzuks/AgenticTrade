@@ -2801,6 +2801,171 @@ def test_v12_staged_arming():
     print("  v12 staged go-live arming: OK")
 
 
+def test_v13_safety_batch():
+    import asyncio
+    import json
+    from datetime import datetime, timezone
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    class _Store:
+        def __init__(self, data=None):
+            self.data = dict(data or {})
+
+        def _get_state(self, key, default=None):
+            return self.data.get(key, default)
+
+        def _set_state(self, key, value):
+            self.data[key] = json.loads(json.dumps(value))
+
+    class _RefusingSession:
+        def __init__(self):
+            self.calls = 0
+
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+
+            def _refuse(*args, **kwargs):
+                self.calls += 1
+                raise AssertionError(f"unexpected network call via {name}")
+
+            return _refuse
+
+    class _ConfigStub:
+        class _Llm:
+            def describe(self):
+                return {}
+
+        def __init__(self):
+            self.llm = self._Llm()
+
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return 0.0
+
+    def make_agent(store, **kwargs):
+        return rb.SolanaExecutionAgent(
+            rpc_url="http://127.0.0.1:9",
+            private_key_b58="",
+            slippage_bps=500,
+            priority_fee_sol=0.001,
+            live_trading_enabled=True,
+            live_trading_confirmed=True,
+            live_trading_stage="probe",
+            stage_max_live_orders=2,
+            max_live_trade_sol=1.0,
+            state_store=store,
+            **kwargs,
+        )
+
+    mint = rb.SolanaExecutionAgent.SOL_MINT
+
+    async def run():
+        store = _Store()
+        first = make_agent(store)
+        assert first.live_orders_attempted == 0
+        session = _RefusingSession()
+        # No key: the attempt errors before the socket, but still spends budget.
+        assert (await first.execute_buy(session, mint, 0.05, dex_id="pumpfun"))["status"] == "ERROR"
+        assert (await first.execute_buy(session, mint, 0.05, dex_id="pumpfun"))["status"] == "ERROR"
+        assert first.live_orders_attempted == 2
+        assert session.calls == 0
+        assert store.data["live_probe_budget"] == {"day": today, "attempted": 2}
+
+        # Restart: a fresh agent restores the persisted budget and blocks.
+        restarted = make_agent(store)
+        assert restarted.live_orders_attempted == 2
+        blocked = await restarted.execute_buy(_RefusingSession(), mint, 0.05, dex_id="pumpfun")
+        assert blocked["status"] == "BLOCKED"
+        assert "budget exhausted" in blocked["reason"]
+        assert restarted.live_orders_attempted == 2
+
+        # A new UTC day starts from zero and rewrites on the next attempt.
+        stale = _Store({"live_probe_budget": {"day": "2000-01-01", "attempted": 9}})
+        rolled = make_agent(stale)
+        assert rolled.live_orders_attempted == 0
+        assert (await rolled.execute_buy(_RefusingSession(), mint, 0.05, dex_id="pumpfun"))["status"] == "ERROR"
+        assert rolled.live_orders_attempted == 1
+        assert stale.data["live_probe_budget"] == {"day": today, "attempted": 1}
+
+        # An in-process midnight rollover resets before the budget check.
+        rolled._probe_day = "2000-01-01"
+        stale.data["live_probe_budget"] = {"day": "2000-01-01", "attempted": 1}
+        rolled.refresh_probe_budget()
+        assert rolled.live_orders_attempted == 0
+
+    asyncio.run(run())
+
+    # build_config_payload reports the persisted count and refreshes the day.
+    db_path = make_temp_db()
+    try:
+        portfolio = rb.PaperTradingManager(db_path=db_path)
+        store = _Store({"live_probe_budget": {"day": today, "attempted": 1}})
+        agent = make_agent(store)
+        assert agent.live_orders_attempted == 1
+        cfg = rb.build_config_payload(portfolio, _ConfigStub(), agent)
+        assert cfg["stageOrdersAttempted"] == 1
+        assert cfg["stageMaxLiveOrders"] == 2
+        # Pretend the process slept past midnight with a stale in-memory day.
+        agent._probe_day = "2000-01-01"
+        agent.live_orders_attempted = 5
+        store.data["live_probe_budget"] = {"day": "2000-01-01", "attempted": 5}
+        cfg = rb.build_config_payload(portfolio, _ConfigStub(), agent)
+        assert cfg["stageOrdersAttempted"] == 0
+    finally:
+        cleanup_db(db_path)
+
+    # Failed token/TOTP checks leave an audit trail and increment the counter.
+    class _Req:
+        method = "POST"
+        path = "/api/config"
+        headers = {"Origin": "http://127.0.0.1:8080"}
+
+    def counter(kind):
+        needle = f'bettercalltrader_auth_failures_total{{kind="{kind}"}}'
+        total = 0.0
+        for line in rb.HTTP_METRICS.render().splitlines():
+            if line.startswith(needle + " "):
+                total += float(line.rsplit(" ", 1)[1])
+        return total
+
+    fd, audit_name = tempfile.mkstemp(suffix=".jsonl")
+    os.close(fd)
+    audit_path = Path(audit_name)
+    try:
+        before_token = counter("token")
+        before_totp = counter("totp")
+        rb.record_auth_failure(
+            "token", request=_Req(), ip="203.0.113.9", reason="invalid_token", log_path=str(audit_path)
+        )
+        rb.record_auth_failure(
+            "totp", request=_Req(), ip="203.0.113.9", reason="invalid_totp", log_path=str(audit_path)
+        )
+        assert counter("token") == before_token + 1
+        assert counter("totp") == before_totp + 1
+        rows = [
+            json.loads(line)
+            for line in audit_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert [row["event"] for row in rows] == ["auth_failed", "auth_failed"]
+        assert [row["kind"] for row in rows] == ["token", "totp"]
+        assert rows[1]["reason"] == "invalid_totp"
+        assert rows[1]["path"] == "/api/config"
+        assert rows[1]["origin"] == "http://127.0.0.1:8080"
+        assert rows[0]["ip"] == "203.0.113.9"
+        assert rows[0]["method"] == "POST"
+    finally:
+        try:
+            audit_path.unlink()
+        except OSError:
+            pass
+
+    print("  v13 probe budget persistence + auth failure audit: OK")
+
+
 def test_v11_ml_contract():
     import json
     import sqlite3
@@ -3952,6 +4117,7 @@ def main():
         test_v12_totp()
         test_v12_telegram_digest()
         test_v12_staged_arming()
+        test_v13_safety_batch()
         test_v11_ml_contract()
         test_v11_cost_parity()
         test_v11_config_fingerprint()

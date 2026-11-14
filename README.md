@@ -336,7 +336,8 @@ Live trading is a deliberate, separate step:
 5. Arm the stage, not the whole wallet: start with `LIVE_TRADING_STAGE=dry_run`
    (every live order is planned and audited but never sent), then `probe` with
    `LIVE_STAGE_MAX_TRADES=1` (one real attempt, then `BLOCKED`), and only then
-   `full`. The budget is spent on the attempt, not on a successful fill, and an
+   `full`. The budget is spent on the attempt, not on a successful fill, it is
+   persisted per UTC day in `bot_state` (a restart does not reset it), and an
    unknown stage fails closed to `dry_run`. The stage is environment-only, so it
    cannot be widened from the browser.
 6. Re-run the readiness audit. It must print `READY` with zero failed guard
@@ -1175,7 +1176,7 @@ This engine ships with a momentum (EMA cross) and a breakout strategy. It is a r
 | Dashboard returns `401` / `403` | `DASHBOARD_TOKEN` is set and the browser has no token cookie | Open `http://127.0.0.1:8080/?token=<value>` once; the cookie is then reused. |
 | A write returns `401` with `totp_required` / `invalid_totp` | `DASHBOARD_TOTP_SECRET` is set and the request had no current code | Supply the 6-digit code in `X-TOTP`; the dashboard prompts on failure. Reads (`GET`) never need it. |
 | Live order returns `DRY_RUN_STAGED` | `LIVE_TRADING_STAGE=dry_run` | Move to `probe` (with `LIVE_STAGE_MAX_TRADES`) and then `full` once the audit trail looks right. |
-| Live order returns `BLOCKED` with "probe stage budget exhausted" | The probe allowance was spent | Restart with a higher `LIVE_STAGE_MAX_TRADES` or `LIVE_TRADING_STAGE=full` — deliberately an environment-only decision. |
+| Live order returns `BLOCKED` with "probe stage budget exhausted" | The probe allowance for today (UTC) was spent | Raise `LIVE_STAGE_MAX_TRADES` or switch to `LIVE_TRADING_STAGE=full` — deliberately an environment-only decision. The count is persisted in `bot_state`, so restarting does not refill it; a new UTC day does. |
 | Port `8080` already in use | Another process (often a previous bot) holds the port | Stop it, or set `COMMAND_CENTER_PORT=8081` in `.env` and restart. The bot falls back to terminal-only mode when the port is busy. |
 | The bot appears to stop on its own | The process was killed, or it received `Ctrl+C` / `SIGTERM` | Check `bot_history.log` and the `shutdown` entry in `bot_audit.jsonl`. The bot has no cycle cap and runs until stopped; open paper positions persist in `paper_portfolio.db`. |
 | No automatic buys, only `SKIP`/`WATCH` | No LLM configured; the strict heuristic stays below the auto-BUY threshold | Set `GEMINI_API_KEY`, or `LLM_BASE_URL` + `LLM_MODEL`/`LLM_MODELS` for a local server. This is fail-closed by design. |

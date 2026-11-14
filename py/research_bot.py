@@ -219,6 +219,11 @@ HTTP_METRICS.describe("bettercalltrader_llm_failures", "Failed LLM requests per 
 HTTP_METRICS.describe(
     "bettercalltrader_llm_circuit_open", "1 when a provider is skipped by its circuit breaker.", "gauge"
 )
+HTTP_METRICS.describe(
+    "bettercalltrader_auth_failures_total",
+    "Rejected dashboard authentication attempts, labelled by kind (token/totp).",
+    "counter",
+)
 HTTP_METRICS.describe("bettercalltrader_info", "Build and execution mode information.", "gauge")
 
 from bettercalltrader.price_feed import PriceCache
@@ -1081,6 +1086,7 @@ class SolanaExecutionAgent:
         max_live_trade_sol: Optional[float] = None,
         live_trading_stage: Optional[str] = None,
         stage_max_live_orders: Optional[int] = None,
+        state_store: Optional[object] = None,
     ):
         self.rpc_url = rpc_url or os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
         # ``""`` means "no key" (it must not silently fall back to the env), while
@@ -1123,7 +1129,13 @@ class SolanaExecutionAgent:
             if stage_max_live_orders is None
             else int(stage_max_live_orders),
         )
+        # Probe attempts are persisted per UTC day in ``bot_state`` so a restart
+        # (or a crash loop) cannot mint a fresh budget. ``state_store`` is the
+        # portfolio manager; when it is None the counter is in-memory only.
+        self._state_store = state_store
+        self._probe_day = self._utc_day()
         self.live_orders_attempted = 0
+        self._load_probe_budget()
         self.keypair = None
 
         if self.private_key_b58 and SOLDERS_AVAILABLE:
@@ -1136,6 +1148,51 @@ class SolanaExecutionAgent:
         if self.keypair:
             return str(self.keypair.pubkey())
         return "DRY_RUN_WALLET_NOT_CONNECTED"
+
+    # ---- probe budget persistence ------------------------------------
+    PROBE_BUDGET_STATE_KEY = "live_probe_budget"
+
+    @staticmethod
+    def _utc_day() -> str:
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def _load_probe_budget(self) -> None:
+        """Restore today's probe attempts from ``bot_state``, if the day matches."""
+        self._probe_day = self._utc_day()
+        self.live_orders_attempted = 0
+        if self._state_store is None:
+            return
+        try:
+            state = self._state_store._get_state(self.PROBE_BUDGET_STATE_KEY, None)
+        except Exception:
+            return
+        if not isinstance(state, dict) or str(state.get("day") or "") != self._probe_day:
+            return
+        try:
+            self.live_orders_attempted = max(0, int(state.get("attempted") or 0))
+        except (TypeError, ValueError):
+            self.live_orders_attempted = 0
+
+    def refresh_probe_budget(self) -> None:
+        """Reset the in-memory budget when the UTC day rolls over.
+
+        Cheap in the common case: only touches the store when the day changed.
+        """
+        if self._utc_day() != self._probe_day:
+            self._load_probe_budget()
+
+    def _record_probe_attempt(self) -> None:
+        self.live_orders_attempted += 1
+        if self._state_store is None:
+            return
+        try:
+            self._state_store._set_state(
+                self.PROBE_BUDGET_STATE_KEY,
+                {"day": self._probe_day, "attempted": self.live_orders_attempted},
+            )
+        except Exception:
+            # Persistence is best-effort: never fail a live attempt over it.
+            pass
 
     async def get_jupiter_quote(
         self,
@@ -1191,6 +1248,7 @@ class SolanaExecutionAgent:
                     "dex_id": dex_id,
                 }
             if self.live_trading_stage == "probe":
+                self.refresh_probe_budget()
                 if self.live_orders_attempted >= self.stage_max_live_orders:
                     reason = (
                         f"probe stage budget exhausted "
@@ -1201,7 +1259,7 @@ class SolanaExecutionAgent:
                     return {"status": "BLOCKED", "reason": reason}
                 # Conservative: the attempt spends the budget whether or not the
                 # order reaches the network or fills.
-                self.live_orders_attempted += 1
+                self._record_probe_attempt()
                 audit_event(
                     AUDIT_LOG_PATH,
                     "live_buy_probe",
@@ -3552,6 +3610,7 @@ CONFIG_FIELDS = [
 def build_config_payload(portfolio, researcher, executor) -> dict:
     owners = {"portfolio": portfolio, "researcher": researcher, "executor": executor}
     cfg = {key: getattr(owners[owner], attr) for key, owner, attr, _ in CONFIG_FIELDS}
+    executor.refresh_probe_budget()
     cfg["slippagePct"] = executor.slippage_bps / 100.0
     cfg["jitoTipSol"] = executor.priority_fee_sol
     cfg["strategyProfile"] = portfolio.strategy_profile
@@ -3694,6 +3753,31 @@ def _is_protected_path(path: str) -> bool:
     return path.startswith("/api/") or path in ("/metrics", "/ready")
 
 
+def record_auth_failure(
+    kind: str,
+    request: Optional[web.Request] = None,
+    ip: str = "",
+    reason: str = "",
+    log_path: Optional[str] = None,
+) -> None:
+    """Audit and count a rejected authentication attempt exactly once.
+
+    Failed token/TOTP checks used to return 401 silently, which made a
+    brute-force attempt indistinguishable from a stale dashboard tab.
+    """
+    fields: dict = {"kind": kind, "ip": ip}
+    if reason:
+        fields["reason"] = reason
+    if request is not None:
+        fields["method"] = request.method
+        fields["path"] = request.path
+        origin = request.headers.get("Origin")
+        if origin:
+            fields["origin"] = origin
+    audit_event(log_path or AUDIT_LOG_PATH, "auth_failed", **fields)
+    HTTP_METRICS.inc("bettercalltrader_auth_failures_total", {"kind": kind})
+
+
 def dashboard_bind_error(host: str, token: str, allow_insecure: bool) -> Optional[str]:
     """Return a message when the dashboard would be exposed without auth."""
     if host in LOOPBACK_BIND_HOSTS or token or allow_insecure:
@@ -3777,6 +3861,7 @@ async def security_middleware(request: web.Request, handler):
 
     token = request.headers.get("X-Auth-Token") or request.query.get("token")
     if not is_authorized(token, DASHBOARD_TOKEN):
+        record_auth_failure("token", request=request, ip=ip, reason="invalid_token")
         return web.json_response({"ok": False, "error": "unauthorized", "hint": "Send X-Auth-Token or ?token="}, status=401)
 
     # Defense in depth: reject cross-site state changes even when auth is off.
@@ -3793,10 +3878,17 @@ async def security_middleware(request: web.Request, handler):
     if DASHBOARD_TOTP_SECRET and request.method in MUTATING_METHODS:
         supplied = request.headers.get("X-TOTP") or request.query.get("totp")
         if not verify_totp(supplied, DASHBOARD_TOTP_SECRET):
+            missing = not supplied
+            record_auth_failure(
+                "totp",
+                request=request,
+                ip=ip,
+                reason="totp_required" if missing else "invalid_totp",
+            )
             return web.json_response(
                 {
                     "ok": False,
-                    "error": "totp_required" if not supplied else "invalid_totp",
+                    "error": "totp_required" if missing else "invalid_totp",
                     "hint": "Send the current 6-digit code in the X-TOTP header.",
                 },
                 status=401,
@@ -3856,6 +3948,7 @@ async def start_command_center_server(
         return _handle_page
 
     async def handle_api_state(request: web.Request):
+        executor.refresh_probe_budget()
         risk = portfolio.get_risk_snapshot()
         return web.json_response({
             "status": "ok",
@@ -4464,7 +4557,7 @@ async def run_research_pipeline(
 
     discovery = DiscoveryAgent()
     pumpfun_stream = PumpFunStreamAgent(max_dev_buy_sol=15.0, min_initial_sol_in_curve=30.2)
-    executor = SolanaExecutionAgent(live_trading_enabled=live_trading_enabled)
+    executor = SolanaExecutionAgent(live_trading_enabled=live_trading_enabled, state_store=portfolio)
 
     mode_str = "🔥 LIVE ON-CHAIN TRADING" if executor.live_trading_enabled else "🛡️ PAPER TRADING + JUPITER DRY-RUN"
     print(f"⚙️  Mod izvršavanja: {mode_str} | Telegram: {'ON ✅' if TELEGRAM.enabled else 'OFF (dodaj u .env)'}")
