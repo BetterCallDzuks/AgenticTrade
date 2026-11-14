@@ -6,6 +6,15 @@ All notable changes to BetterCallTrader are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **The ML model reports calibration, not just accuracy.** `calibration_report`
+  bins the labelled trades by predicted probability and reports the mean
+  prediction against the observed win rate per bucket, plus the Brier score
+  and the sample-weighted expected calibration error (ECE). `GET /api/ml/status`
+  includes it when the database has enough labelled trades, and the ML / AI page
+  shows the ECE tile.
+
 ### Changed
 
 - **CI now guards coverage, inline JavaScript and eval regressions.** A new

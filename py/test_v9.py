@@ -3049,8 +3049,8 @@ def test_v11_ml_contract():
 
     from bettercalltrader.ml import (
         FEATURE_SET_VERSION, MODEL_SCHEMA_VERSION, build_training_rows,
-        data_fingerprint, load_model, model_status, save_model, train_if_stale,
-        train_model,
+        calibration_report, data_fingerprint, load_model, model_status, save_model,
+        train_if_stale, train_model,
     )
 
     db_path = make_temp_db()
@@ -3100,6 +3100,26 @@ def test_v11_ml_contract():
         assert status["state"] == "ok" and not status["reasons"]
         assert status["summary"]["schemaVersion"] == MODEL_SCHEMA_VERSION
         assert load_model(model_path) is not None
+
+        # Accuracy alone hides miscalibration: report predicted vs realized per
+        # bucket, plus Brier and ECE, and attach it to the status when a DB is
+        # available.
+        report = calibration_report(model, db_path)
+        assert report["available"] is True
+        assert report["samples"] == 30
+        assert abs(report["baseRate"] - model["positives"] / model["samples"]) < 1e-3
+        assert 0.0 <= report["brier"] <= 1.0
+        assert 0.0 <= report["expectedCalibrationError"] <= 1.0
+        assert sum(bucket["count"] for bucket in report["buckets"]) == 30
+        for bucket in report["buckets"]:
+            assert 0.0 <= bucket["avgPredicted"] <= 1.0
+            assert 0.0 <= bucket["observed"] <= 1.0
+            assert abs(bucket["gap"] - (bucket["observed"] - bucket["avgPredicted"])) < 2e-4
+        assert calibration_report(None, db_path)["available"] is False
+        clamped = calibration_report(model, db_path, buckets=500)
+        assert clamped["available"] is True and len(clamped["buckets"]) <= 20
+        status_with_db = model_status(model_path, db_path=db_path)
+        assert status_with_db["summary"]["calibration"]["available"] is True
 
         # Any contract bump (e.g. the shared cost model) invalidates the file.
         stale = dict(model, costModelVersion="1")

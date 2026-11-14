@@ -291,17 +291,101 @@ def load_model(path: str) -> Optional[dict]:
     return model
 
 
-def model_status(path: str) -> dict:
-    """Report whether the model on disk is usable, and why not."""
+def model_status(path: str, db_path: Optional[str] = None) -> dict:
+    """Report whether the model on disk is usable, and why not.
+
+    When ``db_path`` is given, an ``ok`` model also carries a calibration
+    report: a single accuracy number hides whether the probabilities mean
+    anything, so the status shows predicted-vs-realized per bucket.
+    """
     raw = load_model_any(path)
     if raw is None:
         return {"state": "missing", "reasons": ["no model file"], "path": str(path)}
     reasons = staleness_reasons(raw)
+    summary = None
+    if not reasons:
+        summary = model_summary(raw)
+        if db_path:
+            summary["calibration"] = calibration_report(raw, db_path)
     return {
         "state": "stale" if reasons else "ok",
         "reasons": reasons,
         "path": str(path),
-        "summary": model_summary(raw) if not reasons else None,
+        "summary": summary,
+    }
+
+
+def calibration_report(model: Optional[dict], db_path: str, buckets: int = 5) -> dict:
+    """Compare predicted probability with the realized win rate per bucket.
+
+    Accuracy at a fixed threshold says nothing about whether ``0.7`` means a
+    70% chance. This bins the training rows by predicted probability and
+    reports the mean prediction against the observed outcome, plus the Brier
+    score and the sample-weighted expected calibration error (ECE).
+    """
+    if not model or not model.get("ok"):
+        return {"available": False, "reason": "no trained model"}
+    rows = build_training_rows(db_path)
+    if len(rows) < MIN_SAMPLES:
+        return {
+            "available": False,
+            "reason": f"not enough labelled trades ({len(rows)}/{MIN_SAMPLES})",
+            "samples": len(rows),
+        }
+
+    width = max(2, min(20, int(buckets)))
+    stats = [
+        {"low": i / width, "high": (i + 1) / width, "count": 0, "predicted": 0.0, "observed": 0.0}
+        for i in range(width)
+    ]
+    brier = 0.0
+    correct = 0
+    scored = 0
+    for row in rows:
+        probability = predict_probability(model, row["features"])
+        if probability is None:
+            continue
+        label = float(row["label"])
+        index = min(width - 1, int(probability * width))
+        entry = stats[index]
+        entry["count"] += 1
+        entry["predicted"] += probability
+        entry["observed"] += label
+        brier += (probability - label) ** 2
+        if (probability >= 0.5) == (label >= 0.5):
+            correct += 1
+        scored += 1
+
+    if scored == 0:
+        return {"available": False, "reason": "no rows could be scored"}
+
+    rendered = []
+    ece = 0.0
+    for entry in stats:
+        if not entry["count"]:
+            continue
+        average = entry["predicted"] / entry["count"]
+        observed = entry["observed"] / entry["count"]
+        gap = observed - average
+        ece += abs(gap) * entry["count"] / scored
+        rendered.append(
+            {
+                "low": round(entry["low"], 4),
+                "high": round(entry["high"], 4),
+                "count": entry["count"],
+                "avgPredicted": round(average, 4),
+                "observed": round(observed, 4),
+                "gap": round(gap, 4),
+            }
+        )
+    return {
+        "available": True,
+        "samples": scored,
+        "buckets": rendered,
+        "brier": round(brier / scored, 4),
+        "expectedCalibrationError": round(ece, 4),
+        "accuracy": round(correct / scored, 4),
+        "baseRate": round(sum(float(row["label"]) for row in rows) / len(rows), 4),
     }
 
 

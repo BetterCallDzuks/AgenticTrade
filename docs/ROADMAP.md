@@ -47,6 +47,8 @@ deliberately. Every released change is also recorded in
   with `node --check`, and `py/eval_models.py` can gate a change against a
   committed baseline (`--compare-json`/`--max-drop`) or an absolute floor
   (`--fail-under`).
+- The advisory ML model reports calibration per probability bucket (Brier and
+  ECE) instead of a single accuracy number.
 
 ## Candidates (not scheduled)
 
@@ -77,8 +79,6 @@ Ordered by risk-reduction per unit of work, not by expected return.
 6. **Walk-forward across the strategy comparison in CI.** A tiny synthetic
    candle set proving `--compare --window-mode rolling` stays deterministic on
    every platform (currently covered by self-tests, not the matrix).
-7. **Calibration report.** Compare the advisory ML probability against realized
-   outcomes per bucket, instead of reporting a single accuracy number.
 
 ### Operations
 

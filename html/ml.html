@@ -70,6 +70,10 @@
                     <div class="k" data-i18n="ml.logLoss"></div>
                     <div id="mlLogLoss" class="v">—</div>
                 </div>
+                <div class="stat-tile">
+                    <div class="k" data-i18n="ml.calibration"></div>
+                    <div id="mlCalibration" class="v">—</div>
+                </div>
             </div>
         </section>
 
@@ -196,6 +200,7 @@
                 "ml.positives": "Pozitivni",
                 "ml.accuracy": "Točnost",
                 "ml.logLoss": "Log loss",
+                "ml.calibration": "Kalibracija (ECE)",
                 "ml.notTrained": "Model još nije treniran",
                 "ml.state": "Stanje",
                 "ml.stateOk": "Model spreman",
@@ -289,6 +294,7 @@
                 "ml.positives": "Positives",
                 "ml.accuracy": "Accuracy",
                 "ml.logLoss": "Log loss",
+                "ml.calibration": "Calibration (ECE)",
                 "ml.notTrained": "Model not trained yet",
                 "ml.state": "State",
                 "ml.stateOk": "Model ready",
@@ -434,6 +440,12 @@
             setText("mlAccuracy", trained && Number.isFinite(accuracy) ? BCT.fmtPct(accuracy * 100, 1) : "—");
             const logLoss = Number(summary.logLoss);
             setText("mlLogLoss", trained && Number.isFinite(logLoss) ? logLoss.toFixed(4) : "—");
+            const calibration = summary.calibration || {};
+            const ece = Number(calibration.expectedCalibrationError);
+            setText(
+                "mlCalibration",
+                trained && calibration.available && Number.isFinite(ece) ? ece.toFixed(3) : "—"
+            );
         }
 
         function renderWeights(summary) {
