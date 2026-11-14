@@ -39,6 +39,8 @@ deliberately. Every released change is also recorded in
   `bettercalltrader_auth_failures_total{kind="token"|"totp"}`.
 - The probe budget is persisted per UTC day in `bot_state`, so a restart or a
   crash loop cannot mint a fresh `LIVE_STAGE_MAX_TRADES` allowance.
+- The container runs as a non-root user on a read-only root filesystem, with
+  all capabilities dropped and `/tmp` on a tmpfs; CI builds and probes it.
 
 ## Candidates (not scheduled)
 

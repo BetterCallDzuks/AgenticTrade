@@ -849,6 +849,17 @@ for `GEMINI_API_KEY` or other overrides. `./scripts/backup.sh` and `.\scripts\ba
 include `./data` automatically. Live trading remains disabled unless
 explicitly configured in `.env`.
 
+The image runs as the unprivileged `bct` user (UID/GID 1000 by default), and
+the compose service drops every capability, sets `no-new-privileges`, mounts
+the root filesystem read-only and gives `/tmp` a tmpfs. Only `/app/data` is
+writable. If your host user is not UID 1000, rebuild with matching IDs, or fix
+the bind mount once:
+
+```bash
+docker compose build --build-arg BCT_UID="$(id -u)" --build-arg BCT_GID="$(id -g)"
+sudo chown -R 1000:1000 data   # or the UID/GID used above
+```
+
 ## Backup and restore
 
 Create a timestamped backup:

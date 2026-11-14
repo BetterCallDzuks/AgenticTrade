@@ -8,6 +8,12 @@ All notable changes to BetterCallTrader are documented here. The format follows
 
 ### Security
 
+- **The container is hardened.** The image now runs as the unprivileged `bct`
+  user (UID/GID 1000 by default, overridable with `BCT_UID`/`BCT_GID` build
+  args) with `PYTHONDONTWRITEBYTECODE=1`, and compose sets `read_only: true`,
+  a `/tmp` tmpfs, `cap_drop: [ALL]` and `no-new-privileges`. Only `/app/data`
+  is writable. A new CI job builds the image, asserts `id -u` is 1000, and
+  reaches `/ready` under those restrictions.
 - **Failed dashboard authentication is audited.** A rejected `X-Auth-Token`
   and a missing or invalid TOTP code now write an `auth_failed` audit record
   (`kind`, `ip`, `method`, `path`, `origin`, `reason`) and increment

@@ -113,3 +113,54 @@ jobs:
       - name: Audit pinned runtime dependencies
         run: |
           "$VENV_PY" -m pip_audit -r requirements.txt
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compose config is valid
+        env:
+          DASHBOARD_TOKEN: ci-token
+        run: docker compose config > /dev/null
+      - name: Build the image
+        run: docker build -t bettercalltrader:test .
+      - name: Image runs as non-root
+        run: test "$(docker run --rm bettercalltrader:test id -u)" = "1000"
+      - name: Run hardened and wait for /ready
+        run: |
+          set -euo pipefail
+          docker volume create bct-ci-data >/dev/null
+          cid="$(docker run -d --name bct-ci \
+            -e COMMAND_CENTER_HOST=0.0.0.0 \
+            -e DASHBOARD_TOKEN=ci-token \
+            -e PAPER_DB_PATH=/app/data/paper_portfolio.db \
+            -e AUDIT_LOG_PATH=/app/data/bot_audit.jsonl \
+            -e LOG_FILE_PATH=/app/data/bot_history.log \
+            -e ML_MODEL_PATH=/app/data/ml_model.json \
+            -p 18080:8080 \
+            --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges \
+            -v bct-ci-data:/app/data \
+            bettercalltrader:test)"
+          cleanup() {
+            docker rm -f bct-ci >/dev/null 2>&1 || true
+            docker volume rm bct-ci-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          ok=0
+          for _ in $(seq 1 60); do
+            if curl -fsS -H "X-Auth-Token: ci-token" http://127.0.0.1:18080/ready >/dev/null; then
+              ok=1
+              break
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' "$cid")" != "true" ]; then
+              break
+            fi
+            sleep 2
+          done
+          docker logs "$cid"
+          if [ "$ok" -ne 1 ]; then
+            echo "::error::hardened container did not become ready"
+            exit 1
+          fi
+          echo "hardened container reached /ready"

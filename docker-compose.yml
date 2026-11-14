@@ -20,6 +20,17 @@ services:
         required: false
     volumes:
       - ./data:/app/data
+    # Hardening: the image already runs as the non-root `bct` user. Make the
+    # root filesystem read-only (state goes to the ./data mount and /tmp), drop
+    # every Linux capability, and forbid setuid/escalation. Python is told not
+    # to write .pyc files in the image.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       # /ready is authenticated when DASHBOARD_TOKEN is set, so send the same
       # token the service runs with. python:3.11-slim has no curl.
