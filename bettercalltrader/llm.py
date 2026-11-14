@@ -305,6 +305,20 @@ class LLMClient:
                 self.last_error = str(exc)
         raise LLMError("; ".join(errors) or "all providers failed")
 
+    async def complete_text(self, prompt: str, *, session: Any = None) -> str:
+        """Send a plain prompt to the primary provider and return raw text.
+
+        Used by the Command Center ``Load & test`` action: it only needs to
+        prove that the model can answer, not that it returns valid JSON.
+        """
+        if not self._providers:
+            raise LLMError("no LLM provider configured")
+        spec = self._providers[0]
+        text = await self._call(spec, prompt, None, session)
+        self.last_provider = spec.label
+        self.last_error = None
+        return text
+
     async def _call(self, spec: ProviderSpec, prompt: str, schema: Optional[Type[Any]], session: Any) -> str:
         if spec.kind == "gemini":
             return await self._call_gemini(spec, prompt, schema)
@@ -459,3 +473,90 @@ def _model_ids(body: str) -> Sequence[str]:
     if isinstance(models, list):
         return [str(item.get("name") or item.get("model")) for item in models if isinstance(item, Mapping)]
     return ()
+
+
+def _parse_models(body: str, source: str) -> Optional[List[Dict[str, Any]]]:
+    """Normalise an LM Studio REST or OpenAI model list into dicts."""
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, Mapping):
+        return None
+    if source == "lmstudio":
+        items = data.get("models")
+        if not isinstance(items, list):
+            return None
+        models: List[Dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            key = item.get("key") or item.get("id")
+            if not key:
+                continue
+            capabilities = item.get("capabilities")
+            vision = bool(capabilities.get("vision")) if isinstance(capabilities, Mapping) else False
+            models.append(
+                {
+                    "id": str(key),
+                    "type": str(item.get("type") or "llm"),
+                    "loaded": bool(item.get("loaded_instances")),
+                    "params": item.get("params_string"),
+                    "publisher": item.get("publisher"),
+                    "vision": vision,
+                }
+            )
+        return models
+    if not isinstance(data.get("data"), list) and not isinstance(data.get("models"), list):
+        return None
+    return [
+        {"id": model_id, "type": "llm", "loaded": None, "params": None, "publisher": None, "vision": False}
+        for model_id in _model_ids(body)
+        if model_id
+    ]
+
+
+async def fetch_models(
+    base_url: str,
+    api_key: str = "",
+    session: Any = None,
+    timeout: float = 2.0,
+) -> Dict[str, Any]:
+    """List models from a local OpenAI-compatible server.
+
+    Prefers LM Studio's REST endpoint (``/api/v1/models``) because it reports
+    the model type and whether an instance is loaded, then falls back to the
+    plain OpenAI ``/models`` endpoint. Never raises: an unreachable server is a
+    normal state for the dashboard, not an error.
+    """
+    base = (base_url or OLLAMA_BASE_URL).rstrip("/")
+    root = base[:-3] if base.endswith("/v1") else base
+    headers = {"Accept": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    owns_session = session is None
+    if owns_session:
+        import aiohttp
+
+        session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout))
+    result: Dict[str, Any] = {"reachable": False, "baseUrl": base, "source": "", "models": [], "detail": ""}
+    try:
+        for url, source in ((f"{root}/api/v1/models", "lmstudio"), (f"{base}/models", "openai")):
+            try:
+                async with session.get(url, headers=headers) as response:
+                    body = await response.text()
+                    if response.status >= 400:
+                        result["detail"] = f"{url}: HTTP {response.status}"
+                        continue
+                parsed = _parse_models(body, source)
+                if parsed is not None:
+                    result.update(
+                        {"reachable": True, "source": source, "models": parsed, "detail": f"{url} reachable"}
+                    )
+                    return result
+            except Exception as exc:  # noqa: BLE001 - try the next endpoint
+                result["detail"] = f"{url}: {exc}"
+        return result
+    finally:
+        if owns_session:
+            await session.close()

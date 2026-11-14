@@ -66,6 +66,16 @@ async def main():
         await fetch(session, "/api/backtest")
         await fetch(session, "/api/audit?limit=5")
         await fetch(session, "/api/ml/status")
+        models = await fetch(session, "/api/llm/models")
+        for key in ("reachable", "models", "selection", "active"):
+            assert f'"{key}"' in models, key
+        async with session.post(
+            f"{BASE}/api/llm/select",
+            headers={"X-Auth-Token": TOKEN, "Content-Type": "application/json"},
+            json={"provider": "auto"},
+        ) as resp:
+            body = await resp.text()
+            assert resp.status == 200 and '"ok": true' in body, body
         await fetch(session, "/api/equity")
         await fetch(session, "/api/journal?limit=5")
         await fetch(session, "/api/circuit_breaker")

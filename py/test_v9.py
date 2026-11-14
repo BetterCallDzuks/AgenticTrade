@@ -1984,6 +1984,8 @@ def test_v11_llm_layer():
         pass
 
     async def run():
+        lm_mode = {"lmstudio": False}
+
         async def chat(request):
             body = await request.json()
             assert body["model"] == "tiny"
@@ -1994,9 +1996,23 @@ def test_v11_llm_layer():
         async def models(request):
             return web.json_response({"data": [{"id": "tiny"}]})
 
+        async def lmstudio_models(request):
+            if not lm_mode["lmstudio"]:
+                return web.json_response({"error": "not found"}, status=404)
+            return web.json_response(
+                {
+                    "models": [
+                        {"key": "qwen2.5-coder-7b-instruct", "type": "llm", "loaded_instances": [{"id": "x"}],
+                         "params_string": "7B", "publisher": "Qwen"},
+                        {"key": "text-embedding", "type": "embedding", "loaded_instances": []},
+                    ]
+                }
+            )
+
         app = web.Application()
         app.router.add_post("/v1/chat/completions", chat)
         app.router.add_get("/v1/models", models)
+        app.router.add_get("/api/v1/models", lmstudio_models)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, "127.0.0.1", 0)
@@ -2005,6 +2021,8 @@ def test_v11_llm_layer():
         base = f"http://127.0.0.1:{port}/v1"
         try:
             from pydantic import BaseModel
+
+            from bettercalltrader.llm import fetch_models
 
             class Decision(BaseModel):
                 decision: str
@@ -2016,12 +2034,93 @@ def test_v11_llm_layer():
             assert decision.decision == "BUY"
             assert client.last_provider == "local:tiny"
             assert client.describe()["chain"] == ["local:tiny"]
+            assert (await client.complete_text("ping")).startswith("```json")
             # probe() is synchronous urllib, so it must run off the server loop.
             assert (await asyncio.to_thread(probe, cfg, 2.0))["state"] == "ok"
+
+            # Discovery prefers LM Studio REST, then falls back to OpenAI /models.
+            openai_list = await fetch_models(base, timeout=2.0)
+            assert openai_list["reachable"] and openai_list["source"] == "openai"
+            assert [model["id"] for model in openai_list["models"]] == ["tiny"]
+            lm_mode["lmstudio"] = True
+            lm_list = await fetch_models(base, timeout=2.0)
+            assert lm_list["source"] == "lmstudio"
+            assert lm_list["models"][0]["id"] == "qwen2.5-coder-7b-instruct"
+            assert lm_list["models"][0]["loaded"] is True
+            assert lm_list["models"][1]["type"] == "embedding"
+            # An unreachable server is a normal state, not an exception.
+            down = await fetch_models("http://127.0.0.1:9/v1", timeout=0.4)
+            assert down["reachable"] is False and down["models"] == []
         finally:
             await runner.cleanup()
 
     asyncio.run(run())
+
+    # Command Center model selection: local first, Gemini first, auto, persistence.
+    class FakeResearcher:
+        pass
+
+    researcher = FakeResearcher()
+    researcher.llm = LLMClient(
+        LLMConfig(
+            provider="auto",
+            model="primary",
+            local_model="primary",
+            local_models=("primary", "fallback-a"),
+            base_url="http://127.0.0.1:9/v1",
+            gemini_api_key="g",
+        )
+    )
+    researcher.api_key = "g"
+    researcher.model_name = researcher.llm.model_name
+    researcher.client = researcher.llm
+    researcher.llm_base_config = researcher.llm.config
+    rb.apply_llm_selection(researcher, "local", "fallback-a")
+    assert researcher.llm.config.provider == "openai"
+    assert researcher.model_name == "fallback-a"
+    assert [spec.model for spec in researcher.llm.config.providers() if spec.kind == "openai"] == [
+        "fallback-a", "primary"
+    ]
+    rb.apply_llm_selection(researcher, "gemini")
+    assert researcher.llm.config.provider == "gemini"
+    assert researcher.llm.label.startswith("gemini:")
+    rb.apply_llm_selection(researcher, "auto")
+    assert researcher.llm.config.provider == "auto"
+    # Switching back to auto restores the pristine .env order, not the pinned one.
+    assert [spec.model for spec in researcher.llm.config.providers() if spec.kind == "openai"] == [
+        "primary", "fallback-a"
+    ]
+    try:
+        rb.apply_llm_selection(researcher, "bogus")
+        raise AssertionError("unknown provider should raise")
+    except ValueError:
+        pass
+    bare = FakeResearcher()
+    bare.llm = LLMClient(LLMConfig(provider="auto", gemini_api_key="g"))
+    bare.api_key = "g"
+    bare.model_name = bare.llm.model_name
+    bare.client = bare.llm
+    try:
+        rb.apply_llm_selection(bare, "local", "")
+        raise AssertionError("missing local model should raise")
+    except ValueError:
+        pass
+
+    db_path = make_temp_db()
+    try:
+        portfolio = rb.PaperTradingManager(db_path=db_path, initial_sol=10.0)
+        portfolio._set_state("llm_provider", "local")
+        portfolio._set_state("llm_model", "fallback-a")
+        rb.restore_llm_selection(portfolio, researcher)
+        assert researcher.llm.config.local_model == "fallback-a"
+        assert researcher.llm.label == "local:fallback-a"
+    finally:
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                os.remove(db_path + suffix)
+            except OSError:
+                pass
+
     print("  v11 LLM provider layer: OK")
 
 

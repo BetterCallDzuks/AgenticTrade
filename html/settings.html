@@ -136,7 +136,27 @@
                     <summary class="cursor-pointer select-none text-[11px] font-mono uppercase tracking-wider text-slate-300">
                         <i class="fa-solid fa-brain text-sol-purple mr-1"></i><span data-i18n="settings.llmTitle"></span>
                     </summary>
-                    <div id="roLlm" class="mt-2 max-h-56 overflow-auto text-[10px] font-mono text-slate-300">—</div>
+                    <div class="mt-2 space-y-2">
+                        <label for="llmProvider" class="block text-[10px] font-mono uppercase tracking-wider text-slate-500" data-i18n="settings.llmProviderLabel"></label>
+                        <select id="llmProvider" class="field">
+                            <option value="auto" data-i18n="settings.llmProvider.auto">auto</option>
+                            <option value="gemini" data-i18n="settings.llmProvider.gemini">gemini</option>
+                            <option value="local" data-i18n="settings.llmProvider.local">local</option>
+                        </select>
+                        <label for="llmModel" class="block text-[10px] font-mono uppercase tracking-wider text-slate-500" data-i18n="settings.llmModelLabel"></label>
+                        <select id="llmModel" class="field"></select>
+                        <p id="llmHint" class="text-[10px] font-mono text-slate-500 leading-relaxed">—</p>
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="llmApply" class="btn btn-primary" disabled>
+                                <i class="fa-solid fa-wand-magic-sparkles"></i><span data-i18n="settings.llmApply"></span>
+                            </button>
+                            <button type="button" id="llmReload" class="btn" disabled>
+                                <i class="fa-solid fa-rotate"></i><span data-i18n="settings.llmRefresh"></span>
+                            </button>
+                            <span id="llmStatus" class="text-[10px] font-mono text-slate-500"></span>
+                        </div>
+                        <div id="roLlm" class="mt-1 max-h-48 overflow-auto text-[10px] font-mono text-slate-300">—</div>
+                    </div>
                 </details>
 
                 <details class="glass-inset rounded-lg px-3 py-2">
@@ -188,6 +208,20 @@
                 "settings.version": "Verzija",
                 "settings.configHash": "Config hash",
                 "settings.llmTitle": "LLM provider",
+                "settings.llmProviderLabel": "Provider",
+                "settings.llmModelLabel": "Lokalni model",
+                "settings.llmProvider.auto": "auto (Gemini, zatim lokalni)",
+                "settings.llmProvider.gemini": "gemini (prvi)",
+                "settings.llmProvider.local": "lokalni model (prvi)",
+                "settings.llmApply": "Primijeni",
+                "settings.llmRefresh": "Osvježi",
+                "settings.llmHint.auto": "auto = Gemini kad je ključ postavljen, zatim lokalni modeli iz .env.",
+                "settings.llmHint.gemini": "Gemini je primaran; lokalni modeli ostaju fallback.",
+                "settings.llmHint.local": "Odabrani lokalni model je primaran; ostali lokalni modeli su fallback.",
+                "settings.llmNoServer": "LM Studio / lokalni server nije dostupan.",
+                "settings.llmLoading": "Učitavam lokalne modele…",
+                "settings.llmApplied": "Primijenjeno: {model}",
+                "settings.llmApplyFail": "Odabir modela nije uspio",
                 "settings.exitPolicyTitle": "Exit policy (JSON)",
                 "settings.liveFailClosed": "Fail-closed: live trgovanje se ne može uključiti s ove stranice — potrebna je eksplicitna env potvrda na serveru.",
                 "settings.toastSaved": "Spremljeno · {n} promjena",
@@ -290,6 +324,20 @@
                 "settings.version": "Version",
                 "settings.configHash": "Config hash",
                 "settings.llmTitle": "LLM provider",
+                "settings.llmProviderLabel": "Provider",
+                "settings.llmModelLabel": "Local model",
+                "settings.llmProvider.auto": "auto (Gemini, then local)",
+                "settings.llmProvider.gemini": "gemini (first)",
+                "settings.llmProvider.local": "local model (first)",
+                "settings.llmApply": "Apply",
+                "settings.llmRefresh": "Refresh",
+                "settings.llmHint.auto": "auto = Gemini when the key is set, then the local models from .env.",
+                "settings.llmHint.gemini": "Gemini is primary; local models stay as fallback.",
+                "settings.llmHint.local": "The selected local model is primary; the other local models are fallback.",
+                "settings.llmNoServer": "LM Studio / local server is not reachable.",
+                "settings.llmLoading": "Loading local models…",
+                "settings.llmApplied": "Applied: {model}",
+                "settings.llmApplyFail": "Model selection failed",
                 "settings.exitPolicyTitle": "Exit policy (JSON)",
                 "settings.liveFailClosed": "Fail-closed: live trading cannot be enabled from this page — an explicit server-side env confirmation is required.",
                 "settings.toastSaved": "Saved · {n} change(s)",
@@ -652,6 +700,101 @@
             }).join("");
         }
 
+        /* ------------------------------------------------ LLM model picker */
+        let llmPayload = null;
+        let llmLoadedOnce = false;
+
+        function llmSetStatus(text, tone) {
+            const node = $("llmStatus");
+            if (!node) return;
+            node.textContent = text || "";
+            const color = tone === "bad" ? "text-rose-300" : tone === "good" ? "text-sol-green" : "text-slate-500";
+            node.className = "text-[10px] font-mono " + color;
+        }
+
+        function setLlmHint(provider) {
+            const node = $("llmHint");
+            if (node) node.textContent = BCT.t("settings.llmHint." + (provider || "auto"));
+        }
+
+        function llmKnownModels() {
+            const known = [];
+            const push = (id) => {
+                const value = String(id || "").trim();
+                if (value && !known.includes(value)) known.push(value);
+            };
+            ((llmPayload && llmPayload.models) || []).forEach((model) => {
+                if (model && (!model.type || model.type === "llm" || model.type === "vlm")) push(model.id);
+            });
+            ((llmPayload && llmPayload.localModels) || []).forEach(push);
+            const selection = (llmPayload && llmPayload.selection) || {};
+            push(selection.model);
+            return known;
+        }
+
+        function renderLlmPicker(payload) {
+            llmPayload = payload || {};
+            const providerSel = $("llmProvider");
+            const modelSel = $("llmModel");
+            const applyBtn = $("llmApply");
+            const reloadBtn = $("llmReload");
+            if (!providerSel || !modelSel) return;
+            const selection = llmPayload.selection || {};
+            const active = llmPayload.active || {};
+            const provider = ["auto", "gemini", "local"].includes(selection.provider)
+                ? selection.provider : "auto";
+            providerSel.value = provider;
+            const wanted = selection.model || (active.local ? active.model : "") || "";
+            const models = llmKnownModels();
+            modelSel.innerHTML = models.length
+                ? models.map((id) => `<option value="${esc(id)}">${esc(id)}</option>`).join("")
+                : `<option value="">—</option>`;
+            if (wanted && models.includes(wanted)) modelSel.value = wanted;
+            modelSel.disabled = provider !== "local" || !models.length;
+            if (applyBtn) applyBtn.disabled = false;
+            if (reloadBtn) reloadBtn.disabled = false;
+            setLlmHint(provider);
+            if (!llmPayload.reachable) {
+                llmSetStatus(BCT.t("settings.llmNoServer"), "bad");
+            } else {
+                llmSetStatus("");
+            }
+        }
+
+        async function loadLlmModels() {
+            llmSetStatus(BCT.t("settings.llmLoading"));
+            try {
+                const payload = await BCT.api("/api/llm/models");
+                renderLlmPicker(payload);
+            } catch (err) {
+                llmSetStatus(err && err.message ? err.message : BCT.t("settings.llmNoServer"), "bad");
+            }
+        }
+
+        async function applyLlmSelection() {
+            const provider = $("llmProvider").value;
+            const model = provider === "local" ? $("llmModel").value : "";
+            if (provider === "local" && !model) {
+                llmSetStatus(BCT.t("settings.llmNoServer"), "bad");
+                return;
+            }
+            llmSetStatus("…");
+            try {
+                const res = await BCT.api("/api/llm/select", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ provider, model })
+                });
+                if (!res || !res.ok) throw new Error((res && res.error) || BCT.t("settings.llmApplyFail"));
+                const active = (res && res.active) || {};
+                const label = active.label || (provider === "local" ? model : provider);
+                llmSetStatus(BCT.t("settings.llmApplied", { model: label }), "good");
+                if (config) renderReadonly({ ...config, llm: active });
+            } catch (err) {
+                llmSetStatus(err && err.message ? err.message : BCT.t("settings.llmApplyFail"), "bad");
+            }
+        }
+
         function renderReadonly(cfg) {
             cfg = cfg || {};
             renderFlag("roLive", Boolean(cfg.liveTradingEnabled), true);
@@ -748,6 +891,10 @@
             config = next;
             setHash(config);
             renderReadonly(config);
+            if (!llmLoadedOnce) {
+                llmLoadedOnce = true;
+                loadLlmModels();
+            }
             if (!dirty) {
                 populateForm(config);
             } else {
@@ -810,6 +957,14 @@
             markDirty();
             renderProfileBadge($("profileSelect").value);
         });
+
+        $("llmProvider").addEventListener("change", () => {
+            const provider = $("llmProvider").value;
+            $("llmModel").disabled = provider !== "local" || !llmKnownModels().length;
+            setLlmHint(provider);
+        });
+        $("llmApply").addEventListener("click", applyLlmSelection);
+        $("llmReload").addEventListener("click", loadLlmModels);
 
         window.addEventListener("beforeunload", (event) => {
             if (!dirty) return;

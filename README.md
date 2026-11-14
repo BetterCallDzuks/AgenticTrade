@@ -660,6 +660,24 @@ loaded. Model IDs are exactly what `GET /v1/models` advertises (for LM Studio:
 endpoint and reports a missing model or an unreachable server without spending
 tokens; `GET /api/state` exposes the resolved provider chain and whether the AI
 is local under `config.llm`.
+
+`./run.sh` manages LM Studio for you: when `LLM_BASE_URL` points at
+`127.0.0.1`/`localhost` on LM Studio's default port (`1234`), it runs
+`lms server start` before the bot and `lms server stop` when the bot exits. A
+server that was already running is left untouched. Set `LMS_AUTOSTART=true` to
+manage a custom local port, or `LMS_AUTOSTART=false` to disable it (the `auto`
+default never touches Ollama/llama.cpp/vLLM ports).
+
+The dashboard lets you switch the active model without editing `.env`:
+
+- **Settings → LLM provider** — choose `auto`, `gemini`, or a specific local
+  model; the choice is persisted in SQLite and re-applied on startup.
+- **ML / AI → Local AI models** — list every model the server advertises, see
+  which ones are loaded, **Load & test** (JIT-loads and sends a tiny JSON
+  prompt), and **Use for research** to pin that model at the front of the chain.
+
+Selection endpoints: `GET /api/llm/models`, `POST /api/llm/select`
+(`{provider, model}`), `POST /api/llm/test` (`{model}`).
 3. **Risk & Portfolio** (`PaperTradingManager`): SQLite paper book plus the v9 risk engine.
 4. **Execution** (`SolanaExecutionAgent`): Jupiter v6 / PumpPortal routing with a Jito tip. **Dry-run only** while `LIVE_TRADING_ENABLED=false`.
 
@@ -682,6 +700,9 @@ is local under `config.llm`.
 | `GET /api/ml/status` | ML model contract state (`ok`/`stale`/`missing`), reasons and summary |
 | `GET /api/ml/predict?mint=...` | advisory buy/skip probability; `409` with staleness reasons instead of scoring a stale model |
 | `POST /api/ml/train` | retrain the advisory model from closed paper trades |
+| `GET /api/llm/models` | local server model list (LM Studio REST, then OpenAI `/models`), loaded flags and active selection |
+| `POST /api/llm/select` | choose the research LLM: `{provider: auto\|gemini\|local, model}`; persisted in `bot_state` |
+| `POST /api/llm/test` | JIT-load and test one local model `{model}` with a tiny JSON completion |
 | `GET /risk` `/wallets` `/backtest` `/ml` `/system` `/settings` | console windows (static pages, no token required) |
 | `POST /api/wallets/add` / `POST /api/wallets/remove` | track / untrack a whale `{address, label}` |
 | `POST /api/simulate_whale_buy` | fire a demo whale signal through the normal pipeline |

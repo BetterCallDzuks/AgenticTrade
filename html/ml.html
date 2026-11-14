@@ -123,25 +123,44 @@
             </div>
         </section>
 
-        <!-- 6 · LLM PROVIDER -->
+        <!-- 6 · LOCAL AI MODELS -->
         <section class="glass-panel rounded-xl p-4 fade-in">
             <div class="flex flex-wrap items-center justify-between gap-2 border-b border-sol-border pb-2 mb-3">
-                <h2 class="section-title"><i class="fa-solid fa-microchip text-cyan-300"></i><span data-i18n="ml.llmTitle"></span></h2>
+                <h2 class="section-title"><i class="fa-solid fa-microchip text-cyan-300"></i><span data-i18n="ml.localTitle"></span></h2>
                 <div class="flex items-center gap-2 min-w-0">
-                    <span id="llmModelName" class="panel-note">—</span>
-                    <span id="llmActiveBadge" class="pill">—</span>
+                    <span id="localServerBadge" class="pill">—</span>
+                    <button type="button" id="localRefreshBtn" class="btn">
+                        <i class="fa-solid fa-rotate"></i><span data-i18n="ml.localRefresh"></span>
+                    </button>
                 </div>
             </div>
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                <div class="lg:col-span-6">
-                    <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" data-i18n="ml.llmSub"></div>
+            <div class="grid grid-cols-1 xl:grid-cols-12 gap-4">
+                <div class="xl:col-span-7 min-w-0">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                        <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500" data-i18n="ml.localSub"></div>
+                        <span id="localSource" class="panel-note">—</span>
+                    </div>
+                    <div id="localModels" class="space-y-1">
+                        <div class="empty-state" data-i18n="common.loading"></div>
+                    </div>
+                    <p class="text-[10px] font-mono text-slate-500 mt-2 leading-relaxed" data-i18n="ml.localSelectHint"></p>
+                    <div id="localTestResult" class="mt-2 text-[11px] font-mono text-slate-500"></div>
+                </div>
+                <div class="xl:col-span-5 min-w-0">
+                    <div class="flex items-center justify-between gap-2 mb-1">
+                        <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500" data-i18n="ml.llmTitle"></div>
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span id="llmModelName" class="panel-note">—</span>
+                            <span id="llmActiveBadge" class="pill">—</span>
+                        </div>
+                    </div>
                     <div id="llmRows" class="space-y-1">
                         <div class="empty-state" data-i18n="common.loading"></div>
                     </div>
-                </div>
-                <div class="lg:col-span-6 min-w-0">
-                    <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" data-i18n="ml.llmRaw"></div>
-                    <pre id="llmRaw" class="glass-inset rounded-lg p-2.5 text-[10px] leading-relaxed text-slate-300 overflow-auto max-h-48 whitespace-pre-wrap break-all font-mono">—</pre>
+                    <details class="mt-2">
+                        <summary class="cursor-pointer text-[10px] font-mono uppercase tracking-wider text-slate-500" data-i18n="ml.llmRaw"></summary>
+                        <pre id="llmRaw" class="glass-inset rounded-lg p-2.5 mt-1 text-[10px] leading-relaxed text-slate-300 overflow-auto max-h-48 whitespace-pre-wrap break-all font-mono">—</pre>
+                    </details>
                 </div>
             </div>
         </section>
@@ -221,6 +240,25 @@
                 "ml.llmChain": "Lanac fallbacka",
                 "ml.llmHeuristic": "Heuristički fallback",
 
+                "ml.localTitle": "Lokalni AI modeli",
+                "ml.localRefresh": "Osvježi",
+                "ml.localSub": "LM Studio / OpenAI-compatible server",
+                "ml.localOnline": "server dostupan",
+                "ml.localOffline": "server nedostupan",
+                "ml.localEmpty": "Nema lokalnih modela",
+                "ml.localLoaded": "u memoriji",
+                "ml.localNotLoaded": "nije učitan",
+                "ml.localTest": "Učitaj i testiraj",
+                "ml.localUse": "Koristi za research",
+                "ml.localTesting": "Testiram…",
+                "ml.localTestOk": "Test OK · {model} · {ms} ms",
+                "ml.localTestFail": "Test nije uspio: {error}",
+                "ml.localUseOk": "Aktivan model: {model}",
+                "ml.localUseFail": "Odabir nije uspio: {error}",
+                "ml.localSelectHint": "Odabir se sprema u bazu i vrijedi i nakon restarta. Test učitava model u LM Studio.",
+                "ml.localVision": "vision",
+                "ml.localParams": "parametri",
+
                 "ml.footer": "ML / AI lab · savjetodavni model, trening i predikcija"
             },
             en: {
@@ -284,6 +322,25 @@
                 "ml.llmLocal": "Local",
                 "ml.llmChain": "Fallback chain",
                 "ml.llmHeuristic": "Heuristic fallback",
+
+                "ml.localTitle": "Local AI models",
+                "ml.localRefresh": "Refresh",
+                "ml.localSub": "LM Studio / OpenAI-compatible server",
+                "ml.localOnline": "server reachable",
+                "ml.localOffline": "server unreachable",
+                "ml.localEmpty": "No local models",
+                "ml.localLoaded": "loaded",
+                "ml.localNotLoaded": "not loaded",
+                "ml.localTest": "Load & test",
+                "ml.localUse": "Use for research",
+                "ml.localTesting": "Testing…",
+                "ml.localTestOk": "Test OK · {model} · {ms} ms",
+                "ml.localTestFail": "Test failed: {error}",
+                "ml.localUseOk": "Active model: {model}",
+                "ml.localUseFail": "Selection failed: {error}",
+                "ml.localSelectHint": "The choice is persisted in the database and survives restarts. Test loads the model in LM Studio.",
+                "ml.localVision": "vision",
+                "ml.localParams": "params",
 
                 "ml.footer": "ML / AI lab · advisory model, training and prediction"
             }
@@ -491,19 +548,163 @@
             }
         }
 
+        /* --------------------------------------------- local model manager */
+        function renderLocalModels(payload) {
+            payload = payload || {};
+            const badge = $("localServerBadge");
+            const host = $("localModels");
+            const source = $("localSource");
+            const active = payload.active || {};
+            const activeModel = active.local ? String(active.model || "") : "";
+            const reachable = Boolean(payload.reachable);
+
+            badge.textContent = reachable
+                ? BCT.t("ml.localOnline")
+                : BCT.t("ml.localOffline");
+            badge.className = reachable ? "pill live" : "pill offline";
+            if (source) {
+                source.textContent = payload.source
+                    ? `${dash(payload.source)} · ${dash(payload.baseUrl)}`
+                    : dash(payload.baseUrl);
+            }
+
+            const models = (Array.isArray(payload.models) ? payload.models : [])
+                .filter((model) => model && (!model.type || model.type === "llm" || model.type === "vlm"));
+
+            if (!models.length) {
+                host.innerHTML = `<div class="empty-state">${esc(
+                    reachable ? BCT.t("ml.localEmpty") : BCT.t("ml.localOffline")
+                )}</div>`;
+                return;
+            }
+
+            host.innerHTML = models.map((model) => {
+                const id = String(model.id || "");
+                const isActive = activeModel && id === activeModel;
+                const loaded = model.loaded === true;
+                const tags = [];
+                if (model.params) tags.push(`<span class="panel-note">${esc(model.params)}</span>`);
+                if (model.vision) tags.push(`<span class="panel-note">${esc(BCT.t("ml.localVision"))}</span>`);
+                if (model.publisher) tags.push(`<span class="panel-note">${esc(model.publisher)}</span>`);
+                return `<div class="glass-inset rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-2">` +
+                    `<div class="min-w-0">` +
+                        `<div class="text-[11px] font-mono text-slate-200 break-all">${esc(dash(id))}</div>` +
+                        `<div class="flex flex-wrap items-center gap-1.5 mt-1">` +
+                            `<span class="pill ${loaded ? "live" : "offline"}" style="font-size:9px">${esc(
+                                loaded ? BCT.t("ml.localLoaded") : BCT.t("ml.localNotLoaded")
+                            )}</span>` +
+                            (isActive ? `<span class="pill live" style="font-size:9px">${esc(BCT.t("common.on"))}</span>` : "") +
+                            tags.join("") +
+                        `</div>` +
+                    `</div>` +
+                    `<div class="flex flex-wrap items-center gap-1.5">` +
+                        `<button type="button" class="btn" data-action="test" data-model="${esc(id)}">` +
+                            `<i class="fa-solid fa-flask"></i><span>${esc(BCT.t("ml.localTest"))}</span>` +
+                        `</button>` +
+                        `<button type="button" class="btn btn-primary" data-action="use" data-model="${esc(id)}">` +
+                            `<i class="fa-solid fa-check"></i><span>${esc(BCT.t("ml.localUse"))}</span>` +
+                        `</button>` +
+                    `</div>` +
+                `</div>`;
+            }).join("");
+        }
+
+        function setTestResult(text, tone) {
+            const node = $("localTestResult");
+            if (!node) return;
+            const color = tone === "good" ? "text-sol-green" : tone === "bad" ? "text-rose-200" : "text-slate-500";
+            node.className = `mt-2 text-[11px] font-mono ${color}`;
+            node.textContent = text || "";
+        }
+
+        async function testLocalModel(model, btn) {
+            const label = btn.querySelector("span");
+            const original = label ? label.textContent : "";
+            btn.disabled = true;
+            if (label) label.textContent = BCT.t("ml.localTesting");
+            setTestResult(BCT.t("ml.localTesting"), "muted");
+            try {
+                const res = await BCT.api("/api/llm/test", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ model })
+                });
+                if (!res || !res.ok) {
+                    throw new Error((res && res.error) || BCT.t("ml.localTestFail", { error: "?" }));
+                }
+                setTestResult(BCT.t("ml.localTestOk", { model, ms: res.elapsedMs ?? "—" }), "good");
+                BCT.toast(BCT.t("ml.localTestOk", { model, ms: res.elapsedMs ?? "—" }));
+            } catch (err) {
+                const message = err && err.message ? err.message : String(err);
+                setTestResult(BCT.t("ml.localTestFail", { error: message }), "bad");
+                BCT.toast(BCT.t("ml.localTestFail", { error: message }));
+            } finally {
+                btn.disabled = false;
+                if (label) label.textContent = original;
+            }
+        }
+
+        async function useLocalModel(model, btn) {
+            const label = btn.querySelector("span");
+            const original = label ? label.textContent : "";
+            btn.disabled = true;
+            try {
+                const res = await BCT.api("/api/llm/select", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ provider: "local", model })
+                });
+                if (!res || !res.ok) {
+                    throw new Error((res && res.error) || BCT.t("ml.localUseFail", { error: "?" }));
+                }
+                BCT.toast(BCT.t("ml.localUseOk", { model }));
+                await refresh();
+            } catch (err) {
+                const message = err && err.message ? err.message : String(err);
+                BCT.toast(BCT.t("ml.localUseFail", { error: message }));
+            } finally {
+                btn.disabled = false;
+                if (label) label.textContent = original;
+            }
+        }
+
         async function refresh() {
-            const [statusPayload, state] = await Promise.all([
+            const [statusPayload, state, localPayload] = await Promise.all([
                 BCT.api("/api/ml/status"),
-                BCT.api("/api/state")
+                BCT.api("/api/state"),
+                BCT.api("/api/llm/models")
             ]);
             const model = (statusPayload && statusPayload.model) || {};
             renderStatus(model);
             renderWeights(model.summary);
             renderContract(model);
             renderLlm(state || {});
+            renderLocalModels(localPayload || {});
             setText("authLabel", BCT.token() ? "token" : "off");
             BCT.setConnection(true);
         }
+
+        $("localRefreshBtn").addEventListener("click", async () => {
+            const btn = $("localRefreshBtn");
+            btn.disabled = true;
+            try {
+                const payload = await BCT.api("/api/llm/models");
+                renderLocalModels(payload || {});
+            } catch (err) {
+                BCT.toast(err && err.message ? err.message : BCT.t("ml.localOffline"));
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        $("localModels").addEventListener("click", (event) => {
+            const btn = event.target.closest("button[data-action]");
+            if (!btn) return;
+            const model = btn.dataset.model || "";
+            if (!model) return;
+            if (btn.dataset.action === "test") testLocalModel(model, btn);
+            else if (btn.dataset.action === "use") useLocalModel(model, btn);
+        });
 
         $("trainBtn").addEventListener("click", async () => {
             const btn = $("trainBtn");

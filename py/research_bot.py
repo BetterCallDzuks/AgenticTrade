@@ -162,6 +162,10 @@ API_RATE_LIMITER = RateLimiter(max_requests=API_RATE_LIMIT_PER_MIN, window_secon
 AUDIT_LOG_PATH = os.environ.get("AUDIT_LOG_PATH") or str(BASE_DIR / "bot_audit.jsonl")
 ALERT_THROTTLE = AlertThrottle(cooldown_sec=env_float("ALERT_COOLDOWN_SEC", 300.0))
 ML_MODEL_PATH = os.environ.get("ML_MODEL_PATH") or str(BASE_DIR / "ml_model.json")
+# Command Center model choices. ``auto`` keeps the .env chain (Gemini when
+# configured, then local fallbacks), ``gemini`` forces Gemini, ``local`` pins
+# one LM Studio / OpenAI-compatible model at the front of the chain.
+LLM_PROVIDER_CHOICES = ("auto", "gemini", "local")
 
 # v11: browser origin allowlist. Defaults to same-origin plus localhost on any
 # port; set ALLOWED_ORIGINS="*" (or CORS_ALLOW_ALL=true) for the old behaviour.
@@ -486,6 +490,9 @@ class ResearchAgent:
         # Gemini or any OpenAI-compatible local server; see bettercalltrader.llm.
         self.llm = LLMClient.from_env({**os.environ, "GEMINI_API_KEY": gemini_api_key}) if gemini_api_key \
             else LLMClient.from_env()
+        # Pristine .env-derived config. The Command Center rebuilds from this so
+        # switching back to "auto" restores the original model order.
+        self.llm_base_config = self.llm.config
         self.api_key = self.llm.config.gemini_api_key or None
         self.model_name = self.llm.model_name
         self.rpc_url = rpc_url or os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
@@ -3555,6 +3562,78 @@ def apply_config_payload(data: dict, portfolio, researcher, executor) -> List[st
     return changed
 
 
+def apply_llm_selection(researcher, provider: str, model: str = "") -> None:
+    """Rebuild ``researcher.llm`` for a Command Center model choice.
+
+    ``auto`` restores the .env chain, ``gemini`` prefers Gemini with the local
+    chain as fallback, and ``local`` puts ``model`` first with the remaining
+    ``LLM_MODELS`` entries behind it.
+    """
+    from dataclasses import replace
+
+    config = getattr(researcher, "llm_base_config", None) or researcher.llm.config
+    provider = (provider or "auto").strip().lower()
+    if provider not in LLM_PROVIDER_CHOICES:
+        raise ValueError(f"unknown LLM provider {provider!r}")
+    if provider == "local":
+        model = (model or "").strip()
+        model = model or config.local_model or (config.local_models[0] if config.local_models else "")
+        if not model:
+            raise ValueError("no local model selected")
+        if not config.base_url:
+            raise ValueError("LLM_BASE_URL is not configured")
+        fallbacks = tuple(name for name in config.local_models if name != model)
+        config = replace(
+            config,
+            provider="openai",
+            model=model,
+            local_model=model,
+            local_models=(model, *fallbacks),
+        )
+    elif provider == "gemini":
+        config = replace(config, provider="gemini")
+    else:
+        config = replace(config, provider="auto")
+    researcher.llm = LLMClient(config)
+    researcher.api_key = config.gemini_api_key or None
+    researcher.model_name = researcher.llm.model_name
+    researcher.client = researcher.llm if researcher.llm.available else None
+
+
+def restore_llm_selection(portfolio, researcher) -> None:
+    """Re-apply a Command Center model choice stored in ``bot_state``."""
+    try:
+        provider = portfolio._get_state("llm_provider")
+        model = portfolio._get_state("llm_model") or ""
+    except Exception:
+        return
+    if provider not in LLM_PROVIDER_CHOICES:
+        return
+    if provider == "local" and not researcher.llm.config.base_url:
+        add_agent_log("RESEARCH AI", "Saved local model choice ignored: LLM_BASE_URL is empty.", "warn")
+        return
+    try:
+        apply_llm_selection(researcher, provider, model)
+    except ValueError as exc:
+        add_agent_log("RESEARCH AI", f"Saved LLM choice ignored: {exc}", "warn")
+
+
+def log_llm_status(researcher) -> None:
+    """Print and log the resolved provider chain at startup."""
+    llm = researcher.llm
+    if llm.available:
+        where = "LOCAL" if llm.is_local else "REMOTE"
+        chain = " → ".join(llm.describe()["chain"]) or llm.label
+        print(f"🧠 [AI Status] {where} AI aktivan: {llm.label} (lanac: {chain}).")
+        add_agent_log("RESEARCH AI", f"AI inicijaliziran: {llm.label} ({where}).", "ai")
+    else:
+        print(
+            "ℹ️ [AI Status] Nijedan LLM provider nije konfiguriran — radim u heurističkom modu. "
+            "Postavi GEMINI_API_KEY ili LLM_BASE_URL (+ LLM_MODEL / LLM_MODELS) za AI forenziku."
+        )
+        add_agent_log("RESEARCH AI", "Nema LLM providera — koristim brzi heuristički mod.", "warn")
+
+
 def _is_protected_path(path: str) -> bool:
     return path.startswith("/api/") or path in ("/metrics", "/ready")
 
@@ -4029,6 +4108,92 @@ async def start_command_center_server(
             )
         return web.json_response({"ok": True, "changed": changed, "config": build_config_payload(portfolio, researcher, executor)})
 
+    def _llm_selection() -> dict:
+        return {
+            "provider": portfolio._get_state("llm_provider") or "auto",
+            "model": portfolio._get_state("llm_model") or "",
+            "choices": list(LLM_PROVIDER_CHOICES),
+        }
+
+    async def handle_api_llm_models(request: web.Request):
+        from bettercalltrader.llm import fetch_models
+
+        config = researcher.llm.config
+        result = await fetch_models(config.base_url, api_key=config.api_key, timeout=4.0)
+        selection = _llm_selection()
+        active = researcher.llm.describe()
+        return web.json_response(
+            {
+                "ok": True,
+                **result,
+                "selection": selection,
+                "active": active,
+                "localModels": list(config.local_models),
+            }
+        )
+
+    async def handle_api_llm_select(request: web.Request):
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        provider = str(data.get("provider") or "auto").strip().lower()
+        model = str(data.get("model") or "").strip()
+        try:
+            apply_llm_selection(researcher, provider, model)
+        except ValueError as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        portfolio._set_state("llm_provider", provider)
+        portfolio._set_state("llm_model", model if provider == "local" else "")
+        label = researcher.llm.label
+        add_agent_log("RESEARCH AI", f"Model odabran u Command Centeru: {label}.", "ai")
+        return web.json_response({"ok": True, "active": researcher.llm.describe(), "selection": _llm_selection()})
+
+    async def handle_api_llm_test(request: web.Request):
+        from bettercalltrader.llm import LLMClient as _LLMClient
+        from dataclasses import replace
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        config = researcher.llm.config
+        model = str(data.get("model") or config.local_model or "").strip()
+        if not model:
+            return web.json_response({"ok": False, "error": "model is required"}, status=400)
+        if not config.base_url:
+            return web.json_response({"ok": False, "error": "LLM_BASE_URL is not configured"}, status=400)
+        test_config = replace(
+            config,
+            provider="openai",
+            model=model,
+            local_model=model,
+            local_models=(model,),
+            gemini_api_key="",
+            max_tokens=64,
+            temperature=0.0,
+            timeout_sec=max(float(config.timeout_sec), 120.0),
+        )
+        client = _LLMClient(test_config)
+        started = time.time()
+        try:
+            reply = await client.complete_text("Reply with the single word OK and nothing else.")
+        except Exception as exc:  # noqa: BLE001 - surface the provider error to the UI
+            return web.json_response(
+                {"ok": False, "model": model, "error": str(exc), "elapsedMs": int((time.time() - started) * 1000)}
+            )
+        elapsed_ms = int((time.time() - started) * 1000)
+        add_agent_log("RESEARCH AI", f"Lokalni model '{model}' testiran ({elapsed_ms} ms).", "ai")
+        return web.json_response(
+            {
+                "ok": True,
+                "model": model,
+                "provider": client.last_provider,
+                "reply": str(reply)[:400],
+                "elapsedMs": elapsed_ms,
+            }
+        )
+
     async def handle_api_health(request: web.Request):
         return web.json_response({
             "ok": True,
@@ -4076,6 +4241,9 @@ async def start_command_center_server(
     app.router.add_post("/api/simulate_pump", handle_api_simulate_pump)
     app.router.add_post("/api/reset", handle_api_reset)
     app.router.add_post("/api/config", handle_api_config)
+    app.router.add_get("/api/llm/models", handle_api_llm_models)
+    app.router.add_post("/api/llm/select", handle_api_llm_select)
+    app.router.add_post("/api/llm/test", handle_api_llm_test)
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -4142,23 +4310,15 @@ async def run_research_pipeline(
     print("=" * 70)
 
     researcher = ResearchAgent()
-    llm = researcher.llm
-    if llm.available:
-        where = "LOCAL" if llm.is_local else "REMOTE"
-        chain = " → ".join(llm.describe()["chain"]) or llm.label
-        print(f"🧠 [AI Status] {where} AI aktivan: {llm.label} (lanac: {chain}).")
-        add_agent_log("RESEARCH AI", f"AI inicijaliziran: {llm.label} ({where}).", "ai")
-    else:
-        print(
-            "ℹ️ [AI Status] Nijedan LLM provider nije konfiguriran — radim u heurističkom modu. "
-            "Postavi GEMINI_API_KEY ili LLM_BASE_URL (+ LLM_MODEL) za AI forenziku."
-        )
-        add_agent_log("RESEARCH AI", "Nema LLM providera — koristim brzi heuristički mod.", "warn")
+    # The persisted Command Center model choice lives in bot_state, so open the
+    # portfolio first and re-apply the choice before logging the AI status.
+    portfolio = PaperTradingManager(db_path=os.environ.get("PAPER_DB_PATH") or "paper_portfolio.db")
+    restore_llm_selection(portfolio, researcher)
+    log_llm_status(researcher)
 
     discovery = DiscoveryAgent()
     pumpfun_stream = PumpFunStreamAgent(max_dev_buy_sol=15.0, min_initial_sol_in_curve=30.2)
     executor = SolanaExecutionAgent(live_trading_enabled=live_trading_enabled)
-    portfolio = PaperTradingManager(db_path=os.environ.get("PAPER_DB_PATH") or "paper_portfolio.db")
 
     mode_str = "🔥 LIVE ON-CHAIN TRADING" if executor.live_trading_enabled else "🛡️ PAPER TRADING + JUPITER DRY-RUN"
     print(f"⚙️  Mod izvršavanja: {mode_str} | Telegram: {'ON ✅' if TELEGRAM.enabled else 'OFF (dodaj u .env)'}")

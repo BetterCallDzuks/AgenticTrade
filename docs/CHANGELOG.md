@@ -45,6 +45,23 @@ All notable changes to BetterCallTrader are documented here. The format follows
   OpenAI-compatible server (LM Studio, Ollama, llama.cpp, vLLM) keeps answering
   when the primary model is not loaded. `doctor` and `probe` now report the
   model IDs the server actually advertises when a configured one is missing.
+- **LM Studio lifecycle in `./run.sh`.** When `LLM_BASE_URL` points at
+  `127.0.0.1`/`localhost`, the launcher runs `lms server start --port <port>`
+  before the bot and `lms server stop` when it exits. A server that was already
+  running is left up, and a missing `lms` or a remote base URL is ignored.
+- **Model selection in the dashboard.** `GET /api/llm/models` lists the models
+  an LM Studio / OpenAI-compatible server advertises (LM Studio REST first,
+  then OpenAI `/models`) with type, parameter count, vision and loaded state.
+  `POST /api/llm/select` switches between `auto`, `gemini` and a specific local
+  model and persists the choice in `bot_state`, restored at startup.
+  `POST /api/llm/test` JIT-loads one model with a tiny JSON completion.
+- **Settings → LLM provider picker.** Provider and local-model selects with an
+  Apply button; the selection survives restarts and immediately rebuilds the
+  research client's fallback chain.
+- **ML / AI → Local AI models.** Lists every available local model, shows
+  loaded/active state, and offers **Load & test** and **Use for research** per
+  model. (GGUF models are inference-only; this manages and selects them rather
+  than fine-tuning in-process.)
 
 ### Changed
 
