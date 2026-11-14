@@ -76,6 +76,7 @@ from bettercalltrader.llm import LLMClient
 from bettercalltrader.http import fetch_json_with_retry as _fetch_json_with_retry
 from bettercalltrader.http import post_json_with_retry as _post_json_with_retry
 from bettercalltrader.models import TokenAnalysisDecision
+from bettercalltrader.prompts import TEXT_TEST_PROMPT, build_research_prompt
 from bettercalltrader.telegram import TelegramNotifier
 
 # Relative LOG_FILE_PATH values resolve against the project directory, not the
@@ -202,6 +203,11 @@ HTTP_METRICS.describe("bettercalltrader_net_pnl_sol", "Realized net PnL in SOL."
 HTTP_METRICS.describe("bettercalltrader_open_positions", "Currently open paper positions.", "gauge")
 HTTP_METRICS.describe("bettercalltrader_wallet_balance_sol", "Paper wallet balance in SOL.", "gauge")
 HTTP_METRICS.describe("bettercalltrader_circuit_breaker_active", "1 when the circuit breaker is tripped.", "gauge")
+HTTP_METRICS.describe("bettercalltrader_llm_calls", "LLM requests per provider.", "gauge")
+HTTP_METRICS.describe("bettercalltrader_llm_failures", "Failed LLM requests per provider.", "gauge")
+HTTP_METRICS.describe(
+    "bettercalltrader_llm_circuit_open", "1 when a provider is skipped by its circuit breaker.", "gauge"
+)
 HTTP_METRICS.describe("bettercalltrader_info", "Build and execution mode information.", "gauge")
 
 from bettercalltrader.price_feed import PriceCache
@@ -956,25 +962,7 @@ class ResearchAgent:
             self.last_eval_mode = "HEURISTIC"
             return self._heuristic_fallback(market, security)
 
-        prompt = f"""
-        Ti si elitni kvantitativni i on-chain AI analitičar za Solana memecoine.
-        Procijeni sljedeći token na temelju stvarnih on-chain, Smart Money i holder podataka:
-
-        TRŽIŠNI PODACI (DexScreener / Whale Tracker):
-        {json.dumps(market, indent=2)}
-
-        ON-CHAIN FORENZIKA TOP HOLDERA & BUNDLE ANALIZA:
-        {json.dumps(security, indent=2)}
-
-        PRAVILA EVALUACIJE (v9.0 — budi strog, kapital je prioritet):
-        1. Analiziraj 'top10_holder_pct' i 'is_bundled'. Ako je top10_holder_pct < 20% i is_bundled == false, to je izvrstan 'green_flag'. Bundle = SKIP.
-        2. Ako postoji 'whale_signal' (Smart Money je kupio), to je snažan bikovski signal (+20 Hype Score), ali nije dovoljno samo za BUY ako je cijena već u 5m dumpu.
-        3. Analiziraj zamah (buys vs sells u 5m i 1h) i omjer likvidnosti/FDV-a. Omjer ispod 5% na većem FDV-u je red_flag.
-        4. Provjeri ima li token X (Twitter), Telegram ili web stranicu. Bez socijala + rana bonding krivulja = najviše WATCH, ne BUY.
-        5. NEMOJ davati BUY ako: 5m cijena već pada (price_change_m5 negativan i sells >= buys), ili je token već ekstremno ispumpan u 1h (>400%) i počinje korekcija.
-        6. BUY samo uz visoku konfluenciju: čist ugovor, zdravi holderi, kupovni pritisak, prihvatljiv liq/FDV. Inače WATCH ili SKIP.
-        7. Budi strog i precizan! Napiši konkretne brojke u 'summary_hr'.
-        """
+        prompt = build_research_prompt(market, security)
 
         try:
             decision = await self.llm.complete_json(prompt, TokenAnalysisDecision)
@@ -3888,6 +3876,11 @@ async def start_command_center_server(
                 "mode": "LIVE" if executor.live_trading_enabled else "PAPER",
             },
         )
+        for entry in researcher.llm.health():
+            labels = {"provider": entry["provider"]}
+            HTTP_METRICS.set("bettercalltrader_llm_calls", entry["calls"], labels)
+            HTTP_METRICS.set("bettercalltrader_llm_failures", entry["failures"], labels)
+            HTTP_METRICS.set("bettercalltrader_llm_circuit_open", 1 if entry["open"] else 0, labels)
         return web.Response(
             text=HTTP_METRICS.render(),
             headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"},
@@ -4147,7 +4140,70 @@ async def start_command_center_server(
         portfolio._set_state("llm_model", model if provider == "local" else "")
         label = researcher.llm.label
         add_agent_log("RESEARCH AI", f"Model odabran u Command Centeru: {label}.", "ai")
-        return web.json_response({"ok": True, "active": researcher.llm.describe(), "selection": _llm_selection()})
+        memory: dict = {}
+        # Keep only the selected model resident unless the operator said no:
+        # a 14B and a 27B loaded together is the usual cause of VRAM thrash.
+        if provider == "local" and env_bool("LMS_ENFORCE_ON_SELECT", True):
+            from bettercalltrader.lmstudio import enforce_max_loaded
+
+            try:
+                memory = await asyncio.to_thread(enforce_max_loaded, researcher.llm.config.local_model)
+                if memory.get("unloaded"):
+                    add_agent_log(
+                        "RESEARCH AI",
+                        "LM Studio: iskrcano " + ", ".join(memory["unloaded"]) + " (LMS_MAX_LOADED).",
+                        "ai",
+                    )
+            except Exception as exc:  # noqa: BLE001 - memory control must not break selection
+                memory = {"applied": False, "detail": str(exc)}
+        return web.json_response(
+            {
+                "ok": True,
+                "active": researcher.llm.describe(),
+                "selection": _llm_selection(),
+                "memory": memory,
+            }
+        )
+
+    async def handle_api_llm_status(request: web.Request):
+        """Provider chain, per-provider health and the active selection."""
+        return web.json_response(
+            {
+                "ok": True,
+                "active": researcher.llm.describe(),
+                "providers": researcher.llm.health(),
+                "selection": _llm_selection(),
+                "retries": researcher.llm.retries,
+            }
+        )
+
+    async def handle_api_llm_loaded(request: web.Request):
+        """Which local models LM Studio currently holds in memory."""
+        from bettercalltrader.lmstudio import loaded_models
+
+        state = await asyncio.to_thread(loaded_models)
+        return web.json_response(
+            {
+                "ok": True,
+                **state,
+                "maxLoaded": int(os.environ.get("LMS_MAX_LOADED", "1") or 1),
+            }
+        )
+
+    async def handle_api_llm_unload(request: web.Request):
+        from bettercalltrader.lmstudio import unload
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        model = str(data.get("model") or "").strip()
+        all_models = bool(data.get("all"))
+        result = await asyncio.to_thread(unload, model, all_models)
+        if result.get("ok"):
+            target = "sve modele" if all_models else f"model '{model}'"
+            add_agent_log("RESEARCH AI", f"LM Studio: iskrcan {target}.", "ai")
+        return web.json_response({"ok": bool(result.get("ok")), **result}, status=200 if result.get("ok") else 400)
 
     async def handle_api_llm_test(request: web.Request):
         from bettercalltrader.llm import LLMClient as _LLMClient
@@ -4177,7 +4233,7 @@ async def start_command_center_server(
         client = _LLMClient(test_config)
         started = time.time()
         try:
-            reply = await client.complete_text("Reply with the single word OK and nothing else.")
+            reply = await client.complete_text(TEXT_TEST_PROMPT)
         except Exception as exc:  # noqa: BLE001 - surface the provider error to the UI
             return web.json_response(
                 {"ok": False, "model": model, "error": str(exc), "elapsedMs": int((time.time() - started) * 1000)}
@@ -4244,6 +4300,9 @@ async def start_command_center_server(
     app.router.add_get("/api/llm/models", handle_api_llm_models)
     app.router.add_post("/api/llm/select", handle_api_llm_select)
     app.router.add_post("/api/llm/test", handle_api_llm_test)
+    app.router.add_get("/api/llm/status", handle_api_llm_status)
+    app.router.add_get("/api/llm/loaded", handle_api_llm_loaded)
+    app.router.add_post("/api/llm/unload", handle_api_llm_unload)
 
     runner = web.AppRunner(app)
     await runner.setup()

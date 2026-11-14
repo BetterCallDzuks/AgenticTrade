@@ -2124,6 +2124,153 @@ def test_v11_llm_layer():
     print("  v11 LLM provider layer: OK")
 
 
+def test_v12_llm_reliability():
+    """JSON repair, circuit breaker, LM Studio control and the eval scoring."""
+    import asyncio
+    import json
+
+    from bettercalltrader.llm import (
+        JSONParseError,
+        LLMClient,
+        LLMConfig,
+        LLMError,
+        extract_json_object,
+        parse_model_json,
+        repair_json_text,
+    )
+    from bettercalltrader.lmstudio import enforce_max_loaded, parse_ps
+    from bettercalltrader.prompts import build_research_prompt
+
+    # --- JSON repair -------------------------------------------------------
+    assert parse_model_json('{"a": 1}') == ({"a": 1}, "raw")
+    assert parse_model_json('{"a": 1,}')[0] == {"a": 1}
+    assert parse_model_json("{'a': True, 'b': None}")[0] == {"a": True, "b": None}
+    assert parse_model_json('{"a": 1}\n{"b": 2}')[0] == {"a": 1}
+    assert parse_model_json('{"a": {"b": 2}')[0] == {"a": {"b": 2}}
+    assert parse_model_json('```json\n{"a": [1, 2,]}\n```')[0] == {"a": [1, 2]}
+    assert parse_model_json('{"a": 1 // note\n}')[0] == {"a": 1}
+    assert repair_json_text('noise {"a": 1}') == '{"a": 1}'
+    # A truncated object is repaired, not rejected: that is the point.
+    assert parse_model_json('{"a": "b"')[0] == {"a": "b"}
+    for bad in ("100%", "", "{unterminated", '{"a": }'):
+        try:
+            extract_json_object(bad)
+            raise AssertionError(f"{bad!r} should not parse")
+        except JSONParseError:
+            pass
+
+    # --- circuit breaker ---------------------------------------------------
+    clock = {"now": 100.0}
+
+    def now():
+        return clock["now"]
+
+    cfg = LLMConfig(
+        provider="openai",
+        model="a",
+        local_model="a",
+        local_models=("a", "b"),
+        base_url="http://127.0.0.1:9/v1",
+    )
+    client = LLMClient(cfg, breaker_threshold=2, breaker_cooldown_sec=30.0, clock=now)
+    calls = {"a": 0, "b": 0}
+
+    async def fake_call(spec, prompt, schema, session):
+        calls[spec.model] += 1
+        if spec.model == "a":
+            raise RuntimeError("connection refused")
+        return '{"decision": "SKIP", "risk_score": 50, "hype_score": 50, ' \
+               '"summary_hr": "ok", "red_flags": [], "green_flags": []}'
+
+    client._call = fake_call  # type: ignore[method-assign]
+    asyncio.run(client.complete_json("pick"))
+    asyncio.run(client.complete_json("pick"))
+    health = {entry["provider"]: entry for entry in client.health()}
+    assert health["local:a"]["consecutiveFailures"] == 2
+    assert health["local:a"]["open"] is True
+    assert health["local:b"]["successes"] == 2
+    # Provider "a" is skipped now, so only "b" is called.
+    asyncio.run(client.complete_json("pick"))
+    assert calls["a"] == 2 and calls["b"] == 3
+    assert {entry["provider"]: entry for entry in client.health()}["local:a"]["skipped"] >= 1
+    # Half-open: after the cooldown it is attempted again.
+    clock["now"] += 31
+    try:
+        asyncio.run(client.complete_json("pick"))
+    except Exception:  # noqa: BLE001 - both providers may fail
+        pass
+    assert calls["a"] == 3
+
+    # A JSON parse failure gets exactly one corrective retry, then counts once.
+    retry_client = LLMClient(
+        LLMConfig(provider="openai", model="a", local_model="a", local_models=("a",),
+                  base_url="http://127.0.0.1:9/v1"),
+        clock=now,
+    )
+    attempts = {"n": 0}
+
+    async def bad_call(spec, prompt, schema, session):
+        attempts["n"] += 1
+        return "not json at all"
+
+    retry_client._call = bad_call  # type: ignore[method-assign]
+    try:
+        asyncio.run(retry_client.complete_json("pick"))
+        raise AssertionError("malformed replies should raise")
+    except JSONParseError:
+        pass
+    except LLMError as exc:  # the aggregate error keeps the per-provider reason
+        assert "invalid JSON" in str(exc)
+    assert attempts["n"] == 2 and retry_client.retries == 1
+    assert retry_client.health()[0]["failures"] == 1
+
+    # --- LM Studio control -------------------------------------------------
+    ps = json.dumps([
+        {
+            "identifier": "qwen3.5-0.8b-uncensored",
+            "modelKey": "qwen3.5-0.8b-uncensored",
+            "status": "idle",
+            "sizeBytes": 811836000,
+            "contextLength": 262144,
+            "paramsString": "0.8B",
+        },
+        {"identifier": "big:2", "modelKey": "big", "status": "loaded"},
+    ])
+    parsed = parse_ps(ps)
+    assert [entry["identifier"] for entry in parsed] == ["qwen3.5-0.8b-uncensored", "big:2"]
+    assert parsed[0]["sizeBytes"] == 811836000 and parsed[0]["params"] == "0.8B"
+    assert parsed[1]["modelKey"] == "big"
+    assert parse_ps("") == [] and parse_ps("not json") == []
+
+    import bettercalltrader.lmstudio as lms
+
+    original_loaded, original_unload = lms.loaded_models, lms.unload
+    unloaded = []
+    try:
+        lms.loaded_models = lambda timeout=20.0: {  # type: ignore[assignment]
+            "available": True,
+            "reachable": True,
+            "models": parsed,
+            "detail": "",
+        }
+        lms.unload = lambda model="", all_models=False, timeout=60.0: (  # type: ignore[assignment]
+            unloaded.append(model) or {"ok": True, "detail": "", "unloaded": [model]}
+        )
+        result = enforce_max_loaded("qwen3.5-0.8b-uncensored", max_loaded=1)
+        assert result["applied"] is True
+        assert result["unloaded"] == ["big:2"], result
+    finally:
+        lms.loaded_models = original_loaded
+        lms.unload = original_unload
+
+    # --- shared prompt -----------------------------------------------------
+    prompt = build_research_prompt({"mint": "M", "symbol": "S"}, {"top10_holder_pct": 12.0})
+    assert '"mint": "M"' in prompt and "PRAVILA EVALUACIJE" in prompt
+    assert "PRAVILA EVALUACIJE" in rb.build_research_prompt({"mint": "M"}, {})
+
+    print("  v12 LLM reliability + memory control: OK")
+
+
 def test_v11_ml_contract():
     import json
     import sqlite3
@@ -3221,6 +3368,7 @@ def main():
         test_v11_depth_and_participation()
         test_v11_exit_policy_parity()
         test_v11_llm_layer()
+        test_v12_llm_reliability()
         test_v11_ml_contract()
         test_v11_cost_parity()
         test_v11_config_fingerprint()

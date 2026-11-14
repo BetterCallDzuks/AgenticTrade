@@ -129,6 +129,9 @@
                 <h2 class="section-title"><i class="fa-solid fa-microchip text-cyan-300"></i><span data-i18n="ml.localTitle"></span></h2>
                 <div class="flex items-center gap-2 min-w-0">
                     <span id="localServerBadge" class="pill">—</span>
+                    <button type="button" id="localUnloadAllBtn" class="btn">
+                        <i class="fa-solid fa-eject"></i><span data-i18n="ml.localUnloadAll"></span>
+                    </button>
                     <button type="button" id="localRefreshBtn" class="btn">
                         <i class="fa-solid fa-rotate"></i><span data-i18n="ml.localRefresh"></span>
                     </button>
@@ -156,6 +159,10 @@
                     </div>
                     <div id="llmRows" class="space-y-1">
                         <div class="empty-state" data-i18n="common.loading"></div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1" data-i18n="ml.llmHealth"></div>
+                        <div id="llmHealth" class="space-y-1"></div>
                     </div>
                     <details class="mt-2">
                         <summary class="cursor-pointer text-[10px] font-mono uppercase tracking-wider text-slate-500" data-i18n="ml.llmRaw"></summary>
@@ -258,6 +265,16 @@
                 "ml.localSelectHint": "Odabir se sprema u bazu i vrijedi i nakon restarta. Test učitava model u LM Studio.",
                 "ml.localVision": "vision",
                 "ml.localParams": "parametri",
+                "ml.localUnload": "Iskrcaj",
+                "ml.localUnloadAll": "Iskrcaj sve",
+                "ml.localUnloaded": "Iskrcano: {models}",
+                "ml.localUnloadNone": "Nema učitanih modela",
+                "ml.localUnloadFail": "Iskrcavanje nije uspjelo: {error}",
+                "ml.llmHealth": "Zdravlje providera",
+                "ml.llmCalls": "poziva",
+                "ml.llmFailures": "grešaka",
+                "ml.llmSkipped": "preskočeno",
+                "ml.llmBreakerOpen": "breaker otvoren",
 
                 "ml.footer": "ML / AI lab · savjetodavni model, trening i predikcija"
             },
@@ -341,6 +358,16 @@
                 "ml.localSelectHint": "The choice is persisted in the database and survives restarts. Test loads the model in LM Studio.",
                 "ml.localVision": "vision",
                 "ml.localParams": "params",
+                "ml.localUnload": "Unload",
+                "ml.localUnloadAll": "Unload all",
+                "ml.localUnloaded": "Unloaded: {models}",
+                "ml.localUnloadNone": "No models are loaded",
+                "ml.localUnloadFail": "Unload failed: {error}",
+                "ml.llmHealth": "Provider health",
+                "ml.llmCalls": "calls",
+                "ml.llmFailures": "failures",
+                "ml.llmSkipped": "skipped",
+                "ml.llmBreakerOpen": "breaker open",
 
                 "ml.footer": "ML / AI lab · advisory model, training and prediction"
             }
@@ -549,14 +576,24 @@
         }
 
         /* --------------------------------------------- local model manager */
-        function renderLocalModels(payload) {
+        function renderLocalModels(payload, loadedPayload) {
             payload = payload || {};
+            loadedPayload = loadedPayload || {};
             const badge = $("localServerBadge");
             const host = $("localModels");
             const source = $("localSource");
             const active = payload.active || {};
             const activeModel = active.local ? String(active.model || "") : "";
             const reachable = Boolean(payload.reachable);
+            const resident = new Map();
+            ((loadedPayload && Array.isArray(loadedPayload.models)) ? loadedPayload.models : [])
+                .forEach((item) => {
+                    const key = String((item && item.identifier) || "");
+                    if (key) resident.set(key, item);
+                });
+            if (resident.size) {
+                badge.title = [...resident.keys()].join(", ");
+            }
 
             badge.textContent = reachable
                 ? BCT.t("ml.localOnline")
@@ -581,11 +618,15 @@
             host.innerHTML = models.map((model) => {
                 const id = String(model.id || "");
                 const isActive = activeModel && id === activeModel;
-                const loaded = model.loaded === true;
+                const live = resident.get(id);
+                const loaded = Boolean(live) || model.loaded === true;
                 const tags = [];
                 if (model.params) tags.push(`<span class="panel-note">${esc(model.params)}</span>`);
                 if (model.vision) tags.push(`<span class="panel-note">${esc(BCT.t("ml.localVision"))}</span>`);
                 if (model.publisher) tags.push(`<span class="panel-note">${esc(model.publisher)}</span>`);
+                if (live && Number.isFinite(Number(live.sizeBytes)) && Number(live.sizeBytes) > 0) {
+                    tags.push(`<span class="panel-note">${esc((Number(live.sizeBytes) / 1073741824).toFixed(1))} GiB</span>`);
+                }
                 return `<div class="glass-inset rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-2">` +
                     `<div class="min-w-0">` +
                         `<div class="text-[11px] font-mono text-slate-200 break-all">${esc(dash(id))}</div>` +
@@ -601,6 +642,9 @@
                         `<button type="button" class="btn" data-action="test" data-model="${esc(id)}">` +
                             `<i class="fa-solid fa-flask"></i><span>${esc(BCT.t("ml.localTest"))}</span>` +
                         `</button>` +
+                        (loaded ? `<button type="button" class="btn" data-action="unload" data-model="${esc(id)}">` +
+                            `<i class="fa-solid fa-eject"></i><span>${esc(BCT.t("ml.localUnload"))}</span>` +
+                        `</button>` : "") +
                         `<button type="button" class="btn btn-primary" data-action="use" data-model="${esc(id)}">` +
                             `<i class="fa-solid fa-check"></i><span>${esc(BCT.t("ml.localUse"))}</span>` +
                         `</button>` +
@@ -668,18 +712,52 @@
             }
         }
 
+        function renderHealth(payload) {
+            const host = $("llmHealth");
+            if (!host) return;
+            const entries = (payload && Array.isArray(payload.providers)) ? payload.providers : [];
+            if (!entries.length) {
+                host.innerHTML = `<div class="empty-state" data-i18n="ml.llmEmpty"></div>`;
+                return;
+            }
+            host.innerHTML = entries.map((entry) => {
+                const bits = [
+                    `${BCT.fmtInt(entry.calls)} ${BCT.t("ml.llmCalls")}`,
+                    `${BCT.fmtInt(entry.failures)} ${BCT.t("ml.llmFailures")}`
+                ];
+                if (entry.skipped) bits.push(`${BCT.fmtInt(entry.skipped)} ${BCT.t("ml.llmSkipped")}`);
+                if (entry.averageLatencyMs) bits.push(`${Math.round(entry.averageLatencyMs)} ms`);
+                if (entry.open) bits.push(`${BCT.t("ml.llmBreakerOpen")} ${Math.ceil((entry.openForMs || 0) / 1000)}s`);
+                const tone = entry.open ? "text-rose-200" : entry.failures ? "text-amber-200" : "text-sol-green";
+                return `<div class="row-line">` +
+                    `<span class="label">${esc(entry.provider)}</span>` +
+                    `<span class="val ${tone}">${esc(bits.join(" · "))}</span>` +
+                `</div>` +
+                (entry.lastError ? `<div class="text-[10px] font-mono text-slate-500 break-all pl-2">${esc(entry.lastError)}</div>` : "");
+            }).join("");
+        }
+
+        async function loadLocal() {
+            const [localPayload, loadedPayload] = await Promise.all([
+                BCT.api("/api/llm/models"),
+                BCT.api("/api/llm/loaded").catch(() => ({}))
+            ]);
+            renderLocalModels(localPayload || {}, loadedPayload || {});
+        }
+
         async function refresh() {
-            const [statusPayload, state, localPayload] = await Promise.all([
+            const [statusPayload, state, llmStatus] = await Promise.all([
                 BCT.api("/api/ml/status"),
                 BCT.api("/api/state"),
-                BCT.api("/api/llm/models")
+                BCT.api("/api/llm/status").catch(() => ({}))
             ]);
             const model = (statusPayload && statusPayload.model) || {};
             renderStatus(model);
             renderWeights(model.summary);
             renderContract(model);
             renderLlm(state || {});
-            renderLocalModels(localPayload || {});
+            renderHealth(llmStatus || {});
+            await loadLocal();
             setText("authLabel", BCT.token() ? "token" : "off");
             BCT.setConnection(true);
         }
@@ -688,13 +766,40 @@
             const btn = $("localRefreshBtn");
             btn.disabled = true;
             try {
-                const payload = await BCT.api("/api/llm/models");
-                renderLocalModels(payload || {});
+                await loadLocal();
             } catch (err) {
                 BCT.toast(err && err.message ? err.message : BCT.t("ml.localOffline"));
             } finally {
                 btn.disabled = false;
             }
+        });
+
+        async function unloadModels(body, btn) {
+            if (btn) btn.disabled = true;
+            try {
+                const res = await BCT.api("/api/llm/unload", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body)
+                });
+                if (!res || !res.ok) {
+                    throw new Error((res && res.detail) || BCT.t("ml.localUnloadFail", { error: "?" }));
+                }
+                const names = Array.isArray(res.unloaded) && res.unloaded.length
+                    ? res.unloaded.join(", ")
+                    : BCT.t("ml.localUnloadNone");
+                BCT.toast(BCT.t("ml.localUnloaded", { models: names }));
+                await loadLocal();
+            } catch (err) {
+                const message = err && err.message ? err.message : String(err);
+                BCT.toast(BCT.t("ml.localUnloadFail", { error: message }));
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        $("localUnloadAllBtn").addEventListener("click", (event) => {
+            unloadModels({ all: true }, event.currentTarget);
         });
 
         $("localModels").addEventListener("click", (event) => {
@@ -704,6 +809,7 @@
             if (!model) return;
             if (btn.dataset.action === "test") testLocalModel(model, btn);
             else if (btn.dataset.action === "use") useLocalModel(model, btn);
+            else if (btn.dataset.action === "unload") unloadModels({ model }, btn);
         });
 
         $("trainBtn").addEventListener("click", async () => {

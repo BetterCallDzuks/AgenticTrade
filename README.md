@@ -678,6 +678,31 @@ The dashboard lets you switch the active model without editing `.env`:
 
 Selection endpoints: `GET /api/llm/models`, `POST /api/llm/select`
 (`{provider, model}`), `POST /api/llm/test` (`{model}`).
+
+**Reliability.** Each provider has its own circuit breaker: after
+`LLM_BREAKER_THRESHOLD` consecutive failures (default 3) it is skipped for
+`LLM_BREAKER_COOLDOWN_SEC` (default 60) instead of being retried on every
+research call. A malformed JSON reply gets one corrective retry on the same
+model (`LLM_JSON_RETRY=false` to disable), and the parser repairs trailing
+commas, comments, Python literals, fences, truncated tails and two concatenated
+objects before giving up. `GET /api/llm/status` reports calls, failures,
+skipped calls, average latency and breaker state per provider; the same numbers
+are exported as `bettercalltrader_llm_*` Prometheus gauges.
+
+**Memory.** `LMS_MAX_LOADED` (default `1`) keeps only the selected model
+resident: pinning a local model unloads the others (`LMS_ENFORCE_ON_SELECT=false`
+to opt out). `GET /api/llm/loaded` lists the resident models and
+`POST /api/llm/unload` (`{model}` or `{all: true}`) ejects them — the same
+actions as the **Unload** / **Unload all** buttons in ML / AI.
+
+**Measure before pinning.** `py/eval_models.py` replays the live research prompt
+over the recorded scans for every candidate model and reports JSON validity,
+latency and the decision mix. It never trades and never writes to the database:
+
+```bash
+python py/eval_models.py --limit 10                     # every model in LLM_MODEL(S)
+python py/eval_models.py --baseline gemini --out docs/MODEL_EVAL.md
+```
 3. **Risk & Portfolio** (`PaperTradingManager`): SQLite paper book plus the v9 risk engine.
 4. **Execution** (`SolanaExecutionAgent`): Jupiter v6 / PumpPortal routing with a Jito tip. **Dry-run only** while `LIVE_TRADING_ENABLED=false`.
 
@@ -703,6 +728,9 @@ Selection endpoints: `GET /api/llm/models`, `POST /api/llm/select`
 | `GET /api/llm/models` | local server model list (LM Studio REST, then OpenAI `/models`), loaded flags and active selection |
 | `POST /api/llm/select` | choose the research LLM: `{provider: auto\|gemini\|local, model}`; persisted in `bot_state` |
 | `POST /api/llm/test` | JIT-load and test one local model `{model}` with a tiny JSON completion |
+| `GET /api/llm/status` | per-provider health: calls, failures, skipped calls, latency, breaker state |
+| `GET /api/llm/loaded` | models currently resident in LM Studio (`lms ps`) |
+| `POST /api/llm/unload` | unload one model `{model}` or all of them `{all: true}` |
 | `GET /risk` `/wallets` `/backtest` `/ml` `/system` `/settings` | console windows (static pages, no token required) |
 | `POST /api/wallets/add` / `POST /api/wallets/remove` | track / untrack a whale `{address, label}` |
 | `POST /api/simulate_whale_buy` | fire a demo whale signal through the normal pipeline |

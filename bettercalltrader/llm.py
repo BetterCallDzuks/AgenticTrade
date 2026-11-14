@@ -28,6 +28,7 @@ import asyncio
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -40,9 +41,23 @@ PROVIDERS = ("auto", "gemini", "openai", "ollama", "none")
 OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
 _GEMINI_FALLBACKS = ("gemini-3.8-flash", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash")
 
+# A provider that fails this many times in a row is skipped for the cooldown
+# window instead of being retried on every research call. Cooldown is short so a
+# restarted local server is picked up again without a bot restart.
+DEFAULT_BREAKER_THRESHOLD = 3
+DEFAULT_BREAKER_COOLDOWN_SEC = 60.0
+
 
 class LLMError(RuntimeError):
     """Raised when a provider cannot produce a usable structured answer."""
+
+
+class JSONParseError(LLMError):
+    """The provider answered, but the reply was not a usable JSON object.
+
+    Separate from :class:`LLMError` so the caller can retry with a corrective
+    prompt (cheap, the server is warm) without retrying transport failures.
+    """
 
 
 def _env(env: Optional[Mapping[str, str]], key: str, default: str = "") -> str:
@@ -193,6 +208,46 @@ class ProviderSpec:
         return f"local:{self.model}"
 
 
+@dataclass
+class ProviderHealth:
+    """Per-provider call counters and circuit-breaker state.
+
+    Kept in memory only: a restart should give every provider a clean slate,
+    because the usual cause of an open breaker is a local server that has just
+    been restarted.
+    """
+
+    provider: str
+    calls: int = 0
+    successes: int = 0
+    failures: int = 0
+    skipped: int = 0
+    consecutive_failures: int = 0
+    parse_failures: int = 0
+    total_ms: float = 0.0
+    last_error: str = ""
+    open_until: float = 0.0
+
+    def is_open(self, now: float) -> bool:
+        return self.open_until > now
+
+    def as_dict(self, now: float) -> Dict[str, Any]:
+        remaining = max(0.0, self.open_until - now)
+        return {
+            "provider": self.provider,
+            "calls": self.calls,
+            "successes": self.successes,
+            "failures": self.failures,
+            "skipped": self.skipped,
+            "consecutiveFailures": self.consecutive_failures,
+            "parseFailures": self.parse_failures,
+            "averageLatencyMs": round(self.total_ms / self.calls, 1) if self.calls else None,
+            "lastError": self.last_error or None,
+            "open": self.is_open(now),
+            "openForMs": int(remaining * 1000) if remaining else 0,
+        }
+
+
 def system_prompt(schema: Optional[Type[Any]] = None) -> str:
     """Instruction shared by every provider to get one JSON object back."""
     base = (
@@ -209,6 +264,119 @@ def system_prompt(schema: Optional[Type[Any]] = None) -> str:
 
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+_JSON_COMMENT = re.compile(r"/\*.*?\*/|(?<![:\"'])//[^\n]*", re.DOTALL)
+_JSON_TRAILING_COMMA = re.compile(r",\s*([}\]])")
+_JSON_UNQUOTED_KEY = re.compile(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:")
+_JSON_LITERALS = (
+    (re.compile(r"\bTrue\b"), "true"),
+    (re.compile(r"\bFalse\b"), "false"),
+    (re.compile(r"\bNone\b"), "null"),
+    (re.compile(r"\bNaN\b"), "null"),
+    (re.compile(r"\bInfinity\b"), "null"),
+)
+
+
+def _brace_walk(raw: str) -> tuple[List[str], bool]:
+    """Return the unclosed ``{``/``[`` stack and whether a string is open."""
+    stack: List[str] = []
+    quote = ""
+    escaped = False
+    for char in raw:
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in "\"'":
+            quote = char
+        elif char in "{[":
+            stack.append(char)
+        elif char in "}]":
+            if stack:
+                stack.pop()
+    return stack, bool(quote)
+
+
+def repair_json_text(text: str) -> str:
+    """Best-effort textual repair of a model reply before parsing it.
+
+    This only removes noise the model added around a valid document (comments,
+    trailing commas, Python literals, a truncated tail). It never invents keys
+    or values: if the result still does not parse, the caller raises.
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return raw
+    fence = _JSON_FENCE.search(raw)
+    if fence:
+        raw = fence.group(1).strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        raw = raw[start : end + 1]
+    raw = raw.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
+    raw = _JSON_COMMENT.sub("", raw)
+    if '"' not in raw and "'" in raw:
+        raw = raw.replace("'", '"')
+    for pattern, replacement in _JSON_LITERALS:
+        raw = pattern.sub(replacement, raw)
+    raw = _JSON_UNQUOTED_KEY.sub(r'\1"\2":', raw)
+    raw = _JSON_TRAILING_COMMA.sub(r"\1", raw)
+    stack, open_string = _brace_walk(raw)
+    if open_string:
+        raw += '"'
+        stack, _ = _brace_walk(raw)
+    if stack:
+        # Re-walk without caring about quotes: a truncated tail is common in
+        # local models that hit max_tokens mid-object.
+        closers = {"{": "}", "[": "]"}
+        raw = raw.rstrip().rstrip(",") + "".join(closers[op] for op in reversed(stack))
+    return raw
+
+
+def parse_model_json(text: str) -> tuple[Dict[str, Any], str]:
+    """Return ``(object, mode)`` where mode is ``"raw"`` or ``"repaired"``."""
+    if not text or not str(text).strip():
+        raise JSONParseError("empty model response")
+    raw = str(text).strip()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        fence = _JSON_FENCE.search(raw)
+        candidate = fence.group(1).strip() if fence else raw
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start >= 0 and end > start:
+            candidate = candidate[start : end + 1]
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            # Two objects in one reply (``{...}{...}``) is a common local-model
+            # failure: take the first complete one and ignore the tail.
+            target = candidate if candidate.startswith("{") else ""
+            if not target and "{" in raw:
+                target = raw[raw.find("{") :]
+            if target:
+                try:
+                    first, _end = json.JSONDecoder().raw_decode(target)
+                except json.JSONDecodeError:
+                    first = None
+                if isinstance(first, dict):
+                    return first, "raw"
+            repaired = repair_json_text(raw)
+            try:
+                parsed = json.loads(repaired)
+            except json.JSONDecodeError as exc:
+                raise JSONParseError(f"invalid JSON in model response: {exc}") from exc
+            if not isinstance(parsed, dict):
+                raise JSONParseError("model response is not a JSON object")
+            return parsed, "repaired"
+    if not isinstance(parsed, dict):
+        raise JSONParseError("model response is not a JSON object")
+    return parsed, "raw"
 
 
 def extract_json_object(text: str) -> Dict[str, Any]:
@@ -218,41 +386,117 @@ def extract_json_object(text: str) -> Dict[str, Any]:
     parser is deliberately forgiving. It never invents content: if no object can
     be decoded, :class:`LLMError` is raised.
     """
-    if not text or not str(text).strip():
-        raise LLMError("empty model response")
-    raw = str(text).strip()
-    fence = _JSON_FENCE.search(raw)
-    if fence:
-        raw = fence.group(1).strip()
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start < 0 or end <= start:
-            raise LLMError(f"no JSON object in model response: {raw[:120]!r}")
-        try:
-            parsed = json.loads(raw[start : end + 1])
-        except json.JSONDecodeError as exc:
-            raise LLMError(f"invalid JSON in model response: {exc}") from exc
-    if not isinstance(parsed, dict):
-        raise LLMError("model response is not a JSON object")
-    return parsed
+    return parse_model_json(text)[0]
+
+
+JSON_RETRY_SUFFIX = (
+    "Your previous answer was rejected: it was not a single valid JSON object. "
+    "Answer again with ONLY the JSON object, no prose and no markdown fence."
+)
 
 
 class LLMClient:
-    """Thin async client that returns a validated pydantic model."""
+    """Thin async client that returns a validated pydantic model.
 
-    def __init__(self, config: Optional[LLMConfig] = None) -> None:
+    Each provider has an independent circuit breaker. Three consecutive failures
+    open it for a minute, so a stopped local server costs one failed request
+    instead of one per research call, while a restarted server is picked up
+    again after the cooldown without restarting the bot.
+    """
+
+    def __init__(
+        self,
+        config: Optional[LLMConfig] = None,
+        *,
+        breaker_threshold: Optional[int] = None,
+        breaker_cooldown_sec: Optional[float] = None,
+        json_retry: Optional[bool] = None,
+        clock: Any = None,
+    ) -> None:
         self.config = config or LLMConfig.from_env()
         self._providers = self.config.providers()
         self._gemini_client: Any = None
         self.last_provider: Optional[str] = None
         self.last_error: Optional[str] = None
+        self.last_parse_mode: Optional[str] = None
+        self.last_latency_ms: float = 0.0
+        self.breaker_threshold = max(
+            1,
+            int(
+                breaker_threshold
+                if breaker_threshold is not None
+                else _env_int(None, "LLM_BREAKER_THRESHOLD", DEFAULT_BREAKER_THRESHOLD)
+            ),
+        )
+        self.breaker_cooldown_sec = max(
+            0.0,
+            float(
+                breaker_cooldown_sec
+                if breaker_cooldown_sec is not None
+                else _env_float(None, "LLM_BREAKER_COOLDOWN_SEC", DEFAULT_BREAKER_COOLDOWN_SEC)
+            ),
+        )
+        self.json_retry = bool(json_retry) if json_retry is not None else _env_bool(None, "LLM_JSON_RETRY", True)
+        self._clock = clock or time.monotonic
+        self._health: Dict[str, ProviderHealth] = {}
+        self.retries = 0
 
     @classmethod
     def from_env(cls, env: Optional[Mapping[str, str]] = None) -> "LLMClient":
         return cls(LLMConfig.from_env(env))
+
+    def _health_for(self, spec: ProviderSpec) -> ProviderHealth:
+        entry = self._health.get(spec.label)
+        if entry is None:
+            entry = ProviderHealth(provider=spec.label)
+            self._health[spec.label] = entry
+        return entry
+
+    def health(self) -> List[Dict[str, Any]]:
+        """Snapshot every configured provider for the dashboard and /metrics."""
+        now = self._clock()
+        return [self._health_for(spec).as_dict(now) for spec in self._providers]
+
+    def _ordered_providers(self) -> List[ProviderSpec]:
+        """Configured order, minus providers whose breaker is open.
+
+        When every provider is open the first one is still attempted: that is
+        the half-open probe that detects recovery, and without it a single-model
+        setup would never retry until the cooldown expired.
+        """
+        now = self._clock()
+        healthy: List[ProviderSpec] = []
+        cooling: List[ProviderSpec] = []
+        for spec in self._providers:
+            entry = self._health_for(spec)
+            if entry.is_open(now):
+                entry.skipped += 1
+                cooling.append(spec)
+            else:
+                healthy.append(spec)
+        if healthy:
+            return healthy
+        return cooling[:1]
+
+    def _record_success(self, spec: ProviderSpec, elapsed_ms: float) -> None:
+        entry = self._health_for(spec)
+        entry.calls += 1
+        entry.successes += 1
+        entry.consecutive_failures = 0
+        entry.total_ms += elapsed_ms
+        entry.open_until = 0.0
+
+    def _record_failure(self, spec: ProviderSpec, exc: BaseException, elapsed_ms: float) -> None:
+        entry = self._health_for(spec)
+        entry.calls += 1
+        entry.failures += 1
+        entry.consecutive_failures += 1
+        entry.total_ms += elapsed_ms
+        entry.last_error = str(exc)[:300]
+        if isinstance(exc, JSONParseError):
+            entry.parse_failures += 1
+        if entry.consecutive_failures >= self.breaker_threshold:
+            entry.open_until = self._clock() + self.breaker_cooldown_sec
 
     @property
     def available(self) -> bool:
@@ -278,6 +522,11 @@ class LLMClient:
             "local": self.is_local,
             "chain": [spec.label for spec in self._providers],
             "fallbackToHeuristic": self.config.fallback_to_heuristic,
+            "breaker": {
+                "threshold": self.breaker_threshold,
+                "cooldownSec": self.breaker_cooldown_sec,
+                "jsonRetry": self.json_retry,
+            },
         }
 
     async def complete_json(
@@ -287,34 +536,64 @@ class LLMClient:
         *,
         session: Any = None,
     ) -> Any:
-        """Ask each configured provider in turn for one structured answer."""
-        if not self._providers:
-            raise LLMError("no LLM provider configured")
-        errors = []
-        for spec in self._providers:
-            try:
-                payload_text = await self._call(spec, prompt, schema, session)
-                parsed = extract_json_object(payload_text)
-                self.last_provider = spec.label
-                self.last_error = None
-                if schema is not None and hasattr(schema, "model_validate"):
-                    return schema.model_validate(parsed)
-                return parsed
-            except Exception as exc:  # noqa: BLE001 - try the next provider
-                errors.append(f"{spec.label}: {exc}")
-                self.last_error = str(exc)
-        raise LLMError("; ".join(errors) or "all providers failed")
+        """Ask each configured provider in turn for one structured answer.
 
-    async def complete_text(self, prompt: str, *, session: Any = None) -> str:
-        """Send a plain prompt to the primary provider and return raw text.
-
-        Used by the Command Center ``Load & test`` action: it only needs to
-        prove that the model can answer, not that it returns valid JSON.
+        A malformed reply gets one corrective retry on the same provider before
+        the breaker counts a failure; a transport error moves straight on.
         """
         if not self._providers:
             raise LLMError("no LLM provider configured")
-        spec = self._providers[0]
-        text = await self._call(spec, prompt, None, session)
+        errors: List[str] = []
+        for spec in self._ordered_providers():
+            attempt_prompt = prompt
+            attempts = 2 if self.json_retry else 1
+            for attempt in range(attempts):
+                started = self._clock()
+                try:
+                    payload_text = await self._call(spec, attempt_prompt, schema, session)
+                    parsed, _mode = parse_model_json(payload_text)
+                    if schema is not None and hasattr(schema, "model_validate"):
+                        result: Any = schema.model_validate(parsed)
+                    else:
+                        result = parsed
+                except Exception as exc:  # noqa: BLE001 - provider-specific failures
+                    elapsed = (self._clock() - started) * 1000.0
+                    retryable = isinstance(exc, JSONParseError) or type(exc).__name__ == "ValidationError"
+                    if retryable and attempt + 1 < attempts:
+                        self.retries += 1
+                        attempt_prompt = f"{prompt}\n\n{JSON_RETRY_SUFFIX}"
+                        continue
+                    self._record_failure(spec, exc, elapsed)
+                    errors.append(f"{spec.label}: {exc}")
+                    self.last_error = str(exc)
+                    break
+                elapsed = (self._clock() - started) * 1000.0
+                self._record_success(spec, elapsed)
+                self.last_provider = spec.label
+                self.last_error = None
+                self.last_parse_mode = _mode
+                self.last_latency_ms = elapsed
+                return result
+        raise LLMError("; ".join(errors) or "all providers failed")
+
+    async def complete_text(self, prompt: str, *, session: Any = None, use_breaker: bool = False) -> str:
+        """Send a plain prompt to the primary provider and return raw text.
+
+        Used by the Command Center ``Load & test`` action: it only needs to
+        prove that the model can answer, not that it returns valid JSON. An
+        explicit test bypasses the breaker so the user can probe a provider the
+        bot has marked unhealthy.
+        """
+        if not self._providers:
+            raise LLMError("no LLM provider configured")
+        spec = self._ordered_providers()[0] if use_breaker else self._providers[0]
+        started = self._clock()
+        try:
+            text = await self._call(spec, prompt, None, session)
+        except Exception:
+            self._record_failure(spec, LLMError("text completion failed"), (self._clock() - started) * 1000.0)
+            raise
+        self._record_success(spec, (self._clock() - started) * 1000.0)
         self.last_provider = spec.label
         self.last_error = None
         return text

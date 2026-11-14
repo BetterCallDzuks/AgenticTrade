@@ -69,6 +69,10 @@ async def main():
         models = await fetch(session, "/api/llm/models")
         for key in ("reachable", "models", "selection", "active"):
             assert f'"{key}"' in models, key
+        llm_status = await fetch(session, "/api/llm/status")
+        for key in ("providers", "selection", "active", "retries"):
+            assert f'"{key}"' in llm_status, key
+        await fetch(session, "/api/llm/loaded")
         async with session.post(
             f"{BASE}/api/llm/select",
             headers={"X-Auth-Token": TOKEN, "Content-Type": "application/json"},

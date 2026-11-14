@@ -8,6 +8,30 @@ All notable changes to BetterCallTrader are documented here. The format follows
 
 ### Added
 
+- **Local-model operations in ML / AI.** `bettercalltrader/lmstudio.py` wraps the
+  `lms` CLI (`ps --json`, `load`, `unload`) with a timeout and no shell.
+  `GET /api/llm/loaded` lists the resident models, `POST /api/llm/unload`
+  (`{model}` or `{all: true}`) ejects them, and pinning a local model in the
+  dashboard now unloads the others so two large models cannot fight over VRAM
+  (`LMS_MAX_LOADED`, default 1; `LMS_ENFORCE_ON_SELECT=false` to opt out). The
+  page shows the loaded size, an **Unload** button per model and **Unload all**.
+- **LLM circuit breaker, JSON repair and provider health.** Each provider gets
+  an independent breaker (`LLM_BREAKER_THRESHOLD`, default 3 consecutive
+  failures; `LLM_BREAKER_COOLDOWN_SEC`, default 60) with a half-open probe, so a
+  stopped local server costs one failed request instead of one per research
+  call. Malformed replies are repaired first (fences, comments, trailing
+  commas, Python literals, unquoted keys, truncated tails, two concatenated
+  objects) and then retried once with a corrective prompt (`LLM_JSON_RETRY`).
+  `GET /api/llm/status` and the new `bettercalltrader_llm_calls`,
+  `_failures` and `_circuit_open` Prometheus gauges expose calls, failures,
+  skips, average latency and breaker state per provider.
+- **Model evaluation harness.** `py/eval_models.py` replays the live research
+  prompt (`bettercalltrader/prompts.py`, now shared with `research_bot`) over
+  the payloads recorded in `recent_scans`, once per candidate model. It reports
+  JSON validity, repaired replies, p50/p95 latency, decision mix, agreement with
+  the recorded decision and BUY outcomes, ranks the models and can write
+  `docs/MODEL_EVAL.md`. Local models are unloaded between candidates; no trades
+  and no database writes.
 - **Six new console windows.** Besides `/` (Command Center) and `/analytics`,
   the bot now serves six separate pages, all reachable from the shared top nav:
   - `/risk` — Risk desk: open exposure, HHI concentration, VaR95 and expected
