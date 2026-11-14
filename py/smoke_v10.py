@@ -52,10 +52,19 @@ async def main():
         await asyncio.sleep(0.8)
 
         health = await fetch(session, "/api/health")
-        assert '"v12.0"' in health, health
+        assert '"v13.0"' in health, health
 
         state = await fetch(session, "/api/state")
-        for key in ("strategyProfile", "priceCache", "security", "totpEnabled", "live_trading_stage"):
+        for key in (
+            "strategyProfile",
+            "priceCache",
+            "security",
+            "totpEnabled",
+            "live_trading_stage",
+            "live_trading_stage_invalid",
+            "stage_max_live_orders",
+            "stage_orders_attempted",
+        ):
             assert f'"{key}"' in state, key
 
         risk = await fetch(session, "/api/portfolio_risk")

@@ -1,6 +1,6 @@
 [project]
 name = "bettercalltrader"
-version = "12.0.0"
+version = "13.0.0"
 description = "Paper-first Solana memecoin trading bot with an AI research agent and a local Command Center."
 requires-python = ">=3.11"
 

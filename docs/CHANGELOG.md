@@ -4,7 +4,7 @@ All notable changes to BetterCallTrader are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions use
 `MAJOR.MINOR.PATCH`.
 
-## [Unreleased]
+## [13.0.0] - 2026-11-14
 
 ### Added
 
@@ -115,9 +115,19 @@ All notable changes to BetterCallTrader are documented here. The format follows
   readiness audit now exercises all three stages plus an exhausted probe budget
   and an invalid stage without network access, and `build_config_payload` /
   `/api/state` report the active stage, budget and attempts.
+- **Live stage is visible in the console.** The System page has a read-only
+  stage pill (`PAPER` / `DRY RUN` / `PROBE n/m` / `FULL` / `INVALID`) next to the
+  live-trading pill, Settings shows the stage beside live trading, `/api/state`
+  exposes `live_trading_stage_invalid`, `stage_max_live_orders` and
+  `stage_orders_attempted`, and startup logs the active stage (with a warning
+  when `LIVE_TRADING_STAGE` is invalid).
 
 ### Changed
 
+- **v13.0.0.** Version bumped across `pyproject.toml`, the README badge and
+  headings, `START_BOT.bat`, the startup banner and the `/api/state` +
+  `/api/health` payloads. `docs/ROADMAP.md` now separates shipped 13.0.0 work
+  from candidate work, and the README progress section leads with v13.
 - **Strategy profile selector in the Command Center.** The risk panel now has a
   `conservative` / `balanced` / `aggressive` / `high_risk` dropdown with a
   `STANDARD` / `HIGH RISK` badge. Selecting a profile applies its sizing and exit
@@ -210,6 +220,11 @@ All notable changes to BetterCallTrader are documented here. The format follows
 
 ### Tests
 
+- `docs/MODEL_EVAL.md` is now a committed baseline: four recorded cases through
+  the live prompt on two local models (`qwen3.5-0.8b-uncensored` 29.7,
+  `qwen2.5-coder-7b-instruct` 90.0, raw JSON validity with repair disabled).
+  Gemini returned `503 UNAVAILABLE` at snapshot time, so that row is pending and
+  the report says how to regenerate it.
 - `test_v12_totp` pins the RFC 6238 SHA-1 vectors, the ±1-step drift window,
   normalization of pasted secrets and fail-closed handling of malformed codes.
 - `test_v12_telegram_digest` covers portfolio/breaker/LLM rendering, the

@@ -36,6 +36,15 @@ Use this checklist before any change that could enable real on-chain trading.
 - [ ] Rolling/anchored windows were re-run after changing strategy parameters (`--window-mode`, `--train-candles`, `--test-candles`)
 - [ ] `LIVE_TRADING_CONFIRMED` is unset or `false` until the live section below is complete
 
+## v13 specifics
+- [ ] `./run.sh` starts LM Studio when `LLM_BASE_URL` is the local server and stops it on exit (an already-running server is left alone)
+- [ ] `LLM_MODELS` fallbacks are ordered as intended; **ML / AI** can list, load, test and pin them
+- [ ] `py/eval_models.py --limit 3` produces a report and the chosen model's score is acceptable
+- [ ] `DASHBOARD_TOTP_SECRET` is set if the dashboard is exposed; a write without a code returns `401 totp_required`, a wrong code `401 invalid_totp`, and reads still work
+- [ ] `DIGEST_INTERVAL_SEC` matches intent (`0` disables scheduled digests); `/digest` works on demand
+- [ ] `py/export_training.py --val-out …` splits train/validation with no overlapping mints before any external fine-tune
+- [ ] The **System** page shows the expected stage pill (`PAPER`, `DRY RUN`, `PROBE n/m`, `FULL` or `INVALID`)
+
 ## Paper trading validation
 - [ ] Run bot in paper mode for at least 24 hours
 - [ ] Review `/api/journal` for unexpected BUY/SELL decisions
@@ -52,6 +61,7 @@ Use this checklist before any change that could enable real on-chain trading.
 ## Live trading (optional, high risk)
 - [ ] Use a dedicated wallet with small balance
 - [ ] Keep `SLIPPAGE_BPS` and priority fee conservative
+- [ ] Arm in stages: `LIVE_TRADING_STAGE=dry_run` first, then `probe` with `LIVE_STAGE_MAX_TRADES=1`, then `full`
 - [ ] Test one tiny live trade manually
 - [ ] Confirm transaction signature and resulting balance
 - [ ] Have an emergency `/sell_all` or kill-switch plan

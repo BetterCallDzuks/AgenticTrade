@@ -1,9 +1,9 @@
-# Solana Memecoin Multi-Agent Trading Bot: BetterCallTrader v12.0
+# Solana Memecoin Multi-Agent Trading Bot: BetterCallTrader v13.0
 
 [![CI](https://github.com/BetterCallDzuks/BetterCallTrader/actions/workflows/tests.yml/badge.svg)](https://github.com/BetterCallDzuks/BetterCallTrader/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-12.0.0-e3a452.svg)](https://github.com/BetterCallDzuks/BetterCallTrader)
+[![Version](https://img.shields.io/badge/version-13.0.0-e3a452.svg)](https://github.com/BetterCallDzuks/BetterCallTrader)
 
 A multi-agent system for discovering, checking and **paper-trading** Solana memecoins. It combines the Pump.fun WebSocket, the DexScreener API, RugCheck security checks, an optional AI analyst (Google Gemini or any local OpenAI-compatible model), a SQLite paper portfolio and a Jupiter/Jito dry-run executor, all behind a local web Command Center and an analytics dashboard.
 
@@ -25,7 +25,8 @@ A multi-agent system for discovering, checking and **paper-trading** Solana meme
 - [Project layout](#project-layout)
 - [Agents](#agents)
 - [API](#api-camelcase)
-- [v12.0 progress](#v120-progress)
+- [v13.0 progress](#v130-progress)
+- [Roadmap](docs/ROADMAP.md)
 - [OHLCV backtesting](#ohlcv-backtesting)
 - [Backup and restore](#backup-and-restore)
 - [Docker](#docker-optional)
@@ -448,7 +449,7 @@ python -m bettercalltrader.doctor            # must print: Result: OK
 python py/research_bot.py
 ```
 
-Open **http://localhost:8080** — the header shows **v12.0**. The dashboard binds
+Open **http://localhost:8080** — the header shows **v13.0**. The dashboard binds
 loopback (`127.0.0.1`) by default. To reach it from another machine, set
 `COMMAND_CENTER_HOST=0.0.0.0` **and** a `DASHBOARD_TOKEN`: the bot refuses to
 start on a non-loopback bind without a token (override with
@@ -537,7 +538,7 @@ places an order and never prints the private key.
 python py/research_bot.py
 ```
 
-Open **http://127.0.0.1:8080** — the header shows **v12.0**. `START_BOT.bat` is
+Open **http://127.0.0.1:8080** — the header shows **v13.0**. `START_BOT.bat` is
 a convenience wrapper that runs `py/research_bot.py` from its own folder, using
 `.venv\Scripts\python.exe` when the virtualenv exists and `python` otherwise.
 
@@ -719,6 +720,15 @@ latency and the decision mix. It never trades and never writes to the database:
 python py/eval_models.py --limit 10                     # every model in LLM_MODEL(S)
 python py/eval_models.py --baseline gemini --out docs/MODEL_EVAL.md
 ```
+
+A snapshot from this checkout is committed at
+[docs/MODEL_EVAL.md](docs/MODEL_EVAL.md): on the four most recent recorded
+cases the 7B local model parsed 4/4 raw replies and agreed with 100% of the
+recorded decisions, while the 0.8B model failed raw JSON on 3/4 (the live client
+would repair and retry; the report measures the worse case). Gemini returned
+`503 UNAVAILABLE` when the snapshot was taken, so that baseline is pending —
+rerun the command above when it is reachable. Regenerate and diff the report
+after any prompt or model change instead of trusting a single run.
 3. **Risk & Portfolio** (`PaperTradingManager`): SQLite paper book plus the v9 risk engine.
 4. **Execution** (`SolanaExecutionAgent`): Jupiter v6 / PumpPortal routing with a Jito tip. **Dry-run only** while `LIVE_TRADING_ENABLED=false`.
 
@@ -954,9 +964,49 @@ python -m bettercalltrader.ml status
 python -m bettercalltrader.ohlcv --help   # candle backtester CLI
 ```
 
-## v12.0 progress
+## Roadmap
 
-v12 turns the research and execution-readiness layers from "one backtest" into
+[`docs/ROADMAP.md`](docs/ROADMAP.md) separates shipped work from candidate work
+(probe-budget persistence, readiness drift alerts, a committed model-eval
+baseline, backup reconciliation) and lists the explicit non-goals. It is a
+plan, not a promise of returns.
+
+## v13.0 progress
+
+v13 hardens the two places where the bot can lose money without placing a bad
+trade: a malformed model reply and an over-eager live arm. Paper trading is
+still the default.
+
+- **Local model operations.** `run.sh` starts LM Studio and stops it on exit
+  (leaving an already-running server alone), the header can pick Gemini, `auto`
+  or a specific local model, and **ML / AI** lists, loads, tests and pins local
+  models. `LLM_MODELS` adds an ordered fallback chain after `LLM_MODEL`.
+- **LLM reliability.** Each provider gets its own circuit breaker with a
+  half-open probe; malformed JSON is repaired first and retried once. The
+  research prompt lives in `bettercalltrader/prompts.py`, so the live bot and
+  `py/eval_models.py` send byte-identical requests and can be compared.
+- **Staged go-live arming.** `LIVE_TRADING_STAGE=dry_run` plans and audits every
+  order without a socket, `probe` spends a one-shot `LIVE_STAGE_MAX_TRADES`
+  budget and then blocks, and `full` is the old behaviour. An unknown value
+  fails closed, the switch is environment-only, and the **System** page shows
+  the active stage (read-only) next to the live-trading pill.
+- **Two-factor auth for writes.** `DASHBOARD_TOTP_SECRET` requires a current
+  RFC 6238 code in `X-TOTP` on `POST`/`PUT`/`PATCH`/`DELETE`; `GET` polling stays
+  token-only. The console prompts and retries once.
+- **Telegram digest.** `/digest` (and the **🧾 Digest** button) reports balance,
+  open positions, realized PnL, breaker state, today's trades, per-provider LLM
+  health and the top positions; `DIGEST_INTERVAL_SEC` pushes it on a schedule.
+- **Fine-tune data export.** `py/export_training.py` turns recorded verdicts into
+  chat-format JSONL using the exact live prompt and schema, with label/decision/
+  outcome/dedup filters, a validation split and an alpaca format. GGUF weights
+  cannot be trained in-process, so the bot exports data instead of pretending.
+- **Parity and comparison tests.** A replay from a WAL-backed snapshot must
+  rebuild exactly the book the live path recorded, and the strategy comparison
+  test proves fixed and rolling windows diverge on a regime shift.
+
+### Evidence layer (v12.0)
+
+v12 turned the research and execution-readiness layers from "one backtest" into
 evidence that is harder to fool, without changing the paper-trading default:
 
 - **Rolling and anchored walk-forward windows** (`--window-mode rolling|anchored`,

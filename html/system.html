@@ -50,7 +50,7 @@
                     <div id="heroServerMs" class="tiny-mono mt-0.5">—</div>
                 </div>
             </div>
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
+            <div class="grid grid-cols-2 lg:grid-cols-5 gap-2 mt-4">
                 <div class="stat-tile flex items-center justify-between gap-2">
                     <span class="k" data-i18n="system.pillAi"></span>
                     <span id="pillAi" class="pill">—</span>
@@ -62,6 +62,10 @@
                 <div class="stat-tile flex items-center justify-between gap-2">
                     <span class="k" data-i18n="system.pillLive"></span>
                     <span id="pillLive" class="pill">—</span>
+                </div>
+                <div class="stat-tile flex items-center justify-between gap-2">
+                    <span class="k" data-i18n="system.pillStage"></span>
+                    <span id="pillStage" class="pill">—</span>
                 </div>
                 <div class="stat-tile flex items-center justify-between gap-2">
                     <span class="k" data-i18n="system.pillAuth"></span>
@@ -248,6 +252,13 @@
                 "system.pillAi": "AI",
                 "system.pillTelegram": "Telegram",
                 "system.pillLive": "Live trgovanje",
+                "system.pillStage": "Live faza",
+                "system.stagePaper": "PAPER",
+                "system.stageDryRun": "DRY RUN",
+                "system.stageProbe": "PROBE",
+                "system.stageFull": "FULL",
+                "system.stageInvalid": "NEISPRAVNO",
+                "system.stageHint": "LIVE_TRADING_STAGE je samo env postavka — mijenja se u .env i zahtijeva restart.",
                 "system.pillAuth": "Autentikacija",
                 "system.on": "UKLJ",
                 "system.off": "ISKLJ",
@@ -333,6 +344,13 @@
                 "system.pillAi": "AI",
                 "system.pillTelegram": "Telegram",
                 "system.pillLive": "Live trading",
+                "system.pillStage": "Live stage",
+                "system.stagePaper": "PAPER",
+                "system.stageDryRun": "DRY RUN",
+                "system.stageProbe": "PROBE",
+                "system.stageFull": "FULL",
+                "system.stageInvalid": "INVALID",
+                "system.stageHint": "LIVE_TRADING_STAGE is an env-only switch — change it in .env and restart.",
                 "system.pillAuth": "Authentication",
                 "system.on": "ON",
                 "system.off": "OFF",
@@ -605,6 +623,41 @@
                 checks.liveTradingEnabled
             )));
             setPill("pillAuth", toBool(firstNonEmpty(security.authEnabled, checks.authEnabled)));
+            renderStagePill(state, health);
+        }
+
+        function renderStagePill(state, health) {
+            const node = $("pillStage");
+            if (!node) return;
+            node.title = BCT.t("system.stageHint");
+            const live = toBool(firstNonEmpty(
+                state && state.live_trading_enabled,
+                health && health.liveTradingEnabled
+            ));
+            const stage = String(firstNonEmpty(state && state.live_trading_stage, "") || "").toLowerCase();
+            const invalid = Boolean(firstNonEmpty(state && state.live_trading_stage_invalid, false));
+            const budget = numberOf(state && state.stage_max_live_orders);
+            const used = numberOf(state && state.stage_orders_attempted);
+            if (!live) {
+                node.className = "pill";
+                node.textContent = BCT.t("system.stagePaper");
+            } else if (invalid) {
+                node.className = "pill offline";
+                node.textContent = BCT.t("system.stageInvalid");
+            } else if (stage === "dry_run") {
+                node.className = "pill warn";
+                node.textContent = BCT.t("system.stageDryRun");
+            } else if (stage === "probe") {
+                node.className = "pill warn";
+                node.textContent = BCT.t("system.stageProbe")
+                    + (budget === null ? "" : ` ${used === null ? 0 : used}/${budget}`);
+            } else if (stage === "full") {
+                node.className = "pill live";
+                node.textContent = BCT.t("system.stageFull");
+            } else {
+                node.className = "pill";
+                node.textContent = "—";
+            }
         }
 
         function renderKpis(health, state, metricsPayload) {

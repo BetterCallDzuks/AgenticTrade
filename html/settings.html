@@ -496,7 +496,8 @@
         const EXCLUDED = new Set([
             "strategyProfile", "riskMode", "liveTradingEnabled", "telegramEnabled",
             "timezone", "version", "configHash", "costModel", "exitCostModel",
-            "exitPolicy", "llm"
+            "exitPolicy", "llm", "liveTradingStage", "liveTradingStageInvalid",
+            "stageMaxLiveOrders", "stageOrdersAttempted"
         ]);
 
         const BOOL_KEYS = new Set([
@@ -671,6 +672,29 @@
             node.className = on ? (dangerWhenOn ? "v neg" : "v pos") : "v";
         }
 
+        function renderLiveFlag(cfg) {
+            const node = $("roLive");
+            if (!node) return;
+            const live = Boolean(cfg.liveTradingEnabled);
+            if (!live) {
+                node.textContent = `${BCT.t("common.off")} · PAPER`;
+                node.className = "v pos";
+                return;
+            }
+            const stage = String(cfg.liveTradingStage || "").toLowerCase();
+            const labels = { dry_run: "DRY RUN", probe: "PROBE", full: "FULL" };
+            let text = cfg.liveTradingStageInvalid
+                ? "INVALID → DRY RUN"
+                : (labels[stage] || "—");
+            if (!cfg.liveTradingStageInvalid && stage === "probe") {
+                const used = Number(cfg.stageOrdersAttempted || 0);
+                const budget = cfg.stageMaxLiveOrders;
+                text += ` ${used}/${budget === undefined || budget === null ? "?" : budget}`;
+            }
+            node.textContent = `${BCT.t("common.on")} · ${text}`;
+            node.className = "v neg";
+        }
+
         function renderLlm(llm) {
             const host = $("roLlm");
             if (!host) return;
@@ -797,7 +821,7 @@
 
         function renderReadonly(cfg) {
             cfg = cfg || {};
-            renderFlag("roLive", Boolean(cfg.liveTradingEnabled), true);
+            renderLiveFlag(cfg);
             renderFlag("roTelegram", Boolean(cfg.telegramEnabled), false);
             setText("roTimezone", cfg.timezone || "—");
             setText("roVersion", cfg.version || "—");

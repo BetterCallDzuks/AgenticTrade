@@ -116,7 +116,7 @@ def test_risk_snapshot_and_health_shape():
         researcher = rb.ResearchAgent()
         executor = rb.SolanaExecutionAgent(live_trading_enabled=False)
         cfg = rb.build_config_payload(portfolio, researcher, executor)
-        assert cfg["version"] == "v12.0"
+        assert cfg["version"] == "v13.0"
         assert cfg["liveTradingEnabled"] is False
         risk = portfolio.get_risk_snapshot()
         assert "circuitBreaker" in risk
@@ -3905,7 +3905,7 @@ def test_v12_live_readiness():
 
 
 def main():
-    print("Running BetterCallTrader v12.0 self-tests...")
+    print("Running BetterCallTrader v13.0 self-tests...")
     run_audit_path = ROOT / "_audit_test_run.jsonl"
     original_audit_path = rb.AUDIT_LOG_PATH
     rb.AUDIT_LOG_PATH = str(run_audit_path)

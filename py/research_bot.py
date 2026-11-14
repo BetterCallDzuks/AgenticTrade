@@ -3307,7 +3307,7 @@ class PaperTradingManager:
         total_equity = w["balance_sol"] + w["locked_sol"]
 
         print("\n" + "-" * 70)
-        print("💼 PAPER TRADING PORTFELJ (SQLite Stanje v12.0):")
+        print("💼 PAPER TRADING PORTFELJ (SQLite Stanje v13.0):")
         print(
             f"   💰 Slobodno: {w['balance_sol']:.3f} SOL | U pozicijama: {w['locked_sol']:.3f} SOL | "
             f"Ukupni kapital: {total_equity:.3f} SOL"
@@ -3563,7 +3563,7 @@ def build_config_payload(portfolio, researcher, executor) -> dict:
     cfg["stageOrdersAttempted"] = executor.live_orders_attempted
     cfg["telegramEnabled"] = TELEGRAM.enabled
     cfg["timezone"] = BOT_TIMEZONE_NAME
-    cfg["version"] = "v12.0"
+    cfg["version"] = "v13.0"
     cfg["configHash"] = portfolio.config_hash
     cfg["costModel"] = portfolio._cost_model("BUY").as_dict()
     cfg["exitCostModel"] = portfolio._cost_model("SELL").as_dict()
@@ -3859,7 +3859,7 @@ async def start_command_center_server(
         risk = portfolio.get_risk_snapshot()
         return web.json_response({
             "status": "ok",
-            "version": "v12.0",
+            "version": "v13.0",
             "security": {
                 "authEnabled": bool(DASHBOARD_TOKEN),
                 "totpEnabled": bool(DASHBOARD_TOTP_SECRET),
@@ -3871,6 +3871,9 @@ async def start_command_center_server(
             "telegram_active": TELEGRAM.enabled,
             "live_trading_enabled": executor.live_trading_enabled,
             "live_trading_stage": executor.live_trading_stage,
+            "live_trading_stage_invalid": getattr(executor, "live_trading_stage_invalid", False),
+            "stage_max_live_orders": executor.stage_max_live_orders,
+            "stage_orders_attempted": executor.live_orders_attempted,
             "wallet_address": executor.get_public_key_str(),
             "wallet": portfolio.get_wallet_status(),
             "positions": portfolio.get_all_positions(),
@@ -4337,7 +4340,7 @@ async def start_command_center_server(
     async def handle_api_health(request: web.Request):
         return web.json_response({
             "ok": True,
-            "version": "v12.0",
+            "version": "v13.0",
             "serverTimeUtc": fmt_utc(portfolio.now()),
             "serverTimeMs": int(portfolio.now_ts() * 1000),
             "telegramEnabled": TELEGRAM.enabled,
@@ -4394,7 +4397,7 @@ async def start_command_center_server(
     await site.start()
     url = f"http://127.0.0.1:{port}"
     print(f"🌐 [Command Center Bridge] Lokalni API & Web server aktivan na: {url}")
-    add_agent_log("DISCOVERY", f"Spojen lokalni SQLite Command Center Bridge v12.0 na {url}", "success")
+    add_agent_log("DISCOVERY", f"Spojen lokalni SQLite Command Center Bridge v13.0 na {url}", "success")
     return runner
 
 
@@ -4449,7 +4452,7 @@ async def run_research_pipeline(
     Pass a positive integer to cap the run at that many cycles.
     """
     print("=" * 70)
-    print("🚀 SOLANA MEMECOIN MULTI-AGENT BOT (v12.0 — Mint/Freeze Fix · Time-Stop · Step-Up · Telegram)")
+    print("🚀 SOLANA MEMECOIN MULTI-AGENT BOT (v13.0 — Local AI · Staged Live Arming · TOTP · Digest)")
     print("=" * 70)
 
     researcher = ResearchAgent()
@@ -4465,6 +4468,23 @@ async def run_research_pipeline(
 
     mode_str = "🔥 LIVE ON-CHAIN TRADING" if executor.live_trading_enabled else "🛡️ PAPER TRADING + JUPITER DRY-RUN"
     print(f"⚙️  Mod izvršavanja: {mode_str} | Telegram: {'ON ✅' if TELEGRAM.enabled else 'OFF (dodaj u .env)'}")
+    if executor.live_trading_enabled:
+        stage_line = f"🎚️  Live stage: {executor.live_trading_stage}"
+        if executor.live_trading_stage == "probe":
+            stage_line += (
+                f" · {executor.live_orders_attempted}/{executor.stage_max_live_orders} probe(s) used"
+            )
+        print(stage_line)
+        if executor.live_trading_stage_invalid:
+            print(
+                f"   ⚠️  LIVE_TRADING_STAGE={executor.live_trading_stage_raw!r} nije prepoznat — "
+                "fail-closed na dry_run (nijedan order se ne šalje)."
+            )
+            add_agent_log(
+                "EXEC",
+                f"Invalid LIVE_TRADING_STAGE {executor.live_trading_stage_raw!r}; live orders fail closed to dry_run",
+                "warn",
+            )
     print(f"🧾 Config hash: {portfolio.config_hash} (profile: {portfolio.strategy_profile})")
     if portfolio.high_risk_mode:
         print(
