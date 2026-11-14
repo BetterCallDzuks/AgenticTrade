@@ -6,6 +6,17 @@ All notable changes to BetterCallTrader are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **CI now guards coverage, inline JavaScript and eval regressions.** A new
+  coverage job runs the self-tests under `coverage` and enforces the
+  `fail_under = 65` floor from `pyproject.toml` (measured 68% on this tree).
+  The lint job parses every inline dashboard `<script>` with
+  `scripts/check_inline_js.py --strict` (`node --check`), so a typo in
+  `html/*.html` cannot slip through the Python tests. `py/eval_models.py` gains
+  `--fail-under`, `--compare-json` and `--max-drop`, so a prompt or model change
+  can be gated against a committed `--json` baseline instead of trusted.
+
 ### Security
 
 - **The container is hardened.** The image now runs as the unprivileged `bct`

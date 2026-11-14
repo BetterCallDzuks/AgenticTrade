@@ -32,6 +32,11 @@ jobs:
       - name: Mypy (bettercalltrader package)
         run: |
           "$VENV_PY" -m mypy
+      - name: Inline JS syntax (dashboard scripts)
+        run: |
+          # The dashboards are static files with large inline scripts; a typo
+          # there never touches the Python tests. ubuntu-latest ships node.
+          "$VENV_PY" scripts/check_inline_js.py --strict
 
   test:
     runs-on: ${{ matrix.os }}
@@ -68,6 +73,26 @@ jobs:
           "$VENV_PY" py/smoke_v10.py
         env:
           PYTHONIOENCODING: utf-8
+
+  coverage:
+    # One job only: coverage is a trend signal, not something to recompute per
+    # OS/Python cell. The floor lives in pyproject.toml ([tool.coverage.report]).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Bootstrap venv (shared with ./run.sh)
+        run: bash ./scripts/bootstrap.sh --dev
+      - name: Measure coverage and enforce the floor
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          "$VENV_PY" -m coverage run py/test_v9.py
+          "$VENV_PY" -m coverage report
 
   launcher:
     # Proves the Linux entry point from the README actually boots the dashboard.

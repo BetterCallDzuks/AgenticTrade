@@ -462,6 +462,8 @@ Optional checks:
 python py/test_v9.py        # prints ALL TESTS PASSED
 python py/smoke_v10.py      # prints SMOKE OK
 ruff check . && mypy     # lint + types
+python scripts/check_inline_js.py --strict   # parse dashboard inline scripts
+python -m coverage run py/test_v9.py && python -m coverage report  # floor: 65%
 ```
 
 Optional backup and restore (the `.ps1` scripts are Windows-only):
@@ -720,6 +722,9 @@ latency and the decision mix. It never trades and never writes to the database:
 ```bash
 python py/eval_models.py --limit 10                     # every model in LLM_MODEL(S)
 python py/eval_models.py --baseline gemini --out docs/MODEL_EVAL.md
+python py/eval_models.py --json eval.json               # baseline payload
+python py/eval_models.py --compare-json eval.json --max-drop 5   # gate a change
+python py/eval_models.py --fail-under 60                # absolute floor
 ```
 
 A snapshot from this checkout is committed at
@@ -805,12 +810,14 @@ GitHub Actions workflow is located at:
 .github/workflows/tests.yml
 ```
 
-It runs on every push and pull request and has four jobs:
+It runs on every push and pull request and has six jobs:
 
-- **lint**: `bash -n` over the shell entry points, Ruff (`E4`, `E7`, `E9`, `F`) plus mypy over the `bettercalltrader` package
+- **lint**: `bash -n` over the shell entry points, Ruff (`E4`, `E7`, `E9`, `F`), mypy over the `bettercalltrader` package, and `scripts/check_inline_js.py --strict` (every inline dashboard `<script>` parsed by `node --check`)
 - **test**: Python 3.11 and 3.12 on Ubuntu and Windows; runs `python py/test_v9.py` and `python py/smoke_v10.py`
+- **coverage**: Ubuntu/Python 3.11; runs the self-tests under `coverage` and enforces the `fail_under = 65` floor in `pyproject.toml`
 - **launcher**: boots the app through `./run.sh` on Linux and asserts the dashboard answers on its port
 - **audit**: `pip-audit` against the pinned runtime dependencies
+- **container**: builds the hardened image, checks it runs as UID 1000, and waits for `/ready` with the dashboard token
 
 Every job installs through `scripts/bootstrap.sh`, the same script `./run.sh` uses, so
 CI exercises the identical venv + pinned-dependency path that a local checkout

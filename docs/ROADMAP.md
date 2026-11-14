@@ -43,6 +43,10 @@ deliberately. Every released change is also recorded in
   all capabilities dropped and `/tmp` on a tmpfs; CI builds and probes it.
 - `.env` parsing is quiet by default, and `doctor` reports ignored line numbers
   once (`env_parse`) instead of python-dotenv printing one warning per row.
+- CI enforces a 65% coverage floor, parses every inline dashboard `<script>`
+  with `node --check`, and `py/eval_models.py` can gate a change against a
+  committed baseline (`--compare-json`/`--max-drop`) or an absolute floor
+  (`--fail-under`).
 
 ## Candidates (not scheduled)
 
@@ -61,26 +65,31 @@ Ordered by risk-reduction per unit of work, not by expected return.
 
 ### Research and models
 
-4. **Gemini baseline and eval regression gate.** The committed
-   `docs/MODEL_EVAL.md` is locals-only because Gemini returned `503` at snapshot
-   time; add the Gemini row when it is reachable, then fail a check when a
-   prompt change drops the score below the committed baseline.
-5. **Walk-forward across the strategy comparison in CI.** A tiny synthetic
+4. **Gemini baseline row.** The committed `docs/MODEL_EVAL.md` is locals-only
+   because Gemini returned `503` at snapshot time; capture the Gemini row when
+   it is reachable. The regression gate itself now exists
+   (`--compare-json`/`--max-drop`); wiring a committed `eval.json` into CI needs
+   that baseline first.
+5. **Commit the eval baseline and gate it in CI.** Once the Gemini row exists,
+   store an `eval.json` snapshot and run
+   `py/eval_models.py --compare-json eval.json` in a scheduled job (it needs a
+   provider, so it does not belong in the per-push matrix).
+6. **Walk-forward across the strategy comparison in CI.** A tiny synthetic
    candle set proving `--compare --window-mode rolling` stays deterministic on
    every platform (currently covered by self-tests, not the matrix).
-6. **Calibration report.** Compare the advisory ML probability against realized
+7. **Calibration report.** Compare the advisory ML probability against realized
    outcomes per bucket, instead of reporting a single accuracy number.
 
 ### Operations
 
-7. **Dashboard stage history.** Keep the last N stage transitions
+8. **Dashboard stage history.** Keep the last N stage transitions
    (`dry_run → probe → full`) in the audit log and render them on the System
    page.
-8. **Backup/restore verification.** `scripts/restore.sh` currently restores;
+9. **Backup/restore verification.** `scripts/restore.sh` currently restores;
    add a post-restore replay check that refuses a snapshot whose trades do not
    reconcile.
-9. **Rate-limit dashboard writes separately.** Reads and writes share one
-   limiter; a write burst should not lock out the polling UI.
+10. **Rate-limit dashboard writes separately.** Reads and writes share one
+    limiter; a write burst should not lock out the polling UI.
 
 ### Explicit non-goals
 

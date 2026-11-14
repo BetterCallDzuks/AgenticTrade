@@ -35,6 +35,26 @@ show_error_codes = true
 [tool.pytest.ini_options]
 python_files = ["test_*.py"]
 
+[tool.coverage.run]
+# The self-tests are the coverage driver; the helper scripts are executed, not
+# imported, so they would otherwise count as 0% and drag the total down.
+source = ["bettercalltrader", "py"]
+omit = [
+    "py/test_v9.py",
+    "py/smoke_v10.py",
+    "py/eval_models.py",
+    "py/replay_v10.py",
+    "py/export_training.py",
+]
+branch = false
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# Measured at 68% on the v13 tree; 65 leaves room for unrelated edits without
+# hiding a real drop in coverage. Raise it only together with new tests.
+fail_under = 65
+
 # The legacy monolith is still being extracted; keep CI green while the
 # modular package stays fully type-checked.
 [[tool.mypy.overrides]]

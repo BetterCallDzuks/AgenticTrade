@@ -2990,6 +2990,59 @@ def test_v13_safety_batch():
     print("  v13 probe budget persistence + auth failure audit: OK")
 
 
+def test_v13_eval_compare():
+    from eval_models import _build_parser, compare_results
+
+    baseline = {
+        "results": [
+            {"model": "alpha", "score": 80.0, "valid": True},
+            {"model": "beta", "score": 60.0, "valid": True},
+            {"model": "gamma", "score": 99.0, "valid": False},
+            {"model": "dropped", "score": 50.0, "valid": True},
+        ]
+    }
+    current = [
+        {"model": "alpha", "score": 82.0, "valid": True},
+        {"model": "beta", "score": 50.0, "valid": True},
+        {"model": "gamma", "score": 10.0, "valid": False},
+        {"model": "new", "score": 70.0, "valid": True},
+    ]
+
+    table, regressions = compare_results(current, baseline, max_drop=5.0)
+    assert regressions == [("beta", -10.0)]
+    assert "| `alpha` | 80.0 | 82.0 | +2.0 |" in table
+    assert "| `beta` | 60.0 | 50.0 | -10.0 |" in table
+    assert "| `dropped` | 50.0 | not run | — |" in table
+    assert "| `new` | — | 70.0 | new |" in table
+    # An invalid baseline entry is not a baseline, and an invalid current entry
+    # is not a result: gamma's 99 -> 10 must not be reported as a regression.
+    assert "`gamma`" not in table
+    assert "max allowed drop: 5.0 points" in table
+
+    # A drop exactly at the limit is tolerated; one point past it is not.
+    _, at_limit = compare_results(
+        [{"model": "beta", "score": 55.0, "valid": True}], baseline, max_drop=5.0
+    )
+    assert at_limit == []
+    _, past_limit = compare_results(
+        [{"model": "beta", "score": 54.9, "valid": True}], baseline, max_drop=5.0
+    )
+    assert len(past_limit) == 1
+    assert past_limit[0][0] == "beta"
+    assert abs(past_limit[0][1] - (-5.1)) < 1e-9
+
+    # A looser threshold clears the same regression.
+    _, loose = compare_results(current, baseline, max_drop=25.0)
+    assert loose == []
+
+    args = _build_parser().parse_args([])
+    assert args.fail_under is None
+    assert args.compare_json == ""
+    assert args.max_drop == 5.0
+
+    print("  v13 eval compare/regression gate: OK")
+
+
 def test_v11_ml_contract():
     import json
     import sqlite3
@@ -4142,6 +4195,7 @@ def main():
         test_v12_telegram_digest()
         test_v12_staged_arming()
         test_v13_safety_batch()
+        test_v13_eval_compare()
         test_v11_ml_contract()
         test_v11_cost_parity()
         test_v11_config_fingerprint()

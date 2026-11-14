@@ -34,7 +34,7 @@ import sys
 import time
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = ROOT.parent
@@ -310,6 +310,59 @@ def _fmt(value: Optional[float]) -> str:
     return f"{value:.1f}"
 
 
+def compare_results(
+    results: List[Dict[str, Any]],
+    baseline_payload: Dict[str, Any],
+    max_drop: float = 5.0,
+) -> Tuple[str, List[Tuple[str, float]]]:
+    """Compare current scores with a previous ``--json`` payload.
+
+    Returns a markdown table plus the ``(model, delta)`` pairs that dropped by
+    more than ``max_drop`` points. A model in the baseline that was not run this
+    time is reported but does not fail: the candidate list can legitimately
+    change.
+    """
+    baseline = {
+        str(entry.get("model")): entry
+        for entry in baseline_payload.get("results", [])
+        if isinstance(entry, dict) and entry.get("valid")
+    }
+    current = {
+        str(entry.get("model")): entry
+        for entry in results
+        if isinstance(entry, dict) and entry.get("valid")
+    }
+    limit = abs(float(max_drop))
+    lines = [
+        "",
+        f"Comparison vs baseline (max allowed drop: {limit:.1f} points):",
+        "",
+        "| Model | Baseline | Current | Δ |",
+        "|---|---|---|---|",
+    ]
+    regressions: List[Tuple[str, float]] = []
+    for model in sorted(set(baseline) | set(current)):
+        before = baseline.get(model)
+        after = current.get(model)
+        if before and after:
+            delta = float(after["score"]) - float(before["score"])
+            lines.append(
+                f"| `{model}` | {float(before['score']):.1f} | {float(after['score']):.1f} | {delta:+.1f} |"
+            )
+            if delta < -limit:
+                regressions.append((model, delta))
+        elif before:
+            lines.append(f"| `{model}` | {float(before['score']):.1f} | not run | — |")
+        else:
+            lines.append(f"| `{model}` | — | {float(after['score']):.1f} | new |")
+
+    if regressions:
+        lines.append("")
+        for model, delta in regressions:
+            lines.append(f"✗ {model} dropped {delta:+.1f} points (limit -{limit:.1f})")
+    return "\n".join(lines), regressions
+
+
 async def main_async(args: argparse.Namespace) -> int:
     load_env(Path(args.env_file))
     base = LLMConfig.from_env()
@@ -364,7 +417,36 @@ async def main_async(args: argparse.Namespace) -> int:
         print(f"Wrote {args.out}")
     print()
     print(report)
-    return 0 if ranking else 1
+    exit_code = 0 if ranking else 1
+    if args.fail_under is not None:
+        if not ranking:
+            print(f"\n✗ no valid model result; --fail-under {args.fail_under:.1f} cannot pass")
+            exit_code = 2
+        elif float(ranking[0]["score"]) < float(args.fail_under):
+            print(
+                f"\n✗ best score {float(ranking[0]['score']):.1f} ({ranking[0]['model']}) "
+                f"is below --fail-under {args.fail_under:.1f}"
+            )
+            exit_code = 2
+        else:
+            print(
+                f"\n✓ best score {float(ranking[0]['score']):.1f} ({ranking[0]['model']}) "
+                f"meets --fail-under {args.fail_under:.1f}"
+            )
+    if args.compare_json:
+        try:
+            baseline_payload = json.loads(Path(args.compare_json).read_text(encoding="utf-8"))
+            if not isinstance(baseline_payload, dict):
+                raise ValueError("baseline JSON is not an object")
+            table, regressions = compare_results(results, baseline_payload, args.max_drop)
+        except (OSError, ValueError, TypeError) as exc:
+            print(f"\n✗ could not read --compare-json {args.compare_json}: {exc}")
+            exit_code = 2
+        else:
+            print(table)
+            if regressions:
+                exit_code = 2
+    return exit_code
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -376,6 +458,25 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep-loaded", action="store_true", help="do not unload local models between candidates")
     parser.add_argument("--json", default="", help="write the raw results as JSON")
     parser.add_argument("--out", default="", help="write a markdown report (e.g. docs/MODEL_EVAL.md)")
+    parser.add_argument(
+        "--fail-under",
+        type=float,
+        default=None,
+        metavar="SCORE",
+        help="exit 2 when the best model scores below SCORE",
+    )
+    parser.add_argument(
+        "--compare-json",
+        default="",
+        help="compare against a previous --json payload and flag score regressions",
+    )
+    parser.add_argument(
+        "--max-drop",
+        type=float,
+        default=5.0,
+        metavar="POINTS",
+        help="allowed score drop before --compare-json fails (default 5.0)",
+    )
     parser.add_argument("--env-file", default=str(PROJECT_ROOT / ".env"))
     return parser
 
