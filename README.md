@@ -812,7 +812,7 @@ GitHub Actions workflow is located at:
 
 It runs on every push and pull request and has six jobs:
 
-- **lint**: `bash -n` over the shell entry points, Ruff (`E4`, `E7`, `E9`, `F`), mypy over the `bettercalltrader` package, and `scripts/check_inline_js.py --strict` (every inline dashboard `<script>` parsed by `node --check`)
+- **lint**: `bash -n` over the shell entry points, Ruff (`E4`, `E7`, `E9`, `F`), mypy over the `bettercalltrader` package and the `py/research_bot.py` entry point, and `scripts/check_inline_js.py --strict` (every inline dashboard `<script>` parsed by `node --check`)
 - **test**: Python 3.11 and 3.12 on Ubuntu and Windows; runs `python py/test_v9.py` and `python py/smoke_v10.py`
 - **coverage**: Ubuntu/Python 3.11; runs the self-tests under `coverage` and enforces the `fail_under = 65` floor in `pyproject.toml`
 - **launcher**: boots the app through `./run.sh` on Linux and asserts the dashboard answers on its port
@@ -1219,7 +1219,7 @@ answer most questions.
 - Wallet quality starts neutral and only becomes meaningful after a few closed trades per wallet.
 - Some older log and hard-filter messages are still in Croatian. The newer risk-engine messages are in English; the dashboard chrome itself is bilingual (HR/EN switch).
 - The web API is intended for local use and now binds `127.0.0.1` by default. A non-loopback bind requires `DASHBOARD_TOKEN` or startup is refused; `ALLOW_INSECURE_DASHBOARD=true` is an explicit opt-out. Keep the rate limit enabled and do not expose it to the internet.
-- The ML model is advisory only and never opens, blocks or resizes trades. The realized replay and the OHLCV backtester are research tools, not forecasts.
+- The ML model is advisory only and never opens, blocks or resizes trades. A single accuracy number hides miscalibration: `GET /api/ml/status` (and the ML / AI page) also reports the Brier score and expected calibration error, with predicted-vs-realized per probability bucket. The realized replay and the OHLCV backtester are research tools, not forecasts.
 - The OHLCV backtester uses close-based signals and gap-aware high/low exit checks; it cannot model order-book depth, MEV or partial fills. When a candle contains both a stop and take profit, the stop is used and the trade is marked `ambiguousBar`.
 - The OHLCV engine sells `tp1_fraction` at take profit and trails the rest on the stop ladder, matching the paper book; the same `ExitPolicy` drives both.
 - Walk-forward segments reset the bankroll. `--walk-forward` compares one fixed parameter set out of sample; `--optimize` re-selects parameters per window, so it measures the selection process, not hindsight. Neither guarantees future profit.

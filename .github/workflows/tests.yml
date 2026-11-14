@@ -29,7 +29,7 @@ jobs:
       - name: Ruff
         run: |
           "$VENV_PY" -m ruff check .
-      - name: Mypy (bettercalltrader package)
+      - name: Mypy (package + legacy entry point)
         run: |
           "$VENV_PY" -m mypy
       - name: Inline JS syntax (dashboard scripts)

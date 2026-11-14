@@ -24,7 +24,7 @@ ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"
-files = ["bettercalltrader"]
+files = ["bettercalltrader", "py/research_bot.py"]
 ignore_missing_imports = true
 check_untyped_defs = true
 no_implicit_optional = true
@@ -54,9 +54,3 @@ skip_covered = true
 # Measured at 68% on the v13 tree; 65 leaves room for unrelated edits without
 # hiding a real drop in coverage. Raise it only together with new tests.
 fail_under = 65
-
-# The legacy monolith is still being extracted; keep CI green while the
-# modular package stays fully type-checked.
-[[tool.mypy.overrides]]
-module = "research_bot"
-ignore_errors = true

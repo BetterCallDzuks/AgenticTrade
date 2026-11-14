@@ -6,6 +6,15 @@ All notable changes to BetterCallTrader are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The legacy entry point is type-checked.** `py/research_bot.py` was excluded
+  from mypy with an `ignore_errors` override. The override is gone and the file
+  is in `files`, so CI now checks all 34 source files. The fixes are real
+  narrowings (aiohttp `ClientTimeout`/`ClientWSTimeout`, `dict`/`Optional`
+  annotations, a local `keypair` after the guard, explicit `dict(os.environ)`),
+  not blanket ignores.
+
 ### Added
 
 - **The ML model reports calibration, not just accuracy.** `calibration_report`

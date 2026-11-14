@@ -49,6 +49,8 @@ deliberately. Every released change is also recorded in
   (`--fail-under`).
 - The advisory ML model reports calibration per probability bucket (Brier and
   ECE) instead of a single accuracy number.
+- `py/research_bot.py` is now type-checked too: the mypy `ignore_errors`
+  override is removed, so CI covers the package and the legacy entry point.
 
 ## Candidates (not scheduled)
 

@@ -10,7 +10,7 @@ import logging
 import webbrowser
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import aiohttp
 from aiohttp import web
 
@@ -296,7 +296,7 @@ class DiscoveryAgent:
 
         for url in (self.DEXSCREENER_PROFILES_URL, self.DEXSCREENER_BOOSTS_URL):
             try:
-                async with session.get(url, timeout=8) as response:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=8)) as response:
                     if response.status == 200:
                         data = await response.json()
                         if isinstance(data, list):
@@ -353,14 +353,18 @@ class PumpFunStreamAgent:
             f"Slušam live blokove + pratim {len(wallet_addresses)} Smart Money novčanika ({duration_seconds}s)...",
             "info"
         )
-        candidates = []
+        candidates: List[dict] = []
         seen_mints = set()
         end_time = asyncio.get_event_loop().time() + duration_seconds
         reconnect_attempts = 0
 
         while asyncio.get_event_loop().time() < end_time and len(candidates) < max_candidates:
             try:
-                async with session.ws_connect("wss://pumpportal.fun/api/data", heartbeat=20, timeout=12) as ws:
+                async with session.ws_connect(
+                    "wss://pumpportal.fun/api/data",
+                    heartbeat=20,
+                    timeout=aiohttp.ClientWSTimeout(ws_receive=12, ws_close=12),
+                ) as ws:
                     await ws.send_json({"method": "subscribeNewToken"})
                     await ws.send_json({"method": "subscribeMigration"})
                     if wallet_addresses:
@@ -717,7 +721,7 @@ class ResearchAgent:
         uri = pf_event.get("uri")
         if uri and uri.startswith("http"):
             try:
-                async with session.get(uri, timeout=4) as resp:
+                async with session.get(uri, timeout=aiohttp.ClientTimeout(total=4)) as resp:
                     if resp.status == 200:
                         meta = await resp.json(content_type=None)
                         if meta.get("twitter"):
@@ -803,7 +807,7 @@ class ResearchAgent:
         to znači da je Mint Authority USPJEŠNO UGAŠEN (True), a ne None!
         """
         full_url = self.RUGCHECK_FULL_URL.format(mint=mint)
-        result = {
+        result: Dict[str, Any] = {
             "status": "unknown",
             "rugcheck_score": None,
             "top10_holder_pct": None,
@@ -854,7 +858,7 @@ class ResearchAgent:
 
                     top_holders = data.get("topHolders") or []
                     if top_holders:
-                        holder_pcts = []
+                        holder_pcts: List[float] = []
                         for h in top_holders:
                             pct = float(h.get("pct", 0.0) or 0.0)
                             if pct > 24.0 and len(holder_pcts) == 0:
@@ -1079,7 +1083,7 @@ class SolanaExecutionAgent:
         max_live_trade_sol: Optional[float] = None,
         live_trading_stage: Optional[str] = None,
         stage_max_live_orders: Optional[int] = None,
-        state_store: Optional[object] = None,
+        state_store: Optional[Any] = None,
     ):
         self.rpc_url = rpc_url or os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
         # ``""`` means "no key" (it must not silently fall back to the env), while
@@ -1202,7 +1206,9 @@ class SolanaExecutionAgent:
             "onlyDirectRoutes": "false",
         }
         try:
-            async with session.get(self.JUPITER_QUOTE_URL, params=params, timeout=8) as resp:
+            async with session.get(
+                self.JUPITER_QUOTE_URL, params=params, timeout=aiohttp.ClientTimeout(total=8)
+            ) as resp:
                 if resp.status != 200:
                     return None
                 return await resp.json()
@@ -1298,20 +1304,23 @@ class SolanaExecutionAgent:
         return await self._execute_jupiter_swap_tx(session, quote)
 
     async def _execute_jupiter_swap_tx(self, session: aiohttp.ClientSession, quote: dict) -> dict:
-        if not self.keypair or not SOLDERS_AVAILABLE:
+        keypair = self.keypair
+        if not keypair or not SOLDERS_AVAILABLE:
             return {"status": "ERROR", "reason": "Nedostaje SOLANA_PRIVATE_KEY ili 'solders' paket"}
 
         priority_lamports = int(self.priority_fee_sol * 1_000_000_000)
         payload = {
             "quoteResponse": quote,
-            "userPublicKey": str(self.keypair.pubkey()),
+            "userPublicKey": str(keypair.pubkey()),
             "wrapAndUnwrapSol": True,
             "prioritizationFeeLamports": priority_lamports,
             "dynamicComputeUnitLimit": True
         }
 
         try:
-            async with session.post(self.JUPITER_SWAP_URL, json=payload, timeout=10) as resp:
+            async with session.post(
+                self.JUPITER_SWAP_URL, json=payload, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
                 if resp.status != 200:
                     err_text = await resp.text()
                     return {"status": "ERROR", "reason": f"Jupiter swap HTTP {resp.status}: {err_text}"}
@@ -1333,11 +1342,12 @@ class SolanaExecutionAgent:
         amount,
         denominated_in_sol: str = "true"
     ) -> dict:
-        if not self.keypair or not SOLDERS_AVAILABLE:
+        keypair = self.keypair
+        if not keypair or not SOLDERS_AVAILABLE:
             return {"status": "ERROR", "reason": "Nedostaje SOLANA_PRIVATE_KEY ili 'solders' paket"}
 
         payload = {
-            "publicKey": str(self.keypair.pubkey()),
+            "publicKey": str(keypair.pubkey()),
             "action": action,
             "mint": mint,
             "denominatedInSol": denominated_in_sol,
@@ -1348,7 +1358,9 @@ class SolanaExecutionAgent:
         }
 
         try:
-            async with session.post(self.PUMPPORTAL_LOCAL_TRADE_URL, json=payload, timeout=10) as resp:
+            async with session.post(
+                self.PUMPPORTAL_LOCAL_TRADE_URL, json=payload, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
                 if resp.status != 200:
                     err_text = await resp.text()
                     return {"status": "ERROR", "reason": f"PumpPortal HTTP {resp.status}: {err_text}"}
@@ -1360,7 +1372,10 @@ class SolanaExecutionAgent:
     async def _sign_and_send_raw_transaction(self, session: aiohttp.ClientSession, tx_bytes: bytes) -> dict:
         try:
             unsigned_tx = VersionedTransaction.from_bytes(tx_bytes)
-            signed_tx = VersionedTransaction(unsigned_tx.message, [self.keypair])
+            keypair = self.keypair
+            if keypair is None:
+                return {"status": "ERROR", "reason": "Nedostaje SOLANA_PRIVATE_KEY"}
+            signed_tx = VersionedTransaction(unsigned_tx.message, [keypair])
             encoded_tx = base64.b64encode(bytes(signed_tx)).decode("utf-8")
 
             rpc_payload = {
@@ -1378,7 +1393,9 @@ class SolanaExecutionAgent:
             }
 
             target_rpc = self.JITO_MAINNET_RPC if "mainnet" in self.rpc_url else self.rpc_url
-            async with session.post(target_rpc, json=rpc_payload, timeout=10) as resp:
+            async with session.post(
+                target_rpc, json=rpc_payload, timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
                 res_json = await resp.json()
                 if "result" in res_json:
                     sig = res_json["result"]
@@ -1579,7 +1596,7 @@ class PaperTradingManager:
             setattr(self, attr, value)
         self.strategy_profile = profile
         self.high_risk_mode = is_override_profile(profile)
-        for attr, value in resolve_profile(os.environ, profile, force=force).items():
+        for attr, value in resolve_profile(dict(os.environ), profile, force=force).items():
             setattr(self, attr, value)
         if not self._max_position_explicit:
             self.max_position_sol = self.trade_size_sol
@@ -2134,7 +2151,7 @@ class PaperTradingManager:
             if recent_n < self.wallet_quality_min_samples:
                 trusted = True
                 reason = f"neutral ({recent_n}/{self.wallet_quality_min_samples} samples)"
-            elif recent_wr >= self.wallet_quality_min_win_rate:
+            elif recent_wr is not None and recent_wr >= self.wallet_quality_min_win_rate:
                 trusted = True
                 reason = f"trusted ({recent_wins}/{recent_n} recent wins)"
             else:
@@ -2670,6 +2687,9 @@ class PaperTradingManager:
     ) -> dict:
         mint = market.get("mint")
         symbol = market.get("symbol", "?")
+        if not mint:
+            self._block(market, "NO_MINT", "Market data has no mint", log=False)
+            return {"status": "BLOCKED", "rule": "NO_MINT", "reason": "market data has no mint"}
         if self.has_position(mint) or mint in self.pending_confirmations:
             self._block(market, "DUPLICATE", "Already holding or confirming this mint", log=False)
             return {"status": "BLOCKED", "rule": "DUPLICATE", "reason": "already open/pending"}
@@ -2770,7 +2790,7 @@ class PaperTradingManager:
                                 f"Price {change_pct:+.2f}% vs signal during {self.entry_confirm_sec:g}s wait (max -{abs(self.entry_confirm_max_drop_pct):g}%)", mid)
             return {"status": "CANCELLED", "rule": "CONFIRM_DROP", "changePct": change_pct}
 
-        market = dict(fresh_market)
+        market = dict(fresh_market or {})
         for k in ("whale_signal", "whale_wallet", "whale_signal_info"):
             if p["market"].get(k) is not None and market.get(k) is None:
                 market[k] = p["market"][k]
@@ -2958,9 +2978,8 @@ class PaperTradingManager:
             *(researcher.get_market_data(session, m) for m in mints), return_exceptions=True
         )
         for mint, market in zip(mints, markets):
-            if isinstance(market, Exception):
-                market = None
-            self.process_position_tick(mint, market)
+            tick_market: Optional[dict] = None if isinstance(market, BaseException) else market
+            self.process_position_tick(mint, tick_market)
 
     def process_position_tick(self, mint: str, market: Optional[dict]) -> Optional[str]:
         conn = self._conn()
@@ -2978,7 +2997,7 @@ class PaperTradingManager:
 
         fresh, why = self.is_market_fresh(market)
         flow = None
-        if fresh:
+        if fresh and market:
             current = float(market["price_usd"])
             liq = _safe_float(market.get("liquidity_usd")) or stored_liq
             if market.get("flow_ok"):
@@ -3148,7 +3167,7 @@ class PaperTradingManager:
         reason = intent.reason
 
         if reason == WHALE_EXIT:
-            action = close("WHALE_EXIT", f"Tracked whale '{whale_selling.get('label', '?')}' is selling this token.")
+            action = close("WHALE_EXIT", f"Tracked whale '{(whale_selling or {}).get('label', '?')}' is selling this token.")
 
         elif reason == TAKE_PROFIT_1:
             sell_value_sol = current_value_sol * intent.fraction
@@ -3196,7 +3215,7 @@ class PaperTradingManager:
             action = close("TIME_STOP", f"No pump after {int(age_sec)}s (peak {peak_pnl_pct:+.1f}% < {self.time_stop_min_profit_pct:g}%).")
 
         elif reason == FLOW_EXIT:
-            action = close("FLOW_EXIT", f"Sell flow: {flow.get('sells')} sells vs {flow.get('buys')} buys (5m).")
+            action = close("FLOW_EXIT", f"Sell flow: {(flow or {}).get('sells')} sells vs {(flow or {}).get('buys')} buys (5m).")
 
         elif reason == TAKE_PROFIT:
             action = close("TAKE_PROFIT", f"Final target {self.final_take_profit_pct:g}% reached.")
@@ -3241,8 +3260,9 @@ class PaperTradingManager:
         equity = float(self.initial_sol)
         if rows:
             first_open = self._parse_ts(rows[0][1]) or self._parse_ts(rows[0][2])
-            points.append({"t": fmt_utc(first_open), "tLocal": fmt_local(first_open), "equity": round(equity, 6),
-                           "label": "START", "kind": "start"})
+            if first_open is not None:
+                points.append({"t": fmt_utc(first_open), "tLocal": fmt_local(first_open), "equity": round(equity, 6),
+                               "label": "START", "kind": "start"})
         for sym, opened_at, closed_at, net, reason, inv, ret in rows:
             equity += float(net or 0.0)
             dt = self._parse_ts(closed_at)
@@ -3313,7 +3333,7 @@ class PaperTradingManager:
         c = conn.cursor()
         c.execute("SELECT symbol, invested_sol, remaining_ratio, entry_price_usd, current_price_usd FROM positions WHERE status = 'OPEN'")
         rows = c.fetchall()
-        by_symbol = {}
+        by_symbol: Dict[str, float] = {}
         total_open = 0.0
         for symbol, invested, rem, entry, cur in rows:
             value = float(invested or 0.0) * float(rem or 0.0)
@@ -3329,7 +3349,7 @@ class PaperTradingManager:
         metrics = summarize(pnls, float(self.initial_sol))
         concentration = {k: (v / total_open if total_open > 0 else 0.0) for k, v in by_symbol.items()}
         hhi = herfindahl_index(list(by_symbol.values()))
-        top_symbol = max(concentration, key=concentration.get) if concentration else None
+        top_symbol = max(concentration, key=lambda k: concentration[k]) if concentration else None
         top_pct = concentration.get(top_symbol, 0.0) if top_symbol else 0.0
         equity_now = self.get_equity_now()
         exposure_pct = (total_open / equity_now * 100.0) if equity_now > 0 else 0.0
@@ -3631,6 +3651,7 @@ def apply_config_payload(data: dict, portfolio, researcher, executor) -> List[st
         if key not in data or data[key] is None or data[key] == "":
             continue
         raw = data[key]
+        val: Any
         try:
             if typ is bool:
                 val = raw if isinstance(raw, bool) else str(raw).strip().lower() in ("1", "true", "yes", "on")
@@ -4002,7 +4023,7 @@ async def start_command_center_server(
         return web.json_response({"ok": True, "portfolioRisk": portfolio.get_portfolio_risk()})
 
     async def handle_ready(request: web.Request):
-        checks = {"database": False, "ai": bool(researcher.client), "telegram": TELEGRAM.enabled}
+        checks: Dict[str, Any] = {"database": False, "ai": bool(researcher.client), "telegram": TELEGRAM.enabled}
         try:
             conn = portfolio._conn()
             try:
@@ -4068,7 +4089,9 @@ async def start_command_center_server(
 
     async def handle_api_ml_status(request: web.Request):
         from bettercalltrader.ml import model_status
-        return web.json_response({"ok": True, "model": model_status(ML_MODEL_PATH)})
+        return web.json_response(
+            {"ok": True, "model": model_status(ML_MODEL_PATH, db_path=portfolio.db_path)}
+        )
 
     async def handle_api_ml_predict(request: web.Request):
         from bettercalltrader.ml import load_model, model_status, predict_mint
@@ -4103,7 +4126,9 @@ async def start_command_center_server(
         if not model.get("ok"):
             return web.json_response({"ok": False, "reason": model.get("reason")}, status=409)
         save_model(model, ML_MODEL_PATH)
-        return web.json_response({"ok": True, "model": model_status(ML_MODEL_PATH)})
+        return web.json_response(
+            {"ok": True, "model": model_status(ML_MODEL_PATH, db_path=portfolio.db_path)}
+        )
 
     async def handle_api_backtest(request: web.Request):
         from bettercalltrader.backtest import build_report
