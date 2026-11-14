@@ -41,6 +41,8 @@ deliberately. Every released change is also recorded in
   crash loop cannot mint a fresh `LIVE_STAGE_MAX_TRADES` allowance.
 - The container runs as a non-root user on a read-only root filesystem, with
   all capabilities dropped and `/tmp` on a tmpfs; CI builds and probes it.
+- `.env` parsing is quiet by default, and `doctor` reports ignored line numbers
+  once (`env_parse`) instead of python-dotenv printing one warning per row.
 
 ## Candidates (not scheduled)
 

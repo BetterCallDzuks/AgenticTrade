@@ -1380,6 +1380,7 @@ def test_v11_doctor():
     import tempfile
     from pathlib import Path
     from bettercalltrader.doctor import load_env_file, run_checks
+    from bettercalltrader.envfile import describe_ignored_lines, parse_env_file
 
     env = {
         "LIVE_TRADING_ENABLED": "false",
@@ -1412,6 +1413,29 @@ def test_v11_doctor():
         loaded = load_env_file(assignments)
         assert loaded["DASHBOARD_TOKEN"] == "abc123"
         assert loaded.get("QUOTED") == "x y"
+
+        # Documentation separators are ignored quietly, but reported once by
+        # doctor with line numbers instead of one logger line per row.
+        malformed = tmp_path / "malformed.env"
+        malformed.write_text(
+            "=====\n1. HEADING\nDASHBOARD_TOKEN=abc123\n", encoding="utf-8"
+        )
+        parsed = parse_env_file(malformed)
+        assert parsed.values == {"DASHBOARD_TOKEN": "abc123"}
+        assert parsed.ignored_lines == [1, 2]
+        assert describe_ignored_lines(parsed) == "line(s) 1, 2"
+        assert load_env_file(malformed)["DASHBOARD_TOKEN"] == "abc123"
+
+        reported = run_checks(
+            {},
+            env_file=malformed,
+            db_path=tmp_path / "parse.db",
+            audit_path=tmp_path / "parse_audit.jsonl",
+            check_socket=False,
+        )
+        reported_names = {check.name: check for check in reported}
+        assert reported_names["env_parse"].status == "warn"
+        assert "line(s) 1, 2" in reported_names["env_parse"].detail
 
         missing = run_checks(
             {},

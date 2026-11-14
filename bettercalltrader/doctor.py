@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence
 
 from bettercalltrader import validate as validation
+from bettercalltrader.envfile import describe_ignored_lines, load_env_values, parse_env_file
 from bettercalltrader.llm import LLMConfig, probe as probe_llm
 from bettercalltrader.live_readiness import check_environment
 
@@ -47,22 +48,8 @@ class Check:
 
 
 def load_env_file(path: Path) -> Dict[str, str]:
-    """Load a .env file without mutating os.environ."""
-    if not path.exists():
-        return {}
-    try:
-        from dotenv import dotenv_values
-
-        return {k: str(v) for k, v in dotenv_values(dotenv_path=path).items() if v is not None}
-    except ImportError:
-        values: Dict[str, str] = {}
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            values[key.strip()] = value.strip().strip('"').strip("'")
-        return values
+    """Load a .env file without mutating os.environ or printing parse warnings."""
+    return load_env_values(path)
 
 
 def _package_version(name: str) -> Optional[str]:
@@ -144,6 +131,27 @@ def check_port(host: str, port: int) -> Check:
             f"{host}:{port} is busy ({exc}); the bot falls back to terminal mode",
         )
     return Check("port", "ok", f"{host}:{port} is free")
+
+
+def check_env_parse(path: Path) -> Check:
+    """Report lines that python-dotenv silently ignores.
+
+    Documentation separators are harmless, but a mistyped assignment is not:
+    it would leave the default in place while looking configured. One warning
+    with explicit line numbers is easier to act on than N logger lines.
+    """
+    if not path.exists():
+        return Check("env_parse", "info", "no .env file to parse")
+    parsed = parse_env_file(path)
+    ignored = describe_ignored_lines(parsed)
+    if ignored:
+        return Check(
+            "env_parse",
+            "warn",
+            f"{len(parsed.values)} key(s) parsed; ignored {ignored} "
+            "(fix a mistyped assignment or prefix documentation with #)",
+        )
+    return Check("env_parse", "ok", f"{len(parsed.values)} key(s) parsed")
 
 
 def check_env_permissions(path: Path) -> Check:
@@ -270,7 +278,8 @@ def run_checks(
 ) -> List[Check]:
     values = dict(os.environ if env is None else env)
     if env_file is not None:
-        file_values = load_env_file(env_file)
+        parsed = parse_env_file(env_file)
+        file_values = parsed.values
         if not file_values:
             if env_file.exists():
                 checks: List[Check] = [
@@ -286,6 +295,7 @@ def run_checks(
             checks = [Check("env_file", "ok", f"{env_file} ({len(file_values)} keys)")]
         # File values win: this mirrors python-dotenv's override=True usage.
         values.update(file_values)
+        checks.append(check_env_parse(env_file))
         checks.append(check_env_permissions(env_file))
     else:
         checks = [Check("env_file", "ok", "using the process environment")]

@@ -34,20 +34,13 @@ def load_local_env(env_filename: str = ".env"):
         env_path = Path.cwd() / env_filename
 
     if env_path.exists():
-        try:
-            from dotenv import load_dotenv
-            load_dotenv(dotenv_path=env_path, override=True)
-        except ImportError:
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#") or "=" not in line:
-                        continue
-                    key, val = line.split("=", 1)
-                    key = key.strip()
-                    val = val.strip().strip('"').strip("'")
-                    if key and val:
-                        os.environ[key] = val
+        from bettercalltrader.envfile import load_env_values
+
+        # Quiet parse: python-dotenv logs one warning per documentation line,
+        # and this file is read on every start. ``doctor`` reports ignored lines
+        # explicitly instead. File values win, as override=True did before.
+        for key, value in load_env_values(env_path).items():
+            os.environ[key] = value
         print(f"✅ [.env Loader] Uspješno učitana konfiguracija iz: {env_path}")
     else:
         print("ℹ️ [.env Loader] Datoteka .env nije pronađena, koristim sistemske varijable.")

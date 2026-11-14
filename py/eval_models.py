@@ -50,16 +50,13 @@ DECISIONS = ("BUY", "WATCH", "SKIP")
 
 
 def load_env(path: Path) -> None:
-    """Load .env without overriding variables already set in the environment."""
+    """Load .env quietly without overriding variables already in the environment."""
     if not path.is_file():
         return
-    try:
-        from dotenv import dotenv_values
-    except ImportError:  # pragma: no cover - optional dependency
-        return
-    for key, value in dotenv_values(dotenv_path=path).items():
-        if value is not None:
-            os.environ.setdefault(key, str(value))
+    from bettercalltrader.envfile import load_env_values
+
+    for key, value in load_env_values(path).items():
+        os.environ.setdefault(key, value)
 
 
 def load_cases(db_path: str, limit: int) -> List[Dict[str, Any]]:

@@ -28,6 +28,12 @@ All notable changes to BetterCallTrader are documented here. The format follows
   process restores today's count and is blocked once `LIVE_STAGE_MAX_TRADES` is
   spent; a new UTC day resets it. `build_config_payload` and `/api/state`
   refresh the day before reporting `stageOrdersAttempted`.
+- **`.env` parsing is quiet and checked.** Startup, `doctor` and
+  `py/eval_models.py` now read `.env` through
+  `bettercalltrader.envfile.parse_env_file`, which captures python-dotenv's
+  per-line warnings instead of printing a wall of them. `doctor` adds an
+  `env_parse` check that reports the ignored line numbers once, so harmless
+  documentation separators no longer hide a mistyped assignment.
 
 ## [13.0.0] - 2026-11-14
 
